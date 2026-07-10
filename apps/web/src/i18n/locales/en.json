@@ -338,7 +338,11 @@
     "incremental": "Incremental",
     "deleteSnapshot": "Delete snapshot",
     "deleteSnapshotConfirm": "Delete snapshot \"{{name}}\"? This cannot be undone.",
-    "actions": "Actions"
+    "actions": "Actions",
+    "attachType": "Type",
+    "satisfied": "Satisfied",
+    "attachId": "Attachment ID",
+    "conditionType": "Condition"
   },
   "nodes": {
     "title": "Nodes & Disks",

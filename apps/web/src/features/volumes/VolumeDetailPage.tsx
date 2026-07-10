@@ -48,6 +48,32 @@ import { VOLUME_ACTION_DEFS, groupActions, volumeActionLabel, type VolumeActionD
 
 type SnapshotRow = { name: string; created?: string; size?: string | number; [k: string]: unknown }
 
+type AttachTicket = {
+  id: string
+  type?: string
+  nodeID?: string
+  satisfied?: boolean
+  attachmentID?: string
+}
+
+// Flatten each VolumeAttachment CR's `attachments` ticket map into flat rows so
+// the detail page can show a readable table instead of a raw JSON dump.
+function attachmentTicketRows(atts: Array<Record<string, unknown>>): AttachTicket[] {
+  const rows: AttachTicket[] = []
+  for (const a of atts) {
+    const map = (a.attachments as Record<string, Record<string, unknown>> | undefined) ?? {}
+    for (const [id, tk] of Object.entries(map)) {
+      rows.push({
+        id,
+        type: tk.attachmentType as string | undefined,
+        nodeID: tk.nodeID as string | undefined,
+        satisfied: tk.satisfied as boolean | undefined,
+        attachmentID: tk.attachmentID as string | undefined,
+      })
+    }
+  }
+  return rows
+}
 
 function InfoRow({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -569,11 +595,55 @@ export function VolumeDetailPage() {
                 <CardTitle>{t('volumeDetail.attachments')}</CardTitle>
               </CardHeader>
               <CardContent>
-                {attachments.length === 0 ? (
-                  <p className="text-sm text-[var(--color-muted-foreground)]">{t('volumeDetail.noAttachments')}</p>
-                ) : (
-                  <pre className="max-h-40 overflow-auto text-xs">{JSON.stringify(attachments, null, 2)}</pre>
-                )}
+                {(() => {
+                  const rows = attachmentTicketRows(attachments as Array<Record<string, unknown>>)
+                  if (rows.length === 0) {
+                    return (
+                      <p className="text-sm text-[var(--color-muted-foreground)]">
+                        {t('volumeDetail.noAttachments')}
+                      </p>
+                    )
+                  }
+                  return (
+                    <Table>
+                      <THead>
+                        <TR>
+                          <TH>{t('volumeDetail.attachType')}</TH>
+                          <TH>{t('common.node')}</TH>
+                          <TH>{t('volumeDetail.satisfied')}</TH>
+                          <TH>{t('volumeDetail.attachId')}</TH>
+                        </TR>
+                      </THead>
+                      <TBody>
+                        {rows.map((r) => (
+                          <TR key={r.id}>
+                            <TD>{r.type ?? '—'}</TD>
+                            <TD>
+                              {r.nodeID ? (
+                                <Link
+                                  to={`/nodes/${encodeURIComponent(r.nodeID)}`}
+                                  className="text-[var(--color-primary)] hover:underline"
+                                >
+                                  {r.nodeID}
+                                </Link>
+                              ) : (
+                                '—'
+                              )}
+                            </TD>
+                            <TD>
+                              <Badge tone={r.satisfied ? 'success' : 'warning'}>
+                                {r.satisfied ? t('common.yes') : t('common.no')}
+                              </Badge>
+                            </TD>
+                            <TD className="max-w-[16rem] truncate font-mono text-xs" title={r.attachmentID}>
+                              {r.attachmentID ?? r.id}
+                            </TD>
+                          </TR>
+                        ))}
+                      </TBody>
+                    </Table>
+                  )
+                })()}
               </CardContent>
             </Card>
 
@@ -582,16 +652,30 @@ export function VolumeDetailPage() {
                 <CardTitle>{t('volumeDetail.conditions')}</CardTitle>
               </CardHeader>
               <CardContent>
-                {toConditionArray(vol.conditions).map((c, i) => (
-                  <div key={i} className="mb-2 rounded border border-[var(--color-border)] p-2 text-sm" title={c.message}>
-                    <span className="font-medium">{c.type}</span>{' '}
-                    <Badge tone={stateTone(c.status)}>{c.status}</Badge>
-                    {c.message ? <p className="mt-1 text-[var(--color-muted-foreground)]">{c.message}</p> : null}
-                  </div>
-                ))}
-                {!toConditionArray(vol.conditions).length ? (
+                {toConditionArray(vol.conditions).length ? (
+                  <Table>
+                    <THead>
+                      <TR>
+                        <TH>{t('volumeDetail.conditionType')}</TH>
+                        <TH>{t('common.status')}</TH>
+                        <TH>{t('common.message')}</TH>
+                      </TR>
+                    </THead>
+                    <TBody>
+                      {toConditionArray(vol.conditions).map((c, i) => (
+                        <TR key={i}>
+                          <TD className="font-medium">{c.type}</TD>
+                          <TD>
+                            <Badge tone={stateTone(c.status)}>{c.status}</Badge>
+                          </TD>
+                          <TD className="text-[var(--color-muted-foreground)]">{c.message || '—'}</TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                ) : (
                   <p className="text-sm text-[var(--color-muted-foreground)]">{t('volumeDetail.noConditions')}</p>
-                ) : null}
+                )}
               </CardContent>
             </Card>
 

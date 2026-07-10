@@ -48,8 +48,10 @@ test.describe('Phase 1 parity smoke', () => {
     await page.getByTestId('snapshot-create-confirm').click()
     await expect(page.getByText('e2e-snap')).toBeVisible({ timeout: 10_000 })
 
-    // Attach via action form (manager actions map)
-    await page.getByRole('button', { name: 'Attach', exact: true }).click()
+    // Attach via action form (manager actions map). Volume actions are now
+    // consolidated into an "Actions" dropdown menu.
+    await page.getByTestId('volume-actions').getByRole('button').click()
+    await page.getByRole('menuitem', { name: 'Attach', exact: true }).click()
     await expect(page.getByTestId('action-form-submit')).toBeVisible()
     // host select if present
     const hostSelect = page.locator('select').first()
@@ -89,6 +91,9 @@ test.describe('Phase 1 parity smoke', () => {
     await page.locator('#username').fill('admin')
     await page.locator('#password').fill('highland')
     await page.getByRole('button', { name: /sign in/i }).click()
+    // Wait for the authenticated shell before navigating, otherwise the goto can
+    // race the login request and bounce back to /login.
+    await expect(page.getByTestId('app-shell')).toBeVisible()
     await page.goto('/benchmarks')
     await expect(page.getByTestId('benchmarks-page')).toBeVisible()
     await page.getByTestId('run-benchmark').click()

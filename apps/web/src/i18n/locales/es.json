@@ -338,7 +338,11 @@
     "incremental": "Incremental",
     "deleteSnapshot": "Eliminar snapshot",
     "deleteSnapshotConfirm": "¿Eliminar el snapshot \"{{name}}\"? Esto no se puede deshacer.",
-    "actions": "Acciones"
+    "actions": "Acciones",
+    "attachType": "Tipo",
+    "satisfied": "Satisfecho",
+    "attachId": "ID de adjunto",
+    "conditionType": "Condición"
   },
   "nodes": {
     "title": "Nodos y discos",

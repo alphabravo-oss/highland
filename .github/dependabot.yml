@@ -1,0 +1,67 @@
+# Dependabot keeps dependencies patched across every ecosystem in the repo:
+# Go modules (API), npm (web), the two container base images, and the GitHub
+# Actions used by CI. Minor/patch bumps are grouped to keep PR noise down;
+# major bumps come as individual PRs so they can be reviewed deliberately.
+version: 2
+updates:
+  # ---- Go (BFF API) ----
+  - package-ecosystem: gomod
+    directory: /apps/api
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(api)"
+    groups:
+      go-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # ---- npm (web UI) ----
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps(web)"
+    groups:
+      web-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # ---- Container base images ----
+  - package-ecosystem: docker
+    directory: /apps/api
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps(docker-api)"
+  - package-ecosystem: docker
+    directory: /apps/web
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps(docker-web)"
+
+  # ---- GitHub Actions used by CI ----
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps(ci)"
+    groups:
+      actions:
+        update-types:
+          - minor
+          - patch
