@@ -1,0 +1,28 @@
+Highland {{ .Chart.AppVersion }} installed in namespace {{ .Release.Namespace }}.
+
+Components:
+  - API:  {{ include "highland.fullname" . }}-api
+  - Web:  {{ include "highland.fullname" . }}-web
+  - Longhorn manager: {{ include "highland.managerUrl" . }}
+
+Local admin login (no OIDC required):
+  Username: from Secret {{ if .Values.auth.local.existingSecret }}{{ .Values.auth.local.existingSecret }}{{ else }}{{ include "highland.fullname" . }}-admin{{ end }} key "username"
+  Password: same Secret key "password"
+
+{{- if .Values.ingress.enabled }}
+Ingress hosts:
+{{- range .Values.ingress.hosts }}
+  https://{{ .host }}
+{{- end }}
+{{- else }}
+Access (port-forward):
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "highland.fullname" . }}-web 8088:{{ .Values.service.web.port }}
+  open http://127.0.0.1:8088
+{{- end }}
+
+NetworkPolicy: {{ .Values.networkPolicy.enabled }}
+  Highland API may reach Longhorn manager; browsers never talk to longhorn-backend.
+
+Next:
+  - Disable stock Longhorn UI exposure if desired (operator NetworkPolicy / Ingress)
+  - See chart values for auth.local / auth.oidc

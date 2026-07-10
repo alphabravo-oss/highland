@@ -1,0 +1,17 @@
+{{- if .Values.persistence.audit.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "highland.fullname" . }}-audit
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.audit.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.audit.size }}
+  {{- if .Values.persistence.audit.storageClass }}
+  storageClassName: {{ .Values.persistence.audit.storageClass | quote }}
+  {{- end }}
+{{- end }}

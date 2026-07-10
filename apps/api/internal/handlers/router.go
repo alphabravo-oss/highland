@@ -1,0 +1,119 @@
+package handlers
+
+import (
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	chimw "github.com/go-chi/chi/v5/middleware"
+
+	"github.com/highland-io/highland/apps/api/internal/audit"
+	"github.com/highland-io/highland/apps/api/internal/auth"
+	"github.com/highland-io/highland/apps/api/internal/benchmark"
+	"github.com/highland-io/highland/apps/api/internal/config"
+	"github.com/highland-io/highland/apps/api/internal/longhorn"
+	"github.com/highland-io/highland/apps/api/internal/metrics"
+	mw "github.com/highland-io/highland/apps/api/internal/middleware"
+)
+
+// Deps bundles runtime dependencies for the router.
+type Deps struct {
+	Cfg         *config.Config
+	Auth        *auth.Authenticator
+	OIDC        *auth.OIDCProvider // optional static provider (tests / legacy)
+	OIDCRuntime *auth.OIDCRuntime  // runtime-configurable enterprise SSO
+	Proxy       *longhorn.Proxy
+	Stream      *longhorn.StreamProxy
+	Audit       *audit.Store
+	Metrics     *metrics.Scraper
+	Benchmarks  *benchmark.Store
+}
+
+// NewRouter builds the Highland API HTTP router.
+func NewRouter(d Deps) http.Handler {
+	oidcProv := d.OIDC
+	if oidcProv == nil && d.OIDCRuntime != nil {
+		oidcProv = d.OIDCRuntime.Provider()
+	}
+	api := &API{
+		Cfg:         d.Cfg,
+		Auth:        d.Auth,
+		Store:       d.Auth.Store(),
+		Users:       d.Auth.Users(),
+		OIDC:        oidcProv,
+		OIDCRuntime: d.OIDCRuntime,
+		Started:     time.Now(),
+	}
+	hapi := &HighlandAPI{
+		Audit:      d.Audit,
+		Metrics:    d.Metrics,
+		Benchmarks: d.Benchmarks,
+		Users:      d.Auth.Users(),
+		Version:    d.Cfg.Version,
+		ManagerURL: d.Cfg.ManagerURL,
+	}
+
+	r := chi.NewRouter()
+	r.Use(chimw.RequestID)
+	r.Use(chimw.RealIP)
+	r.Use(chimw.Recoverer)
+	r.Use(mw.CORS(d.Cfg.AllowedOrigins))
+
+	r.Get("/healthz", api.Healthz)
+	r.Get("/readyz", api.Readyz)
+
+	r.Route("/auth", func(r chi.Router) {
+		r.Get("/providers", api.Providers)
+		r.Post("/login", api.Login)
+		r.Post("/logout", api.Logout)
+		r.Get("/oidc/start", api.OIDCStart)
+		r.Get("/oidc/callback", api.OIDCCallback)
+		r.Post("/oidc/mock", api.OIDCMockLogin)
+		r.Group(func(r chi.Router) {
+			r.Use(mw.SessionAuth(api.Store, d.Cfg.CookieName))
+			r.Get("/me", api.Me)
+		})
+	})
+
+	r.Group(func(r chi.Router) {
+		r.Use(mw.SessionAuth(api.Store, d.Cfg.CookieName))
+		r.Use(mw.RequireRole(d.Audit))
+
+		// Streaming path for large backing-image upload/download (no full buffer)
+		if d.Stream != nil {
+			r.HandleFunc("/api/v1/lh/backingimages/*", func(w http.ResponseWriter, req *http.Request) {
+				if req.Method == http.MethodPost || req.Method == http.MethodPut ||
+					strings.Contains(req.URL.Path, "upload") || strings.Contains(req.URL.Path, "download") {
+					d.Stream.ServeHTTP(w, req)
+					return
+				}
+				d.Proxy.ServeHTTP(w, req)
+			})
+		}
+
+		r.Handle("/api/v1/lh/*", d.Proxy)
+		r.Handle("/api/v1/lh", d.Proxy)
+
+		r.Get("/api/v1/audit", hapi.ListAudit)
+		r.Get("/api/v1/users", hapi.ListUsers)
+		r.Post("/api/v1/users", hapi.CreateUser)
+		r.Put("/api/v1/users/{username}", hapi.UpdateUser)
+		r.Delete("/api/v1/users/{username}", hapi.DeleteUser)
+		r.Get("/api/v1/auth/oidc-config", api.GetOIDCConfig)
+		r.Put("/api/v1/auth/oidc-config", api.PutOIDCConfig)
+		r.Get("/api/v1/compatibility", hapi.Compatibility)
+		r.Get("/api/v1/health", hapi.HealthNarrative)
+		r.Get("/api/v1/preflight", hapi.Preflight)
+		r.Get("/api/v1/dashboard", hapi.DashboardAggregate)
+		r.Get("/api/v1/capacity", hapi.CapacityPlanning)
+		r.Get("/api/v1/metrics", hapi.AllMetrics)
+		r.Get("/api/v1/volumes/{name}/metrics", hapi.VolumeMetrics)
+		r.Get("/api/v1/benchmarks", hapi.ListBenchmarks)
+		r.Post("/api/v1/benchmarks", hapi.CreateBenchmark)
+		r.Get("/api/v1/benchmarks/{name}", hapi.GetBenchmark)
+		r.Delete("/api/v1/benchmarks/{name}", hapi.DeleteBenchmark)
+	})
+
+	return r
+}

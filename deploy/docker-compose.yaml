@@ -1,0 +1,40 @@
+# Local Docker Compose — same images/layout as Kubernetes (not shell-export oriented).
+# Secrets via env_file / compose secrets; API config via mounted JSON.
+#
+#   docker compose -f deploy/docker-compose.yaml up --build
+#   open http://127.0.0.1:8088  (admin / highland)
+
+services:
+  mock-manager:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile.mock
+    ports:
+      - "9500:9500"
+
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    environment:
+      HIGHLAND_CONFIG_FILE: /etc/highland/config.json
+      HIGHLAND_ADMIN_USER: admin
+      HIGHLAND_ADMIN_PASSWORD: highland
+      HIGHLAND_DEV_ROLES: "true"
+    volumes:
+      - ./config.compose.json:/etc/highland/config.json:ro
+    depends_on:
+      - mock-manager
+    ports:
+      - "8080:8080"
+
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: Dockerfile
+    environment:
+      HIGHLAND_API_UPSTREAM: api:8080
+    ports:
+      - "8088:80"
+    depends_on:
+      - api

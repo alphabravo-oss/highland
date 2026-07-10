@@ -1,0 +1,381 @@
+# Highland ↔ Longhorn UI parity tracker (living)
+# Source of truth for CI: ./hack/check-parity.sh
+# status: not_started | partial | done | na | blocked
+# priority: P0 | P1 | P2 | H
+version: 1
+last_updated: "2026-07-10"
+highland_version: "0.1.x"
+longhorn_target: "1.12.x"
+notes: >
+  Generated from HIGHLAND_PLAN.md §8. Update status when shipping features.
+  P0 not_started fails CI. STRICT_P0=1 also fails on partial.
+
+items:
+  # --- Shell / auth (H + P0) ---
+  - id: shell-appshell
+    area: shell
+    priority: P0
+    stock_ref: components/Layout
+    api: null
+    status: done
+    test_id: e2e/parity.spec.ts
+    notes: Sidebar + top bar AppShell
+
+  - id: shell-theme
+    area: shell
+    priority: P0
+    stock_ref: null
+    api: null
+    status: done
+    test_id: theme.test.ts
+    notes: light/dark/system FOUC-safe
+
+  - id: shell-login
+    area: auth
+    priority: P0
+    stock_ref: null
+    api: "POST /auth/login"
+    status: done
+    test_id: e2e/parity.spec.ts
+    notes: Local cookie session
+
+  - id: shell-support-bundle
+    area: shell
+    priority: P0
+    stock_ref: services/app.js
+    api: "/v1/supportbundles"
+    status: done
+    test_id: null
+    notes: Generate/list/download via BFF proxy links
+
+  - id: shell-upgrade-badge
+    area: shell
+    priority: P0
+    stock_ref: StableLonghornVersions
+    api: null
+    status: done
+    test_id: null
+    notes: Live compat API + LH support list in sidebar badge
+
+  # --- Dashboard ---
+  - id: dashboard-overview
+    area: dashboard
+    priority: P0
+    stock_ref: routes/dashboard
+    api: "GET /v1/dashboard"
+    status: done
+    test_id: null
+    notes: Cards + capacity + health narrative
+
+  - id: dashboard-events
+    area: dashboard
+    priority: P0
+    stock_ref: eventLogs.js
+    api: "GET /v1/events"
+    status: done
+    test_id: null
+    notes: Events table when manager provides collection
+
+  - id: dashboard-live-io
+    area: dashboard
+    priority: H
+    stock_ref: null
+    api: metrics
+    status: done
+    test_id: null
+    notes: Live I/O page + capacity/health on dashboard
+
+  # --- Volumes ---
+  - id: volume-list
+    area: volumes
+    priority: P0
+    stock_ref: VolumeList
+    api: "GET /v1/volumes"
+    status: done
+    test_id: e2e/parity.spec.ts
+    notes: Filter + table
+
+  - id: volume-create
+    area: volumes
+    priority: P0
+    stock_ref: CreateVolume
+    api: "POST /v1/volumes"
+    status: done
+    test_id: e2e/parity.spec.ts
+    notes: Name/size/replicas form
+
+  - id: volume-delete
+    area: volumes
+    priority: P0
+    stock_ref: DELETE links.self
+    api: "DELETE volume"
+    status: done
+    test_id: null
+    notes: Typed name confirm
+
+  - id: volume-detail-info
+    area: volumes
+    priority: P0
+    stock_ref: volume/detail
+    api: "GET /v1/volumes/:name"
+    status: done
+    test_id: e2e/parity.spec.ts
+    notes: Info + conditions + replicas
+
+  - id: volume-snapshots
+    area: volumes
+    priority: P0
+    stock_ref: Snapshot/*
+    api: snapshot* actions
+    status: done
+    test_id: e2e/parity.spec.ts
+    notes: Snapshot table create/list/delete/revert/backup
+
+  - id: volume-attach
+    area: volumes
+    priority: P0
+    stock_ref: AttachHost
+    api: action attach
+    status: done
+    test_id: e2e/parity.spec.ts
+    notes: Host picker from node list
+
+  - id: volume-detach
+    area: volumes
+    priority: P0
+    stock_ref: DetachHost
+    api: action detach
+    status: done
+    test_id: null
+    notes: Action button when present
+
+  - id: volume-salvage
+    area: volumes
+    priority: P0
+    stock_ref: salvage
+    api: action salvage
+    status: done
+    test_id: null
+    notes: Replica multi-select salvage dialog
+
+  - id: volume-expand
+    area: volumes
+    priority: P0
+    stock_ref: expandVolume
+    api: action expand
+    status: done
+    test_id: null
+    notes: Size dialog via ActionFormDialog
+
+  - id: volume-clone
+    area: volumes
+    priority: P0
+    stock_ref: cloneVolume
+    api: action cloneVolume
+    status: done
+    test_id: null
+    notes: Clone name/snapshot form
+
+  - id: volume-pv-pvc
+    area: volumes
+    priority: P0
+    stock_ref: CreatePVAndPVC
+    api: pvCreate/pvcCreate
+    status: done
+    test_id: null
+    notes: PV/PVC create forms
+
+  - id: volume-bulk
+    area: volumes
+    priority: P0
+    stock_ref: VolumeBulkActions
+    api: bulk
+    status: done
+    test_id: null
+    notes: "Bulk detach/snapshot/delete selection on list page"
+
+  - id: volume-events
+    area: volumes
+    priority: P0
+    stock_ref: EventList
+    api: events
+    status: done
+    test_id: e2e/parity.spec.ts
+    notes: Volume detail events panel (graceful if API empty)
+
+  # --- Nodes ---
+  - id: node-list
+    area: nodes
+    priority: P0
+    stock_ref: routes/host
+    api: "GET /v1/nodes"
+    status: done
+    test_id: e2e/parity.spec.ts
+    notes: Disks expand, scheduling toggle
+
+  - id: node-scheduling
+    area: nodes
+    priority: P0
+    stock_ref: toggleScheduling
+    api: "PUT links.self"
+    status: done
+    test_id: null
+    notes: Toggle button
+
+  - id: node-disks
+    area: nodes
+    priority: P0
+    stock_ref: StorageInfo / disks
+    api: node.disks
+    status: done
+    test_id: null
+    notes: Capacity table
+
+  - id: node-tags
+    area: nodes
+    priority: P0
+    stock_ref: tags
+    api: tags
+    status: done
+    test_id: null
+    notes: Edit tags dialog + disk JSON update
+
+  # --- Backups ---
+  - id: backup-volumes-list
+    area: backups
+    priority: P0
+    stock_ref: routes/backup
+    api: "GET /v1/backupvolumes"
+    status: done
+    test_id: null
+    notes: List/delete/list-backups action
+
+  - id: backup-restore
+    area: backups
+    priority: P0
+    stock_ref: restore
+    api: "POST /v1/volumes"
+    status: done
+    test_id: null
+    notes: Restore + DR standby + bulk restore + backupDelete
+
+  - id: backup-targets
+    area: backups
+    priority: P0
+    stock_ref: routes/backupTarget
+    api: "/v1/backuptargets"
+    status: done
+    test_id: null
+    notes: Create/sync/delete
+
+  - id: recurring-jobs
+    area: backups
+    priority: P0
+    stock_ref: routes/recurringJob
+    api: "/v1/recurringjobs"
+    status: done
+    test_id: null
+    notes: CRUD + attach from volume detail (recurringJobAdd)
+
+  # --- Settings ---
+  - id: settings-list-update
+    area: settings
+    priority: P0
+    stock_ref: routes/setting
+    api: "/v1/settings"
+    status: done
+    test_id: null
+    notes: Grouped edit + danger-zone typed confirm
+
+  # --- Support ---
+  - id: support-bundle
+    area: maintenance
+    priority: P0
+    stock_ref: supportbundles
+    api: "/v1/supportbundles"
+    status: done
+    test_id: null
+    notes: Generate/list/download
+
+  # --- Runtime (P1) ---
+  - id: engine-images
+    area: runtime
+    priority: P1
+    stock_ref: routes/engineimage
+    api: "/v1/engineimages"
+    status: done
+    test_id: null
+    notes: List/deploy/delete
+
+  - id: backing-images
+    area: runtime
+    priority: P1
+    stock_ref: routes/backingImage
+    api: "/v1/backingimages"
+    status: done
+    test_id: null
+    notes: Download URL + streamed upload via BFF
+
+  - id: instance-managers
+    area: runtime
+    priority: P2
+    stock_ref: routes/instanceManager
+    api: "/v1/instancemanagers"
+    status: done
+    test_id: null
+    notes: List + node detail IM section
+
+  - id: orphans
+    area: maintenance
+    priority: P1
+    stock_ref: routes/orphanedData
+    api: "/v1/orphans"
+    status: done
+    test_id: null
+    notes: List/delete
+
+  - id: system-backups
+    area: backups
+    priority: P1
+    stock_ref: routes/systemBackups
+    api: "/v1/systembackups"
+    status: done
+    test_id: null
+    notes: Create/list/restore/delete
+
+  # --- Highland native ---
+  - id: h-metrics-sparklines
+    area: performance
+    priority: H
+    stock_ref: null
+    api: metrics
+    status: done
+    test_id: null
+    notes: Scraper + Live I/O sparklines; mock /metrics offline
+
+  - id: h-benchmarks
+    area: performance
+    priority: H
+    stock_ref: null
+    api: Benchmark API
+    status: done
+    test_id: handlers_test
+    notes: Synthetic offline; auto k8s Job when SA can create Jobs
+
+  - id: h-oidc
+    area: auth
+    priority: H
+    stock_ref: null
+    api: "/auth/oidc/*"
+    status: done
+    test_id: handlers_test
+    notes: Real OIDC start/callback + mock; local admin always available
+
+  - id: h-audit
+    area: auth
+    priority: H
+    stock_ref: null
+    api: "/api/v1/audit"
+    status: done
+    test_id: handlers_test
+    notes: In-memory + optional file audit; admin UI

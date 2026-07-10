@@ -1,0 +1,58 @@
+/**
+ * Stock Longhorn VolumeActions.js keys — enable from resource.actions map only.
+ * Labels are English fallbacks; UI should prefer t(`volumeActions.${key}`).
+ * @see HIGHLAND_PLAN.md §8.4
+ */
+export const VOLUME_ACTION_DEFS = [
+  { key: 'attach', label: 'Attach', priority: 'P0', needsHost: true },
+  { key: 'detach', label: 'Detach', priority: 'P0' },
+  { key: 'salvage', label: 'Salvage', priority: 'P0', needsReplicas: true },
+  { key: 'engineUpgrade', label: 'Upgrade engine', priority: 'P1', needsImage: true },
+  { key: 'updateReplicaCount', label: 'Replica count', priority: 'P0', field: 'replicaCount', type: 'number' },
+  { key: 'updateDataLocality', label: 'Data locality', priority: 'P1', field: 'dataLocality', options: ['disabled', 'best-effort', 'strict-local'] },
+  { key: 'updateSnapshotDataIntegrity', label: 'Snapshot integrity', priority: 'P1', field: 'snapshotDataIntegrity', options: ['ignored', 'disabled', 'enabled', 'fast-check'] },
+  { key: 'updateAccessMode', label: 'Access mode', priority: 'P1', field: 'accessMode', options: ['rwo', 'rwx'] },
+  { key: 'updateBackupTargetName', label: 'Backup target', priority: 'P1', field: 'backupTargetName', type: 'text' },
+  { key: 'updateReplicaAutoBalance', label: 'Replica auto-balance', priority: 'P1', field: 'replicaAutoBalance', options: ['ignored', 'disabled', 'least-effort', 'best-effort'] },
+  { key: 'updateSnapshotMaxCount', label: 'Snapshot max count', priority: 'P1', field: 'snapshotMaxCount', type: 'number' },
+  { key: 'updateSnapshotMaxSize', label: 'Snapshot max size', priority: 'P1', field: 'snapshotMaxSize', type: 'text' },
+  { key: 'offlineReplicaRebuilding', label: 'Offline rebuild', priority: 'P1', field: 'offlineReplicaRebuilding', options: ['ignored', 'disabled', 'enabled'] },
+  { key: 'cloneVolume', label: 'Clone', priority: 'P0', needsClone: true },
+  { key: 'expand', label: 'Expand', priority: 'P0', needsSize: true },
+  { key: 'cancelExpansion', label: 'Cancel expansion', priority: 'P0' },
+  { key: 'pvCreate', label: 'Create PV', priority: 'P0', needsPv: true },
+  { key: 'pvcCreate', label: 'Create PVC', priority: 'P0', needsPvc: true },
+  { key: 'activate', label: 'Activate DR', priority: 'P1', field: 'frontend', options: ['blockdev', 'iscsi', 'nvmf', 'ublk'] },
+  { key: 'trimFilesystem', label: 'Trim filesystem', priority: 'P1' },
+  { key: 'snapshotCreate', label: 'Snapshot', priority: 'P0' },
+  { key: 'recurringJobAdd', label: 'Add recurring job', priority: 'P0' },
+  { key: 'recurringJobDelete', label: 'Remove recurring job', priority: 'P0' },
+  { key: 'updateUnmapMarkSnapChainRemoved', label: 'Unmap snap chain', priority: 'P2', field: 'unmapMarkSnapChainRemoved', options: ['ignored', 'disabled', 'enabled'] },
+  { key: 'updateReplicaSoftAntiAffinity', label: 'Replica soft AA', priority: 'P2', field: 'replicaSoftAntiAffinity', options: ['ignored', 'enabled', 'disabled'] },
+  { key: 'updateReplicaZoneSoftAntiAffinity', label: 'Zone soft AA', priority: 'P2', field: 'replicaZoneSoftAntiAffinity', options: ['ignored', 'enabled', 'disabled'] },
+  { key: 'updateReplicaDiskSoftAntiAffinity', label: 'Disk soft AA', priority: 'P2', field: 'replicaDiskSoftAntiAffinity', options: ['ignored', 'enabled', 'disabled'] },
+  { key: 'updateFreezeFilesystemForSnapshot', label: 'Freeze FS for snap', priority: 'P2', field: 'freezeFilesystemForSnapshot', options: ['ignored', 'enabled', 'disabled'] },
+] as const
+
+export type VolumeActionDef = (typeof VOLUME_ACTION_DEFS)[number]
+
+export const BULK_ACTIONS = [
+  { key: 'detach', label: 'Bulk detach', labelKey: 'volumeActions.bulkDetach' },
+  { key: 'snapshotCreate', label: 'Bulk snapshot', labelKey: 'volumeActions.bulkSnapshot' },
+  { key: 'updateReplicaCount', label: 'Bulk replica count', needsValue: true, labelKey: 'volumeActions.bulkReplicaCount' },
+  { key: 'updateDataLocality', label: 'Bulk data locality', needsValue: true, labelKey: 'volumeActions.bulkDataLocality' },
+  { key: 'updateAccessMode', label: 'Bulk access mode', needsValue: true, labelKey: 'volumeActions.bulkAccessMode' },
+  { key: 'engineUpgrade', label: 'Bulk engine upgrade', needsValue: true, labelKey: 'volumeActions.bulkEngineUpgrade' },
+  { key: 'activate', label: 'Bulk activate DR', labelKey: 'volumeActions.bulkActivate' },
+  { key: 'delete', label: 'Bulk delete', destructive: true, labelKey: 'volumeActions.bulkDelete' },
+] as const
+
+/** Translate a volume action key with English fallback. */
+export function volumeActionLabel(
+  t: (key: string, opts?: { defaultValue?: string }) => string,
+  key: string,
+  fallback?: string,
+): string {
+  return t(`volumeActions.${key}`, { defaultValue: fallback ?? key })
+}
+

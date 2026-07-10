@@ -1,0 +1,103 @@
+import { expect, test } from '@playwright/test'
+
+/**
+ * Phase 1 exit smoke (HIGHLAND_PLAN T1.12):
+ * login → create volume → snapshot via manager actions through BFF.
+ */
+test.describe('Phase 1 parity smoke', () => {
+  test('login, create volume, snapshot', async ({ page }) => {
+    const volName = `e2e-vol-${Date.now()}`
+
+    await page.goto('/login')
+    await expect(page.getByTestId('login-page')).toBeVisible()
+
+    await page.locator('#username').fill('admin')
+    await page.locator('#password').fill('highland')
+    await page.getByRole('button', { name: /sign in/i }).click()
+
+    await expect(page.getByTestId('app-shell')).toBeVisible()
+    await expect(page.getByTestId('dashboard-page')).toBeVisible()
+
+    // Theme toggle works without page errors
+    await page.getByTestId('theme-toggle').click()
+    await expect
+      .poll(async () => page.evaluate(() => document.documentElement.dataset.theme ?? ''))
+      .not.toEqual('')
+
+    await page.goto('/volumes')
+    await expect(page.getByTestId('volumes-page')).toBeVisible()
+    // Seeded volume from mock manager
+    await expect(page.getByRole('link', { name: 'pvc-db' })).toBeVisible()
+
+    // Create volume
+    await page.getByTestId('create-volume').click()
+    await page.getByTestId('create-volume-name').fill(volName)
+    await page.getByTestId('create-volume-size').fill('1Gi')
+    await page.getByTestId('create-volume-submit').click()
+
+    await expect(page.getByRole('link', { name: volName })).toBeVisible({ timeout: 15_000 })
+
+    // Detail + snapshot table UI
+    await page.getByRole('link', { name: volName }).click()
+    await expect(page.getByTestId('volume-detail-page')).toBeVisible()
+    await expect(page.getByRole('heading', { name: volName })).toBeVisible()
+    await expect(page.getByTestId('snapshots-panel')).toBeVisible()
+
+    await page.getByTestId('snapshot-create').click()
+    await page.getByTestId('snapshot-name').fill('e2e-snap')
+    await page.getByTestId('snapshot-create-confirm').click()
+    await expect(page.getByText('e2e-snap')).toBeVisible({ timeout: 10_000 })
+
+    // Attach via action form (manager actions map)
+    await page.getByRole('button', { name: 'Attach', exact: true }).click()
+    await expect(page.getByTestId('action-form-submit')).toBeVisible()
+    // host select if present
+    const hostSelect = page.locator('select').first()
+    if (await hostSelect.count()) {
+      await hostSelect.selectOption({ index: 0 })
+    }
+    await page.getByTestId('action-form-submit').click()
+
+    // Events panel present
+    await expect(page.getByTestId('volume-events')).toBeVisible()
+
+    // Nodes page still loads via proxy
+    await page.goto('/nodes')
+    await expect(page.getByTestId('nodes-page')).toBeVisible()
+    await expect(page.getByText('node-1')).toBeVisible()
+  })
+
+  test('unauthenticated volumes API is rejected by BFF', async ({ request }) => {
+    const res = await request.get('/api/v1/lh/volumes')
+    expect(res.status()).toBe(401)
+  })
+
+  test('viewer cannot mutate volumes; admin can run benchmark', async ({ page }) => {
+    await page.goto('/login')
+    await page.locator('#username').fill('viewer')
+    await page.locator('#password').fill('viewer')
+    await page.getByRole('button', { name: /sign in/i }).click()
+    await expect(page.getByTestId('app-shell')).toBeVisible()
+    await page.goto('/volumes')
+    await expect(page.getByTestId('volumes-page')).toBeVisible()
+    await expect(page.getByTestId('create-volume')).toHaveCount(0)
+
+    await page.evaluate(async () => {
+      await fetch('/auth/logout', { method: 'POST', credentials: 'include' })
+    })
+    await page.goto('/login')
+    await page.locator('#username').fill('admin')
+    await page.locator('#password').fill('highland')
+    await page.getByRole('button', { name: /sign in/i }).click()
+    await page.goto('/benchmarks')
+    await expect(page.getByTestId('benchmarks-page')).toBeVisible()
+    await page.getByTestId('run-benchmark').click()
+    await expect(page.getByText(/bench-|Succeeded|Running|Pending/i).first()).toBeVisible({
+      timeout: 15_000,
+    })
+    await page.goto('/admin/audit')
+    await expect(page.getByTestId('audit-page')).toBeVisible()
+    await page.goto('/preflight')
+    await expect(page.getByTestId('preflight-page')).toBeVisible()
+  })
+})

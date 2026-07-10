@@ -1,0 +1,64 @@
+package middleware
+
+import (
+	"context"
+	"net/http"
+
+	"github.com/highland-io/highland/apps/api/internal/auth"
+)
+
+type ctxKey int
+
+const userCtxKey ctxKey = 1
+
+// SessionAuth enforces a valid session cookie and injects the user into context.
+func SessionAuth(store *auth.Store, cookieName string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			c, err := r.Cookie(cookieName)
+			if err != nil || c.Value == "" {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+			sess, ok := store.Get(c.Value)
+			if !ok {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+			ctx := context.WithValue(r.Context(), userCtxKey, sess.User)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// UserFromContext returns the authenticated user if present.
+func UserFromContext(ctx context.Context) (auth.User, bool) {
+	u, ok := ctx.Value(userCtxKey).(auth.User)
+	return u, ok
+}
+
+// CORS adds permissive CORS headers for local Vite development.
+func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
+	allow := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		allow[o] = struct{}{}
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			if origin != "" {
+				if _, ok := allow[origin]; ok || len(allow) == 0 {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Set("Access-Control-Allow-Credentials", "true")
+					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+					w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+				}
+			}
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}

@@ -1,0 +1,150 @@
+# Highland Helm values — install like Longhorn (no shell exports required)
+#   helm upgrade --install highland ./chart -n highland-system --create-namespace \
+#     --set auth.local.password='change-me'
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Namespace is usually the release namespace (highland-system)
+namespaceOverride: ""
+
+replicaCount:
+  api: 2
+  web: 2
+
+image:
+  api:
+    repository: ghcr.io/example/highland-api
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  web:
+    repository: ghcr.io/example/highland-web
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  pullSecrets: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  api:
+    type: ClusterIP
+    port: 8080
+  web:
+    type: ClusterIP
+    port: 80
+
+# Non-secret API settings → ConfigMap (mounted + env)
+config:
+  authMode: local # local | oidc | local+oidc
+  localAlways: true
+  cookieName: highland_session
+  cookieSecure: true
+  sessionTTL: 24h
+  metricsInterval: 10s
+  oidcMock: false
+  version: "0.1.0"
+  # Comma-separated; empty = same-origin via nginx only
+  allowedOrigins: ""
+
+auth:
+  local:
+    # Create Secret from chart values (recommended first install)
+    createSecret: true
+    # Or use an existing Secret (keys: username, password)
+    existingSecret: ""
+    username: admin
+    # REQUIRED on install when createSecret=true (set via --set or -f secrets.yaml)
+    password: ""
+  oidc:
+    # Non-secret bits also land in ConfigMap; client secret from Secret
+    issuerURL: ""
+    clientID: ""
+    redirectURL: ""
+    createSecret: false
+    existingSecret: ""
+    # key in secret: clientSecret
+    clientSecret: ""
+
+longhorn:
+  # Bolt-on: talk to existing Longhorn manager Service (DNS)
+  enabled: false # if true, chart may declare dependency later
+  namespace: longhorn-system
+  managerService: longhorn-backend
+  managerPort: 9500
+
+benchmark:
+  # Used when API can reach the Kubernetes API (in-cluster ServiceAccount)
+  fioImage: ghcr.io/aksakalli/fio:latest
+
+# Optional Redis for multi-replica session HA
+redis:
+  enabled: false
+  # When enabled without external, chart does not ship Redis — point at your service:
+  addr: "" # e.g. highland-redis:6379
+  passwordSecret: ""
+  passwordKey: password
+  db: 0
+
+# Optional PVC for audit log file
+persistence:
+  audit:
+    enabled: false
+    size: 1Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+
+networkPolicy:
+  enabled: true
+  # Egress from highland-api to Longhorn manager + DNS + kube-api
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: highland.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  # - secretName: highland-tls
+  #   hosts: [highland.example.com]
+
+resources:
+  api:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+  web:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  api:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    readOnlyRootFilesystem: true
+  web:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Disable stock Longhorn UI exposure is an operator concern (document in NOTES)

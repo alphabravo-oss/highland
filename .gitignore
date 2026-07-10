@@ -1,0 +1,29 @@
+# Dependencies & build
+node_modules/
+dist/
+*.tsbuildinfo
+apps/web/dist/
+
+# Go
+apps/api/bin/
+*.exe
+*.test
+coverage.out
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+hack/.bin/
+playwright-report/
+test-results/
+storybook-static/
+apps/web/storybook-static/
+*storybook.log

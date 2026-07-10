@@ -1,0 +1,160 @@
+{{- $adminSecret := .Values.auth.local.existingSecret -}}
+{{- if and .Values.auth.local.createSecret (eq $adminSecret "") }}
+{{- $adminSecret = printf "%s-admin" (include "highland.fullname" .) -}}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "highland.fullname" . }}-api
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.replicaCount.api }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "highland.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "highland.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: api
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "highland.serviceAccountName" . }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: highland-api
+          image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
+          imagePullPolicy: {{ .Values.image.api.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext.api | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: HIGHLAND_CONFIG_FILE
+              value: /etc/highland/config.json
+            # Credentials from Kubernetes Secret only (never chart ConfigMap)
+            - name: HIGHLAND_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $adminSecret | required "auth.local.existingSecret or createSecret with password" }}
+                  key: username
+            - name: HIGHLAND_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $adminSecret }}
+                  key: password
+            {{- if or .Values.auth.oidc.existingSecret .Values.auth.oidc.createSecret }}
+            - name: HIGHLAND_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.oidc.existingSecret | default (printf "%s-oidc" (include "highland.fullname" .)) }}
+                  key: clientSecret
+                  optional: true
+            {{- end }}
+            {{- if .Values.persistence.audit.enabled }}
+            - name: HIGHLAND_AUDIT_FILE
+              value: /var/log/highland/audit.jsonl
+            {{- end }}
+            {{- if and .Values.redis.enabled .Values.redis.addr }}
+            - name: HIGHLAND_REDIS_ADDR
+              value: {{ .Values.redis.addr | quote }}
+            - name: HIGHLAND_REDIS_DB
+              value: {{ .Values.redis.db | quote }}
+            {{- if .Values.redis.passwordSecret }}
+            - name: HIGHLAND_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.redis.passwordSecret }}
+                  key: {{ .Values.redis.passwordKey }}
+            {{- end }}
+            {{- end }}
+            - name: HIGHLAND_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: HIGHLAND_FIO_IMAGE
+              value: {{ .Values.benchmark.fioImage | default "ghcr.io/aksakalli/fio:latest" | quote }}
+            # Disable dev convenience accounts in-cluster
+            - name: HIGHLAND_DEV_ROLES
+              value: "false"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/highland
+              readOnly: true
+            {{- if .Values.persistence.audit.enabled }}
+            - name: audit
+              mountPath: /var/log/highland
+            {{- else }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources.api | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "highland.fullname" . }}-config
+        {{- if .Values.persistence.audit.enabled }}
+        - name: audit
+          persistentVolumeClaim:
+            claimName: {{ include "highland.fullname" . }}-audit
+        {{- else }}
+        - name: tmp
+          emptyDir: {}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "highland.fullname" . }}-api
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  type: {{ .Values.service.api.type }}
+  ports:
+    - port: {{ .Values.service.api.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "highland.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: api

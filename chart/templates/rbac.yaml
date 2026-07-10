@@ -1,0 +1,29 @@
+# Allow highland-api to create fio Jobs for benchmarks (in-cluster)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "highland.fullname" . }}-benchmark
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-benchmark
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "highland.fullname" . }}-benchmark
