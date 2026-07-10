@@ -1,6 +1,8 @@
 import { Activity, HardDrive, Server, TriangleAlert } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import {
   useCapacity,
+  useClusterMetrics,
   useDashboard,
   useEvents,
   useHealthNarrative,
@@ -8,6 +10,7 @@ import {
   useVolumes,
 } from '@/api/hooks'
 import { formatBytes } from '@/api/longhorn'
+import { AreaSparkline, Donut, LegendRow, UsageBar } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Badge, stateTone } from '@/components/ui/badge'
@@ -15,19 +18,33 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
+const ROBUSTNESS_COLORS = {
+  healthy: '#16a34a',
+  degraded: '#d97706',
+  faulted: '#dc2626',
+} as const
+
 function StatCard({
   title,
   value,
   hint,
   icon: Icon,
+  to,
 }: {
   title: string
   value: string | number
   hint?: string
   icon: typeof Server
+  to?: string
 }) {
-  return (
-    <Card>
+  const inner = (
+    <Card
+      className={
+        to
+          ? 'h-full transition-colors hover:border-[var(--color-primary)] hover:bg-[var(--color-accent,rgba(120,120,120,0.06))]'
+          : 'h-full'
+      }
+    >
       <CardHeader className="flex-row items-center justify-between space-y-0 border-0 pb-0 pt-4">
         <CardTitle className="text-[var(--color-muted-foreground)]">{title}</CardTitle>
         <Icon size={18} strokeWidth={1.75} className="text-[var(--color-primary)]" />
@@ -38,6 +55,30 @@ function StatCard({
       </CardContent>
     </Card>
   )
+  return to ? (
+    <Link to={to} className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] rounded-lg">
+      {inner}
+    </Link>
+  ) : (
+    inner
+  )
+}
+
+/** Sum matching throughput series point-wise into one cluster-wide series. */
+function aggregateSeries(
+  series: Array<{ name: string; points: Array<{ v: number }> }>,
+  match: string,
+): number[] {
+  const relevant = series.filter((s) => s.name.includes(match))
+  const len = Math.max(0, ...relevant.map((s) => s.points.length))
+  const out = new Array(len).fill(0)
+  for (const s of relevant) {
+    const offset = len - s.points.length
+    s.points.forEach((p, i) => {
+      out[offset + i] += p.v
+    })
+  }
+  return out
 }
 
 export function DashboardPage() {
@@ -48,6 +89,7 @@ export function DashboardPage() {
   const events = useEvents()
   const health = useHealthNarrative()
   const capacity = useCapacity()
+  const metrics = useClusterMetrics()
 
   const volList = volumes.data ?? []
   const nodeList = nodes.data ?? []
@@ -63,6 +105,10 @@ export function DashboardPage() {
     typeof d?.storage === 'object' && d.storage && 'total' in d.storage
       ? Number((d.storage as { total?: number }).total)
       : undefined
+
+  const metricSeries = metrics.data?.series ?? []
+  const writeAgg = aggregateSeries(metricSeries, 'write_throughput')
+  const readAgg = aggregateSeries(metricSeries, 'read_throughput')
 
   const loading = volumes.isLoading || nodes.isLoading
   const error =
@@ -91,18 +137,21 @@ export function DashboardPage() {
             value={volList.length}
             hint={t('dashboard.volumeHint', { healthy, degraded, faulted })}
             icon={HardDrive}
+            to="/volumes"
           />
           <StatCard
             title={t('dashboard.attached')}
             value={attached}
             hint={t('dashboard.attachedHint', { count: volList.length - attached })}
             icon={Activity}
+            to="/volumes"
           />
           <StatCard
             title={t('dashboard.nodes')}
             value={nodeList.length}
             hint={t('dashboard.nodesHint', { count: schedulable })}
             icon={Server}
+            to="/nodes"
           />
           <StatCard
             title={t('dashboard.storage')}
@@ -122,7 +171,89 @@ export function DashboardPage() {
                 : t('dashboard.storageHintDefault')
             }
             icon={TriangleAlert}
+            to="/nodes"
           />
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('dashboard.robustness')}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-center gap-4">
+              <Donut
+                slices={[
+                  { label: t('dashboard.healthy'), value: healthy, color: ROBUSTNESS_COLORS.healthy },
+                  { label: t('dashboard.degraded'), value: degraded, color: ROBUSTNESS_COLORS.degraded },
+                  { label: t('dashboard.faulted'), value: faulted, color: ROBUSTNESS_COLORS.faulted },
+                ]}
+              />
+              <div className="flex-1 space-y-1.5">
+                <LegendRow color={ROBUSTNESS_COLORS.healthy} label={t('dashboard.healthy')} value={healthy} />
+                <LegendRow color={ROBUSTNESS_COLORS.degraded} label={t('dashboard.degraded')} value={degraded} />
+                <LegendRow color={ROBUSTNESS_COLORS.faulted} label={t('dashboard.faulted')} value={faulted} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('dashboard.capacity')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {capacity.data && capacity.data.totalBytes > 0 ? (
+                <>
+                  <UsageBar used={capacity.data.usedBytes} total={capacity.data.totalBytes} />
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[var(--color-muted-foreground)]">
+                      {t('dashboard.capacityUsed', {
+                        used: formatBytes(capacity.data.usedBytes),
+                        total: formatBytes(capacity.data.totalBytes),
+                      })}
+                    </span>
+                    <span className="tabular-nums font-medium">
+                      {Math.round((capacity.data.usedBytes / capacity.data.totalBytes) * 100)}%
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-[var(--color-muted-foreground)]">{t('dashboard.capacityUnavailable')}</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <CardTitle>{t('dashboard.clusterIo')}</CardTitle>
+              <Link to="/performance" className="text-xs text-[var(--color-primary)] hover:underline">
+                {t('dashboard.liveIo')}
+              </Link>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div>
+                <div className="mb-1 flex items-center justify-between text-xs text-[var(--color-muted-foreground)]">
+                  <span>{t('dashboard.writeThroughput')}</span>
+                  <span className="tabular-nums">{formatBytes(writeAgg.at(-1) ?? 0)}/s</span>
+                </div>
+                <AreaSparkline
+                  points={writeAgg}
+                  emptyLabel={t('dashboard.noIo')}
+                  format={(v) => `${formatBytes(v)}/s`}
+                />
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between text-xs text-[var(--color-muted-foreground)]">
+                  <span>{t('dashboard.readThroughput')}</span>
+                  <span className="tabular-nums">{formatBytes(readAgg.at(-1) ?? 0)}/s</span>
+                </div>
+                <AreaSparkline
+                  points={readAgg}
+                  emptyLabel={t('dashboard.noIo')}
+                  format={(v) => `${formatBytes(v)}/s`}
+                />
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {(health.data?.items ?? []).length > 0 ? (

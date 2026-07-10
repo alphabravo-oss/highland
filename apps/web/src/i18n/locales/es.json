@@ -278,7 +278,20 @@
     "available": "Disponible",
     "maximum": "Máximo",
     "scheduled": "Programado",
-    "tagsPlaceholder": "etiquetas separadas por comas"
+    "tagsPlaceholder": "etiquetas separadas por comas",
+    "path": "Ruta",
+    "diskName": "Nombre del disco",
+    "diskType": "Tipo de disco",
+    "diskTypeFilesystem": "Sistema de archivos",
+    "diskTypeBlock": "Bloque",
+    "reservedStorageGi": "Almacenamiento reservado (GiB)",
+    "requestEviction": "Solicitar desalojo",
+    "addDisk": "Agregar disco",
+    "removeDisk": "Eliminar disco",
+    "newDisk": "Disco nuevo",
+    "noDisks": "No hay discos configurados",
+    "markedForRemoval": "Marcado para eliminación",
+    "pathPlaceholder": "Ruta montada por el disco, p. ej. /mnt/disk1"
   },
   "backups": {
     "title": "Copias de seguridad",
@@ -506,7 +519,19 @@
     "noVolumesYet": "Aún no hay volúmenes.",
     "recentEvents": "Eventos recientes",
     "noEvents": "Sin eventos",
-    "noEventsDescription": "Flujo de eventos vacío o no disponible en esta versión del manager."
+    "noEventsDescription": "Flujo de eventos vacío o no disponible en esta versión del manager.",
+    "robustness": "Robustez de volúmenes",
+    "healthy": "Saludable",
+    "degraded": "Degradado",
+    "faulted": "Con fallos",
+    "capacity": "Capacidad",
+    "capacityUsed": "{{used}} de {{total}}",
+    "capacityUnavailable": "Métricas de capacidad no disponibles — requiere un scrape de métricas activo.",
+    "clusterIo": "E/S del clúster",
+    "liveIo": "E/S en vivo →",
+    "writeThroughput": "Rendimiento de escritura",
+    "readThroughput": "Rendimiento de lectura",
+    "noIo": "Sin E/S en vivo aún"
   },
   "theme": {
     "label": "Tema",

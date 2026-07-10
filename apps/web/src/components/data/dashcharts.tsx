@@ -1,0 +1,123 @@
+// Theme-aware dashboard charts built on Recharts (tooltips, responsive, a11y).
+import {
+  Area,
+  AreaChart,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+
+const tooltipStyle = {
+  background: 'var(--color-card)',
+  border: '1px solid var(--color-border)',
+  borderRadius: 8,
+  color: 'var(--color-foreground)',
+  fontSize: 12,
+} as const
+
+export type DonutSlice = { label: string; value: number; color: string }
+
+/** Donut chart with a centered total; interactive tooltips per slice. */
+export function Donut({ slices, size = 140 }: { slices: DonutSlice[]; size?: number }) {
+  const total = slices.reduce((s, x) => s + x.value, 0)
+  const data = slices.filter((s) => s.value > 0)
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={data.length ? data : [{ label: 'none', value: 1, color: 'var(--color-border)' }]}
+            dataKey="value"
+            nameKey="label"
+            innerRadius="66%"
+            outerRadius="100%"
+            paddingAngle={data.length > 1 ? 2 : 0}
+            strokeWidth={0}
+            isAnimationActive={false}
+          >
+            {(data.length ? data : [{ color: 'var(--color-border)' }]).map((s, i) => (
+              <Cell key={i} fill={s.color} />
+            ))}
+          </Pie>
+          {data.length > 0 && <Tooltip contentStyle={tooltipStyle} />}
+        </PieChart>
+      </ResponsiveContainer>
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <span className="text-xl font-semibold tabular-nums text-[var(--color-foreground)]">{total}</span>
+      </div>
+    </div>
+  )
+}
+
+/** Horizontal used/total capacity bar (a single-value progress bar). */
+export function UsageBar({ used, total }: { used: number; total: number }) {
+  const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0
+  const tone = pct >= 90 ? '#dc2626' : pct >= 75 ? '#d97706' : 'var(--color-primary)'
+  return (
+    <div className="h-3 w-full overflow-hidden rounded-full bg-[var(--color-muted,rgba(120,120,120,0.18))]">
+      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: tone }} />
+    </div>
+  )
+}
+
+/** Filled area sparkline for a numeric series, with a hover tooltip. */
+export function AreaSparkline({
+  points,
+  emptyLabel,
+  height = 64,
+  format,
+}: {
+  points: number[]
+  emptyLabel: string
+  height?: number
+  format?: (v: number) => string
+}) {
+  if (points.length < 2) {
+    return <div className="flex items-center text-xs text-[var(--color-muted-foreground)]" style={{ height }}>{emptyLabel}</div>
+  }
+  const data = points.map((v, i) => ({ i, v }))
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+        <defs>
+          <linearGradient id="dashArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.35} />
+            <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <XAxis dataKey="i" hide />
+        <YAxis hide domain={[0, 'dataMax']} />
+        <Tooltip
+          contentStyle={tooltipStyle}
+          labelFormatter={() => ''}
+          formatter={(value) => [format ? format(Number(value)) : String(value), '']}
+        />
+        <Area
+          type="monotone"
+          dataKey="v"
+          stroke="var(--color-primary)"
+          strokeWidth={1.75}
+          fill="url(#dashArea)"
+          isAnimationActive={false}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  )
+}
+
+/** Small colored legend dot + label + value row. */
+export function LegendRow({ color, label, value }: { color: string; label: string; value: string | number }) {
+  return (
+    <div className="flex items-center justify-between gap-2 text-sm">
+      <span className="flex items-center gap-2">
+        <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: color }} />
+        {label}
+      </span>
+      <span className="tabular-nums text-[var(--color-muted-foreground)]">{value}</span>
+    </div>
+  )
+}

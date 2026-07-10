@@ -278,7 +278,20 @@
     "available": "Available",
     "maximum": "Maximum",
     "scheduled": "Scheduled",
-    "tagsPlaceholder": "comma-separated tags"
+    "tagsPlaceholder": "comma-separated tags",
+    "path": "Path",
+    "diskName": "Disk name",
+    "diskType": "Disk type",
+    "diskTypeFilesystem": "File system",
+    "diskTypeBlock": "Block",
+    "reservedStorageGi": "Reserved storage (GiB)",
+    "requestEviction": "Request eviction",
+    "addDisk": "Add disk",
+    "removeDisk": "Remove disk",
+    "newDisk": "New disk",
+    "noDisks": "No disks configured",
+    "markedForRemoval": "Marked for removal",
+    "pathPlaceholder": "Path mounted by the disk, e.g. /mnt/disk1"
   },
   "backups": {
     "title": "Backups",
@@ -506,7 +519,19 @@
     "noVolumesYet": "No volumes yet.",
     "recentEvents": "Recent events",
     "noEvents": "No events",
-    "noEventsDescription": "Event stream empty or unavailable on this manager version."
+    "noEventsDescription": "Event stream empty or unavailable on this manager version.",
+    "robustness": "Volume robustness",
+    "healthy": "Healthy",
+    "degraded": "Degraded",
+    "faulted": "Faulted",
+    "capacity": "Capacity",
+    "capacityUsed": "{{used}} of {{total}}",
+    "capacityUnavailable": "Capacity metrics unavailable — needs a running metrics scrape.",
+    "clusterIo": "Cluster I/O",
+    "liveIo": "Live I/O →",
+    "writeThroughput": "Write throughput",
+    "readThroughput": "Read throughput",
+    "noIo": "No live I/O yet"
   },
   "theme": {
     "label": "Theme",
