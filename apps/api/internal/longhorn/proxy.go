@@ -78,6 +78,10 @@ func (p *Proxy) director(req *http.Request) {
 	// If the client's Accept-Encoding leaks through, the manager may return gzip,
 	// json.Unmarshal fails, and RewriteLinks silently returns links unrewritten.
 	req.Header.Del("Accept-Encoding")
+	// Force JSON. The Longhorn manager (Rancher API framework) content-negotiates
+	// on Accept: a browser sends "text/html,..." and would get the HTML API-browser
+	// page instead of JSON, which the SPA then parses to an empty collection.
+	req.Header.Set("Accept", "application/json")
 }
 
 func (p *Proxy) modifyResponse(resp *http.Response) error {

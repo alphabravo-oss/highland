@@ -77,7 +77,7 @@ longhorn:
 
 benchmark:
   # Used when API can reach the Kubernetes API (in-cluster ServiceAccount)
-  fioImage: ghcr.io/aksakalli/fio:latest
+  fioImage: xridge/fio:latest
   # Longhorn StorageClass the benchmark provisions its PVC from
   storageClass: longhorn
   # Size of the PVC created for each benchmark run

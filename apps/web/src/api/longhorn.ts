@@ -55,12 +55,7 @@ export type Volume = LHResource & {
     endpoint?: string
     lastRestoredBackup?: string
   }>
-  conditions?: Array<{
-    type?: string
-    status?: string
-    message?: string
-    reason?: string
-  }>
+  conditions?: Condition[] | Record<string, Condition>
   standby?: boolean
   restoreRequired?: boolean
   shareEndpoint?: string
@@ -76,7 +71,7 @@ export type Node = LHResource & {
   address?: string
   allowScheduling?: boolean
   evictionRequested?: boolean
-  conditions?: Array<{ type?: string; status?: string; message?: string }>
+  conditions?: Condition[] | Record<string, Condition>
   disks?: Record<
     string,
     {
@@ -88,7 +83,7 @@ export type Node = LHResource & {
       storageReserved?: number
       diskType?: string
       tags?: string[]
-      conditions?: Array<{ type?: string; status?: string; message?: string }>
+      conditions?: Condition[] | Record<string, Condition>
     }
   >
   tags?: string[]
@@ -442,4 +437,19 @@ export function parseSizeToBytes(input: string): string {
     tb: 1000 ** 4,
   }
   return String(Math.round(num * (mult[unit] ?? 1)))
+}
+
+/** A Longhorn condition (volume/node/disk). */
+export type Condition = { type?: string; status?: string; message?: string; reason?: string }
+
+/**
+ * Longhorn returns `conditions` as a type-keyed map (real manager) or, in some
+ * fixtures/older shapes, an array. Normalize to an array so callers can filter.
+ */
+export function toConditionArray(
+  c?: Condition[] | Record<string, Condition> | null,
+): Condition[] {
+  if (!c) return []
+  if (Array.isArray(c)) return c
+  return Object.entries(c).map(([type, v]) => ({ type, ...(v ?? {}) }))
 }

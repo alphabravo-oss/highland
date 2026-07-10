@@ -8,7 +8,7 @@ import {
   useVolumes,
 } from '@/api/hooks'
 import { useAuth } from '@/auth/AuthContext'
-import { formatBytes, hasAction, type Node } from '@/api/longhorn'
+import { formatBytes, hasAction, toConditionArray, type Node } from '@/api/longhorn'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Alert } from '@/components/ui/alert'
@@ -110,7 +110,7 @@ export function NodesPage() {
         <div className="space-y-3">
           {rows.map((node) => {
             const disks = Object.entries(node.disks ?? {})
-            const ready = node.conditions?.find((c) => c.type === 'Ready')
+            const ready = toConditionArray(node.conditions).find((c) => c.type === 'Ready')
             const isOpen = expanded === node.name
             const nodeReplicas = (vols.data ?? []).flatMap((v) =>
               (v.replicas ?? [])

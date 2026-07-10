@@ -15,6 +15,7 @@ import {
   execAction,
   formatBytes,
   hasAction,
+  toConditionArray,
   type LHResource,
   type Volume,
   volumeAttachmentsApi,
@@ -295,14 +296,14 @@ export function VolumeDetailPage() {
                 <CardTitle>{t('volumeDetail.conditions')}</CardTitle>
               </CardHeader>
               <CardContent>
-                {(vol.conditions ?? []).map((c, i) => (
+                {toConditionArray(vol.conditions).map((c, i) => (
                   <div key={i} className="mb-2 rounded border border-[var(--color-border)] p-2 text-sm" title={c.message}>
                     <span className="font-medium">{c.type}</span>{' '}
                     <Badge tone={stateTone(c.status)}>{c.status}</Badge>
                     {c.message ? <p className="mt-1 text-[var(--color-muted-foreground)]">{c.message}</p> : null}
                   </div>
                 ))}
-                {!(vol.conditions ?? []).length ? (
+                {!toConditionArray(vol.conditions).length ? (
                   <p className="text-sm text-[var(--color-muted-foreground)]">{t('volumeDetail.noConditions')}</p>
                 ) : null}
               </CardContent>

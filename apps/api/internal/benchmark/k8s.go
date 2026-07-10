@@ -56,7 +56,8 @@ func NewK8sRunnerFromEnv() *K8sRunner {
 	}
 	img := os.Getenv("HIGHLAND_FIO_IMAGE")
 	if img == "" {
-		img = "ghcr.io/aksakalli/fio:latest"
+		// Public image with sh + fio (the Job runs `sh -c <fioCmd>`).
+		img = "xridge/fio:latest"
 	}
 	sc := os.Getenv("HIGHLAND_FIO_STORAGECLASS")
 	if sc == "" {
