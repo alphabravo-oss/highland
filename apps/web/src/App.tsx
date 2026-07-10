@@ -10,6 +10,7 @@ import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { VolumesPage } from '@/features/volumes/VolumesPage'
 import { VolumeDetailPage } from '@/features/volumes/VolumeDetailPage'
 import { NodesPage } from '@/features/nodes/NodesPage'
+import { NodeDetailPage } from '@/features/nodes/NodeDetailPage'
 import { BackupsPage } from '@/features/backups/BackupsPage'
 import { BackupTargetsPage } from '@/features/backup-targets/BackupTargetsPage'
 import { RecurringJobsPage } from '@/features/recurring-jobs/RecurringJobsPage'
@@ -50,6 +51,7 @@ export default function App() {
                     <Route path="volumes" element={<VolumesPage />} />
                     <Route path="volumes/:name" element={<VolumeDetailPage />} />
                     <Route path="nodes" element={<NodesPage />} />
+                    <Route path="nodes/:name" element={<NodeDetailPage />} />
                     <Route path="backups" element={<BackupsPage />} />
                     <Route path="backup-targets" element={<BackupTargetsPage />} />
                     <Route path="recurring-jobs" element={<RecurringJobsPage />} />

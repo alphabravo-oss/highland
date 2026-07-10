@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import {
   useInstanceManagers,
   useNodeAction,
@@ -239,7 +240,11 @@ export function NodesPage() {
               <Card key={node.id ?? node.name}>
                 <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
                   <div>
-                    <CardTitle className="text-base">{node.name}</CardTitle>
+                    <CardTitle className="text-base">
+                      <Link to={`/nodes/${encodeURIComponent(node.name)}`} className="hover:text-[var(--color-primary)] hover:underline">
+                        {node.name}
+                      </Link>
+                    </CardTitle>
                     <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
                       {node.address ?? '—'}
                       {node.region ? ` · ${node.region}` : ''}

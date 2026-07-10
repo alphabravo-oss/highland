@@ -68,6 +68,15 @@ export function useVolume(name: string | undefined) {
   })
 }
 
+export function useNode(name: string | undefined) {
+  return useQuery({
+    queryKey: ['nodes', name],
+    queryFn: () => nodesApi.get(name!),
+    enabled: Boolean(name),
+    refetchInterval: 5_000,
+  })
+}
+
 export function useNodes() {
   return useQuery({
     queryKey: ['nodes'],
