@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/highland-io/highland/apps/api/internal/audit"
@@ -77,8 +78,16 @@ func RequireRole(auditStore *audit.Store) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Audit mutating requests
-			if auditStore != nil && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			// Audit mutating requests based on the actual downstream outcome.
+			mutating := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
+			if auditStore != nil && mutating {
+				sw := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+				next.ServeHTTP(sw, r)
+
+				result := "ok"
+				if sw.status >= 400 {
+					result = "error"
+				}
 				auditStore.Append(audit.Event{
 					Username: user.Username,
 					Role:     string(user.Role),
@@ -86,12 +95,44 @@ func RequireRole(auditStore *audit.Store) func(http.Handler) http.Handler {
 					Method:   r.Method,
 					Path:     path,
 					Target:   path,
-					Result:   "ok",
+					Result:   result,
 					SourceIP: r.RemoteAddr,
+					Message:  "status " + strconv.Itoa(sw.status),
 				})
+				return
 			}
 
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+// statusRecorder wraps http.ResponseWriter to capture the response status code.
+// It defaults to 200 if WriteHeader is never called, and passes Flush through
+// to the underlying writer so streaming/SSE-style responses keep working.
+type statusRecorder struct {
+	http.ResponseWriter
+	status      int
+	wroteHeader bool
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	if !s.wroteHeader {
+		s.status = code
+		s.wroteHeader = true
+	}
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusRecorder) Write(b []byte) (int, error) {
+	if !s.wroteHeader {
+		s.wroteHeader = true
+	}
+	return s.ResponseWriter.Write(b)
+}
+
+func (s *statusRecorder) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
 	}
 }

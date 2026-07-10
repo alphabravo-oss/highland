@@ -99,7 +99,8 @@ jobs:
       - name: Lint & template
         run: |
           helm lint ./chart
-          helm template highland ./chart --namespace highland-system >/dev/null
+          helm template highland ./chart --namespace highland-system \
+            --set auth.local.createSecret=true --set auth.local.password=ci-test >/dev/null
 
   parity:
     name: Parity matrix gate

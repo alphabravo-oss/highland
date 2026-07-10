@@ -6,6 +6,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/redis/go-redis/v9 v9.21.0
+	golang.org/x/crypto v0.24.0
 	golang.org/x/oauth2 v0.36.0
 	k8s.io/api v0.31.0
 	k8s.io/apimachinery v0.31.0

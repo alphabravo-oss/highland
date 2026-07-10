@@ -3,10 +3,31 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
+
+	"golang.org/x/crypto/bcrypt"
 )
+
+// ensureHash returns a bcrypt hash for pw. Values that are already bcrypt
+// hashes (prefix "$2") are passed through unchanged so operators may supply
+// pre-hashed credentials via env/file. Plaintext is hashed at default cost.
+// Plaintext is never retained.
+func ensureHash(pw string) (string, error) {
+	if pw == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(pw, "$2") {
+		return pw, nil
+	}
+	h, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(h), nil
+}
 
 // LocalUser is a local account (password never returned in public APIs).
 type LocalUser struct {
@@ -46,6 +67,12 @@ func NewUserStoreFromEnv(bootstrapUser, bootstrapPass string) *UserStore {
 						u.Role = RoleViewer
 					}
 					u.Role = ParseRole(string(u.Role))
+					hash, err := ensureHash(u.Password)
+					if err != nil {
+						slog.Warn("skipping user with unhashable password", "user", u.Username, "err", err)
+						continue
+					}
+					u.Password = hash
 					s.users[u.Username] = u
 				}
 			}
@@ -58,23 +85,39 @@ func NewUserStoreFromEnv(bootstrapUser, bootstrapPass string) *UserStore {
 				if u.Username == "" || u.Password == "" {
 					continue
 				}
+				// Default to the least-privileged role; only explicit "admin" grants admin.
 				if u.Role == "" {
-					u.Role = RoleAdmin
+					u.Role = RoleViewer
 				}
 				u.Role = ParseRole(string(u.Role))
+				hash, err := ensureHash(u.Password)
+				if err != nil {
+					slog.Warn("skipping user with unhashable password", "user", u.Username, "err", err)
+					continue
+				}
+				u.Password = hash
 				s.users[u.Username] = u
 			}
 		}
 	}
 	if len(s.users) == 0 && bootstrapUser != "" {
-		s.users[bootstrapUser] = LocalUser{
-			Username: bootstrapUser,
-			Password: bootstrapPass,
-			Role:     RoleAdmin,
+		if hash, err := ensureHash(bootstrapPass); err == nil {
+			s.users[bootstrapUser] = LocalUser{
+				Username: bootstrapUser,
+				Password: hash,
+				Role:     RoleAdmin,
+			}
+		} else {
+			slog.Error("failed to hash bootstrap admin password", "err", err)
 		}
+		// Dev roles are OFF by default; only enabled when explicitly requested.
 		if os.Getenv("HIGHLAND_DEV_ROLES") == "1" || os.Getenv("HIGHLAND_DEV_ROLES") == "true" {
-			s.users["operator"] = LocalUser{Username: "operator", Password: "operator", Role: RoleOperator}
-			s.users["viewer"] = LocalUser{Username: "viewer", Password: "viewer", Role: RoleViewer}
+			if hash, err := ensureHash("operator"); err == nil {
+				s.users["operator"] = LocalUser{Username: "operator", Password: hash, Role: RoleOperator}
+			}
+			if hash, err := ensureHash("viewer"); err == nil {
+				s.users["viewer"] = LocalUser{Username: "viewer", Password: hash, Role: RoleViewer}
+			}
 		}
 		_ = s.persist()
 	}
@@ -103,7 +146,12 @@ func (s *UserStore) Authenticate(username, password string) (*User, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	u, ok := s.users[username]
-	if !ok || u.Password != password {
+	if !ok {
+		// Compare against a dummy hash to reduce username-enumeration timing signal.
+		_ = bcrypt.CompareHashAndPassword([]byte("$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidin"), []byte(password))
+		return nil, false
+	}
+	if bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)) != nil {
 		return nil, false
 	}
 	return &User{Username: u.Username, Role: u.Role}, true
@@ -139,7 +187,11 @@ func (s *UserStore) Create(username, password string, role Role) error {
 	if _, exists := s.users[username]; exists {
 		return fmt.Errorf("user already exists")
 	}
-	s.users[username] = LocalUser{Username: username, Password: password, Role: role}
+	hash, err := ensureHash(password)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	s.users[username] = LocalUser{Username: username, Password: hash, Role: role}
 	return s.persistLocked()
 }
 
@@ -155,7 +207,11 @@ func (s *UserStore) Update(username, password string, role Role) error {
 		u.Role = ParseRole(string(role))
 	}
 	if password != "" {
-		u.Password = password
+		hash, err := ensureHash(password)
+		if err != nil {
+			return fmt.Errorf("hash password: %w", err)
+		}
+		u.Password = hash
 	}
 	s.users[username] = u
 	return s.persistLocked()

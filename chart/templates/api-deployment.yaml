@@ -87,6 +87,10 @@ spec:
                   fieldPath: metadata.namespace
             - name: HIGHLAND_FIO_IMAGE
               value: {{ .Values.benchmark.fioImage | default "ghcr.io/aksakalli/fio:latest" | quote }}
+            - name: HIGHLAND_FIO_STORAGECLASS
+              value: {{ .Values.benchmark.storageClass | default "longhorn" | quote }}
+            - name: HIGHLAND_FIO_SIZE
+              value: {{ .Values.benchmark.size | default "10Gi" | quote }}
             # Disable dev convenience accounts in-cluster
             - name: HIGHLAND_DEV_ROLES
               value: "false"

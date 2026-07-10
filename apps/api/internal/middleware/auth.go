@@ -47,7 +47,11 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
 			if origin != "" {
-				if _, ok := allow[origin]; ok || len(allow) == 0 {
+				// Only reflect an Origin that is explicitly allow-listed. When the
+				// allowlist is empty we emit no Access-Control-Allow-Origin at all:
+				// the app is same-origin by design, and reflecting an arbitrary
+				// Origin alongside credentials=true would be a credentialed wildcard.
+				if _, ok := allow[origin]; ok {
 					w.Header().Set("Access-Control-Allow-Origin", origin)
 					w.Header().Set("Access-Control-Allow-Credentials", "true")
 					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")

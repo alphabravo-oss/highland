@@ -12,6 +12,10 @@ rules:
   - apiGroups: [""]
     resources: ["pods", "pods/log"]
     verbs: ["get", "list"]
+  # Provision/teardown the Longhorn-backed PVC the fio Job benchmarks
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["create", "get", "list", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

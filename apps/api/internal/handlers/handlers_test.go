@@ -86,12 +86,29 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestReadyz(t *testing.T) {
-	h := newTestServer(t, "http://manager.example:9500")
+	// Reachable manager -> ready (200). Use a stub server standing in for the manager.
+	mgr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mgr.Close()
+
+	h := newTestServer(t, mgr.URL)
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d", rr.Code)
+		t.Fatalf("reachable manager: status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestReadyzManagerUnreachable(t *testing.T) {
+	// Unreachable manager -> not ready (503). Real reachability probe must fail closed.
+	h := newTestServer(t, "http://127.0.0.1:1/") // nothing listens on port 1
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unreachable manager: status = %d, want 503", rr.Code)
 	}
 }
 

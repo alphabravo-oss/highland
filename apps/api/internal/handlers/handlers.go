@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/highland-io/highland/apps/api/internal/auth"
@@ -48,11 +50,39 @@ func (a *API) Readyz(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Fast, bounded reachability probe to the Longhorn manager. A configured
+	// URL is not enough — the manager must actually answer.
+	if err := a.managerReachable(r.Context()); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"status":     "not_ready",
+			"reason":     "manager unreachable: " + err.Error(),
+			"managerUrl": a.Cfg.ManagerURL,
+		})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":     "ready",
 		"managerUrl": a.Cfg.ManagerURL,
 		"uptime":     time.Since(a.Started).String(),
 	})
+}
+
+// managerReachable performs a short GET against the manager /v1 API to confirm
+// the Longhorn manager is answering.
+func (a *API) managerReachable(parent context.Context) error {
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
+	defer cancel()
+	target := strings.TrimSuffix(a.Cfg.ManagerURL, "/") + "/v1"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	_ = resp.Body.Close()
+	return nil
 }
 
 type loginRequest struct {

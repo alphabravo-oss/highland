@@ -74,6 +74,10 @@ func (p *Proxy) director(req *http.Request) {
 	// Strip hop-by-hop / client identity; manager is cluster-internal.
 	req.Header.Del("Cookie")
 	req.Header.Del("Authorization")
+	// Force identity encoding so modifyResponse gets plain JSON it can rewrite.
+	// If the client's Accept-Encoding leaks through, the manager may return gzip,
+	// json.Unmarshal fails, and RewriteLinks silently returns links unrewritten.
+	req.Header.Del("Accept-Encoding")
 }
 
 func (p *Proxy) modifyResponse(resp *http.Response) error {

@@ -65,3 +65,25 @@ func (r *RedisBackend) Get(id string) (*Session, bool) {
 func (r *RedisBackend) Delete(id string) {
 	_ = r.rdb.Del(context.Background(), r.key(id)).Err()
 }
+
+// redisStateStore persists OIDC CSRF state in Redis so the auth-code flow works
+// across API replicas. It reuses the session Redis client.
+type redisStateStore struct {
+	rdb    *redis.Client
+	prefix string
+}
+
+func newRedisStateStore(rdb *redis.Client) *redisStateStore {
+	return &redisStateStore{rdb: rdb, prefix: "highland:oidcstate:"}
+}
+
+func (r *redisStateStore) put(state string, ttl time.Duration) {
+	_ = r.rdb.Set(context.Background(), r.prefix+state, "1", ttl).Err()
+}
+
+// consume atomically deletes the state key, returning true only if it existed
+// (and had not yet expired). Expired keys are removed by Redis TTL.
+func (r *redisStateStore) consume(state string) bool {
+	n, err := r.rdb.Del(context.Background(), r.prefix+state).Result()
+	return err == nil && n > 0
+}

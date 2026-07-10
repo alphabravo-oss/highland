@@ -27,15 +27,62 @@ type OIDCConfig struct {
 	DefaultRole Role
 }
 
+// oidcStateStore persists short-lived OIDC CSRF state. Redis-backed when Redis
+// is configured (multi-replica), in-memory otherwise (single replica).
+type oidcStateStore interface {
+	put(state string, ttl time.Duration)
+	consume(state string) bool
+}
+
+// memoryStateStore keeps CSRF state in-process (single-replica / offline).
+type memoryStateStore struct {
+	mu     sync.Mutex
+	states map[string]time.Time
+}
+
+func newMemoryStateStore() *memoryStateStore {
+	return &memoryStateStore{states: map[string]time.Time{}}
+}
+
+func (m *memoryStateStore) put(state string, ttl time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.states[state] = time.Now().Add(ttl)
+	// prune expired entries
+	for k, exp := range m.states {
+		if time.Now().After(exp) {
+			delete(m.states, k)
+		}
+	}
+}
+
+func (m *memoryStateStore) consume(state string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	exp, ok := m.states[state]
+	delete(m.states, state)
+	return ok && !time.Now().After(exp)
+}
+
+// newOIDCStateStore selects Redis when the session backend is Redis-backed,
+// reusing that client; otherwise falls back to in-memory state.
+func newOIDCStateStore(auth *Authenticator) oidcStateStore {
+	if auth != nil && auth.store != nil {
+		if rb, ok := auth.store.backend.(*RedisBackend); ok {
+			return newRedisStateStore(rb.rdb)
+		}
+	}
+	return newMemoryStateStore()
+}
+
 // OIDCProvider handles authorize + callback.
 type OIDCProvider struct {
 	cfg      OIDCConfig
 	provider *oidc.Provider
 	oauth    oauth2.Config
 	verifier *oidc.IDTokenVerifier
-	// state → expiry (CSRF)
-	mu     sync.Mutex
-	states map[string]time.Time
+	// state stores short-lived CSRF state (Redis or memory).
+	state oidcStateStore
 	// sessions issued via authenticator
 	auth *Authenticator
 }
@@ -67,7 +114,7 @@ func NewOIDCProvider(ctx context.Context, cfg OIDCConfig, auth *Authenticator) (
 		provider: p,
 		oauth:    oauth,
 		verifier: p.Verifier(&oidc.Config{ClientID: cfg.ClientID}),
-		states:   map[string]time.Time{},
+		state:    newOIDCStateStore(auth),
 		auth:     auth,
 	}, nil
 }
@@ -78,25 +125,13 @@ func (o *OIDCProvider) AuthCodeURL() (url, state string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	o.mu.Lock()
-	o.states[state] = time.Now().Add(10 * time.Minute)
-	// prune
-	for k, exp := range o.states {
-		if time.Now().After(exp) {
-			delete(o.states, k)
-		}
-	}
-	o.mu.Unlock()
+	o.state.put(state, 10*time.Minute)
 	return o.oauth.AuthCodeURL(state), state, nil
 }
 
 // HandleCallback exchanges code, verifies ID token, issues Highland session.
 func (o *OIDCProvider) HandleCallback(ctx context.Context, state, code string) (sessionID string, user *User, err error) {
-	o.mu.Lock()
-	exp, ok := o.states[state]
-	delete(o.states, state)
-	o.mu.Unlock()
-	if !ok || time.Now().After(exp) {
+	if !o.state.consume(state) {
 		return "", nil, fmt.Errorf("invalid or expired state")
 	}
 	tok, err := o.oauth.Exchange(ctx, code)

@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -20,10 +22,17 @@ const (
 
 // Benchmark is a Highland benchmark record.
 type Benchmark struct {
-	Name      string             `json:"name"`
-	Type      string             `json:"type"`
-	NodeName  string             `json:"nodeName,omitempty"`
-	Profile   string             `json:"profile"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	NodeName string `json:"nodeName,omitempty"`
+	Profile  string `json:"profile"`
+	// StorageClass targets a Longhorn StorageClass for a freshly-provisioned PVC
+	// (defaults to the runner's HIGHLAND_FIO_STORAGECLASS, commonly "longhorn").
+	StorageClass string `json:"storageClass,omitempty"`
+	// Size is the requested PVC size (defaults to HIGHLAND_FIO_SIZE, e.g. 10Gi).
+	Size string `json:"size,omitempty"`
+	// PVCName references an existing PVC to benchmark instead of creating one.
+	PVCName   string             `json:"pvcName,omitempty"`
 	Phase     Phase              `json:"phase"`
 	Message   string             `json:"message,omitempty"`
 	CreatedAt time.Time          `json:"createdAt"`
@@ -107,9 +116,17 @@ func (s *Store) Create(b Benchmark) (*Benchmark, error) {
 
 func (s *Store) Delete(name string) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	_, ok := s.items[name]
 	delete(s.items, name)
+	s.mu.Unlock()
+	if ok && s.runner != nil && s.runner.Available() {
+		// Tear down any cluster resources (Job + PVC we created) for this run.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+			defer cancel()
+			s.runner.Cleanup(ctx, name)
+		}()
+	}
 	return ok
 }
 
@@ -122,15 +139,22 @@ func (s *Store) run(name string) {
 	}
 	b.Phase = PhaseRunning
 	mode := b.Mode
-	node := b.NodeName
+	req := Benchmark{
+		Name:         b.Name,
+		NodeName:     b.NodeName,
+		Profile:      b.Profile,
+		StorageClass: b.StorageClass,
+		Size:         b.Size,
+		PVCName:      b.PVCName,
+		FioCmd:       b.FioCmd,
+	}
 	profile := b.Profile
-	fio := b.FioCmd
 	s.mu.Unlock()
 
 	if mode == "kubernetes-job" && s.runner != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 		defer cancel()
-		res, msg, err := s.runner.RunJob(ctx, &Benchmark{Name: name, NodeName: node, Profile: profile, FioCmd: fio})
+		res, msg, err := s.runner.RunJob(ctx, &req)
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		bb, ok := s.items[name]
@@ -169,7 +193,7 @@ func (s *Store) run(name string) {
 	now := time.Now().UTC()
 	bb.Completed = &now
 	bb.Phase = PhaseSucceeded
-	bb.Message = "synthetic results (cluster Job path activates automatically when kube API is reachable)"
+	bb.Message = "SYNTHETIC (fabricated) results — offline fallback, NOT measured; cluster Job path activates automatically when kube API is reachable"
 	mult := 1.0
 	if profile == "standard" {
 		mult = 1.2
@@ -187,15 +211,33 @@ func (s *Store) run(name string) {
 	}
 }
 
+// fioCmdFor builds an fio command that runs four sequential (stonewalled) jobs —
+// seqread, seqwrite, randread, randwrite — against a file on the mounted Longhorn
+// volume (mountPath) and emits a JSON report to stdout for parsing. Runtime scales
+// with the profile; four jobs stay comfortably under the Job wait deadline.
 func fioCmdFor(profile string) string {
+	runtime := 10
+	size := "512M"
 	switch profile {
 	case "standard":
-		return "fio --name=highland --rw=readwrite --bs=4k --iodepth=32 --runtime=60 --time_based"
+		runtime = 20
+		size = "1G"
 	case "thorough":
-		return "fio --name=highland --rw=readwrite --bs=4k --iodepth=64 --runtime=300 --time_based"
-	default:
-		return "fio --name=highland --rw=readwrite --bs=1M --iodepth=16 --runtime=30 --time_based"
+		runtime = 45
+		size = "2G"
 	}
+	global := fmt.Sprintf(
+		"fio --output-format=json --directory=%s --filename=highland.fio --size=%s "+
+			"--ioengine=libaio --direct=1 --time_based --runtime=%d --group_reporting",
+		mountPath, size, runtime,
+	)
+	jobs := strings.Join([]string{
+		"--name=seqread --rw=read --bs=1M --iodepth=16",
+		"--name=seqwrite --stonewall --rw=write --bs=1M --iodepth=16",
+		"--name=randread --stonewall --rw=randread --bs=4k --iodepth=32",
+		"--name=randwrite --stonewall --rw=randwrite --bs=4k --iodepth=32",
+	}, " ")
+	return global + " " + jobs
 }
 
 func randomHex(n int) (string, error) {

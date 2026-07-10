@@ -28,11 +28,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Dev roles only when explicitly unset outside k8s; chart sets HIGHLAND_DEV_ROLES=false
-	if os.Getenv("HIGHLAND_DEV_ROLES") == "" && os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
-		_ = os.Setenv("HIGHLAND_DEV_ROLES", "1")
-	}
-
+	// Dev roles are OFF by default and only seeded when HIGHLAND_DEV_ROLES is
+	// explicitly true/1 (see auth.NewUserStoreFromEnv). We do NOT auto-enable
+	// them based on running outside Kubernetes.
 	users := auth.NewUserStoreFromEnv(cfg.BootstrapUsername, cfg.BootstrapPassword)
 
 	var backend auth.SessionBackend = auth.NewMemoryBackend()
