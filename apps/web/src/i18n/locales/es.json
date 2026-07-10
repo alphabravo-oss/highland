@@ -276,7 +276,10 @@
     "writeThroughput": "Rendimiento de escritura",
     "readIops": "IOPS de lectura",
     "writeIops": "IOPS de escritura",
-    "noIo": "Sin E/S en vivo aún"
+    "noIo": "Sin E/S en vivo aún",
+    "attachedJobs": "Trabajos recurrentes adjuntos",
+    "noAttachedJobs": "Sin trabajos recurrentes adjuntos",
+    "removeReplicaConfirm": "¿Eliminar la réplica {{name}}? Longhorn la reconstruirá."
   },
   "nodes": {
     "title": "Nodos y discos",
@@ -630,7 +633,9 @@
     "bulkActivate": "Activar DR en bloque",
     "bulkDelete": "Eliminar en bloque",
     "actionFailed": "Error en la acción",
-    "bulkFailed": "Error en la operación masiva"
+    "bulkFailed": "Error en la operación masiva",
+    "snapshotPurge": "Purgar snapshots",
+    "removeReplica": "Eliminar réplica"
   },
   "nodeDetail": {
     "address": "Dirección",

@@ -276,7 +276,10 @@
     "writeThroughput": "Write throughput",
     "readIops": "Read IOPS",
     "writeIops": "Write IOPS",
-    "noIo": "No live I/O yet"
+    "noIo": "No live I/O yet",
+    "attachedJobs": "Attached recurring jobs",
+    "noAttachedJobs": "No recurring jobs attached",
+    "removeReplicaConfirm": "Remove replica {{name}}? Longhorn will rebuild it."
   },
   "nodes": {
     "title": "Nodes & Disks",
@@ -630,7 +633,9 @@
     "bulkActivate": "Bulk activate DR",
     "bulkDelete": "Bulk delete",
     "actionFailed": "Action failed",
-    "bulkFailed": "Bulk failed"
+    "bulkFailed": "Bulk failed",
+    "snapshotPurge": "Purge snapshots",
+    "removeReplica": "Remove replica"
   },
   "nodeDetail": {
     "address": "Address",

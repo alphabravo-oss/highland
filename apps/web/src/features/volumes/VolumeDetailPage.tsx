@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Camera, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Camera, RefreshCw, Trash2 } from 'lucide-react'
 import {
   useEngineImages,
   useNodes,
@@ -20,6 +20,7 @@ import {
   type Volume,
   volumeAttachmentsApi,
 } from '@/api/longhorn'
+import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { MetricLine } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
@@ -95,6 +96,7 @@ export function VolumeDetailPage() {
   const [jobName, setJobName] = useState('')
   const [events, setEvents] = useState<LHResource[]>([])
   const [attachments, setAttachments] = useState<LHResource[]>([])
+  const [removeReplica, setRemoveReplica] = useState<string | null>(null)
 
   const vol = q.data
   const hosts = (nodesQ.data ?? []).map((n) => n.name)
@@ -410,6 +412,7 @@ export function VolumeDetailPage() {
                       <TH>{t('volumeDetail.disk')}</TH>
                       <TH>{t('volumeDetail.mode')}</TH>
                       <TH>{t('volumeDetail.running')}</TH>
+                      {canMutate && hasAction(vol, 'replicaRemove') ? <TH className="text-right" /> : null}
                     </TR>
                   </THead>
                   <TBody>
@@ -430,6 +433,19 @@ export function VolumeDetailPage() {
                         <TD>
                           <Badge tone={r.running ? 'success' : 'danger'}>{r.running ? t('common.yes') : t('common.no')}</Badge>
                         </TD>
+                        {canMutate && hasAction(vol, 'replicaRemove') ? (
+                          <TD className="text-right">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              aria-label={t('volumeActions.removeReplica')}
+                              onClick={() => setRemoveReplica(r.name ?? null)}
+                            >
+                              <Trash2 size={14} aria-hidden />
+                            </Button>
+                          </TD>
+                        ) : null}
                       </TR>
                     ))}
                   </TBody>
@@ -594,6 +610,19 @@ export function VolumeDetailPage() {
           ))}
         </Select>
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(removeReplica)}
+        onOpenChange={(v) => !v && setRemoveReplica(null)}
+        title={t('volumeActions.removeReplica')}
+        description={removeReplica ? t('volumeDetail.removeReplicaConfirm', { name: removeReplica }) : ''}
+        confirmLabel={t('volumeActions.removeReplica')}
+        destructive
+        onConfirm={async () => {
+          if (vol && removeReplica) await runAction(vol, 'replicaRemove', { name: removeReplica })
+          setRemoveReplica(null)
+        }}
+      />
     </div>
   )
 }

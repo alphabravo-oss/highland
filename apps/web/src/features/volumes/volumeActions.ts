@@ -24,6 +24,7 @@ export const VOLUME_ACTION_DEFS = [
   { key: 'pvcCreate', label: 'Create PVC', priority: 'P0', needsPvc: true },
   { key: 'activate', label: 'Activate DR', priority: 'P1', field: 'frontend', options: ['blockdev', 'iscsi', 'nvmf', 'ublk'] },
   { key: 'trimFilesystem', label: 'Trim filesystem', priority: 'P1' },
+  { key: 'snapshotPurge', label: 'Purge snapshots', priority: 'P1' },
   { key: 'snapshotCreate', label: 'Snapshot', priority: 'P0' },
   { key: 'recurringJobAdd', label: 'Add recurring job', priority: 'P0' },
   { key: 'recurringJobDelete', label: 'Remove recurring job', priority: 'P0' },
