@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Camera, RefreshCw, Trash2 } from 'lucide-react'
 import {
+  useBackupTargets,
   useEngineImages,
   useNodes,
   useRecurringJobs,
@@ -21,7 +22,7 @@ import {
   volumeAttachmentsApi,
 } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
-import { MetricLine } from '@/components/data/dashcharts'
+import { MetricLine, UsageBar } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { SnapshotTree } from '@/components/data/SnapshotTree'
@@ -84,6 +85,7 @@ export function VolumeDetailPage() {
   const nodesQ = useNodes()
   const imagesQ = useEngineImages()
   const jobsQ = useRecurringJobs()
+  const backupTargetsQ = useBackupTargets()
   const actionMut = useVolumeAction()
 
   const [error, setError] = useState<string | null>(null)
@@ -99,8 +101,14 @@ export function VolumeDetailPage() {
   const [events, setEvents] = useState<LHResource[]>([])
   const [attachments, setAttachments] = useState<LHResource[]>([])
   const [removeReplica, setRemoveReplica] = useState<string | null>(null)
+  const [backupSnap, setBackupSnap] = useState<string | null>(null)
+  const [backupTargetName, setBackupTargetName] = useState('')
+  const [backupMode, setBackupMode] = useState<'full' | 'incremental'>('incremental')
 
   const vol = q.data
+  const backupTargetNames = (backupTargetsQ.data ?? [])
+    .map((bt) => bt.name)
+    .filter(Boolean) as string[]
   const hosts = (nodesQ.data ?? []).map((n) => n.name)
   const images = (imagesQ.data ?? []).map((i) => i.image ?? i.name).filter(Boolean) as string[]
 
@@ -179,6 +187,20 @@ export function VolumeDetailPage() {
 
   const availableActions = VOLUME_ACTION_DEFS.filter((d) => vol && hasAction(vol, d.key))
 
+  // Restore progress: average per-replica progress while a restore/DR sync is in flight.
+  const restoreStatus =
+    (vol as { restoreStatus?: Array<{ replica?: string; isRestoring?: boolean; progress?: number; state?: string; error?: string }> } | undefined)
+      ?.restoreStatus ?? []
+  const restoreError = restoreStatus.find((r) => r.error)?.error
+  const restoreActive =
+    restoreStatus.some((r) => r.isRestoring) ||
+    ((vol?.standby || (vol as { restoreRequired?: boolean } | undefined)?.restoreRequired) &&
+      restoreStatus.some((r) => typeof r.progress === 'number'))
+  const restorePercent = restoreStatus.length
+    ? Math.floor(restoreStatus.reduce((sum, r) => sum + (r.progress ?? 0), 0) / restoreStatus.length)
+    : 0
+  const showRestoreProgress = Boolean(restoreActive) && restoreStatus.length > 0
+
   const readSeries = metrics.data?.series?.find((s) => s.name.includes('read_throughput'))
   const writeSeries = metrics.data?.series?.find((s) => s.name.includes('write_throughput'))
   const readIops = metrics.data?.series?.find((s) => s.name.includes('read_iops'))
@@ -256,6 +278,25 @@ export function VolumeDetailPage() {
                   </Button>
                 ))}
             </div>
+
+            {showRestoreProgress ? (
+              <Card data-testid="restore-progress">
+                <CardHeader>
+                  <CardTitle>{t('volumeDetail.restoreProgress')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <UsageBar used={restorePercent} total={100} />
+                    </div>
+                    <span className="w-12 text-right text-sm font-medium tabular-nums">{restorePercent}%</span>
+                  </div>
+                  {restoreError ? (
+                    <p className="mt-2 text-xs text-red-600 dark:text-red-400">{restoreError}</p>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ) : null}
 
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
@@ -393,7 +434,22 @@ export function VolumeDetailPage() {
                           </Button>
                         ) : null}
                         {hasAction(vol, 'snapshotBackup') && !isSystemSnap ? (
-                          <Button type="button" size="sm" variant="outline" disabled={!canMutate} onClick={() => void runAction(vol, 'snapshotBackup', { name: s.name, backupTargetName: '', labels: {} })}>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!canMutate}
+                            onClick={() => {
+                              if (backupTargetNames.length === 0) {
+                                // No configured targets: keep the legacy empty-target behavior.
+                                void runAction(vol, 'snapshotBackup', { name: s.name, backupTargetName: '', labels: {} })
+                                return
+                              }
+                              setBackupTargetName(backupTargetNames[0] ?? '')
+                              setBackupMode('incremental')
+                              setBackupSnap(s.name)
+                            }}
+                          >
                             {t('volumeDetail.backup')}
                           </Button>
                         ) : null}
@@ -623,6 +679,65 @@ export function VolumeDetailPage() {
             </option>
           ))}
         </Select>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(backupSnap)}
+        onOpenChange={(v) => !v && setBackupSnap(null)}
+        title={t('volumeDetail.backup')}
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setBackupSnap(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              data-testid="snapshot-backup-confirm"
+              disabled={!vol || !backupSnap}
+              onClick={() => {
+                if (!vol || !backupSnap) return
+                void runAction(vol, 'snapshotBackup', {
+                  name: backupSnap,
+                  backupTargetName,
+                  backupMode,
+                  labels: {},
+                }).then(() => setBackupSnap(null))
+              }}
+            >
+              {t('volumeDetail.backup')}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <label className="block space-y-1 text-sm">
+            <span className="text-[var(--color-muted-foreground)]">{t('volumeDetail.backupTarget')}</span>
+            <Select
+              value={backupTargetName}
+              onChange={(e) => setBackupTargetName(e.target.value)}
+              aria-label={t('volumeDetail.backupTarget')}
+              data-testid="backup-target-select"
+            >
+              {backupTargetNames.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="block space-y-1 text-sm">
+            <span className="text-[var(--color-muted-foreground)]">{t('volumeDetail.backupMode')}</span>
+            <Select
+              value={backupMode}
+              onChange={(e) => setBackupMode(e.target.value as 'full' | 'incremental')}
+              aria-label={t('volumeDetail.backupMode')}
+              data-testid="backup-mode-select"
+            >
+              <option value="incremental">{t('volumeDetail.incremental')}</option>
+              <option value="full">{t('volumeDetail.full')}</option>
+            </Select>
+          </label>
+        </div>
       </Dialog>
 
       <ConfirmDialog

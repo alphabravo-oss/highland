@@ -13,7 +13,8 @@ import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
+import { Badge, stateTone } from '@/components/ui/badge'
+import { UsageBar } from '@/components/data/dashcharts'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 export function BackupsPage() {
@@ -348,6 +349,7 @@ export function BackupsPage() {
                 <TH>{t('common.name')}</TH>
                 <TH>{t('common.created')}</TH>
                 <TH>{t('common.size')}</TH>
+                <TH>{t('backups.stateProgress')}</TH>
                 <TH>{t('common.labels')}</TH>
                 <TH />
               </TR>
@@ -358,6 +360,25 @@ export function BackupsPage() {
                   <TD>{String(b.name ?? b.id ?? '—')}</TD>
                   <TD className="text-xs">{String(b.created ?? b.snapshotCreated ?? '—')}</TD>
                   <TD className="tabular-nums">{formatBytes(b.size as string | number | undefined)}</TD>
+                  <TD>
+                    {String((b as Record<string, unknown>).state ?? '') === 'InProgress' ? (
+                      (() => {
+                        const progress = Number((b as Record<string, unknown>).progress ?? 0)
+                        return (
+                          <div className="flex items-center gap-2">
+                            <div className="w-20">
+                              <UsageBar used={progress} total={100} />
+                            </div>
+                            <span className="tabular-nums text-xs">{progress}%</span>
+                          </div>
+                        )
+                      })()
+                    ) : (
+                      <Badge tone={stateTone(String((b as Record<string, unknown>).state ?? ''))}>
+                        {String((b as Record<string, unknown>).state ?? '—')}
+                      </Badge>
+                    )}
+                  </TD>
                   <TD className="max-w-xs truncate text-xs">
                     {b.labels ? JSON.stringify(b.labels) : '—'}
                   </TD>

@@ -100,6 +100,8 @@ export function DashboardPage() {
   const faulted = volList.filter((v) => (v.robustness ?? '').toLowerCase() === 'faulted').length
   const attached = volList.filter((v) => (v.state ?? '').toLowerCase() === 'attached').length
   const schedulable = nodeList.filter((n) => n.allowScheduling).length
+  const v2Count = volList.filter((v) => (v.dataEngine ?? 'v1') === 'v2').length
+  const v1Count = volList.length - v2Count
 
   // Per-node storage (used/total) aggregated from each node's disks.
   const perNodeStorage = nodeList
@@ -257,6 +259,11 @@ export function DashboardPage() {
                 <LegendRow color={ROBUSTNESS_COLORS.healthy} label={t('dashboard.healthy')} value={healthy} />
                 <LegendRow color={ROBUSTNESS_COLORS.degraded} label={t('dashboard.degraded')} value={degraded} />
                 <LegendRow color={ROBUSTNESS_COLORS.faulted} label={t('dashboard.faulted')} value={faulted} />
+                <div className="mt-2 border-t border-[var(--color-border)] pt-2 text-xs text-[var(--color-muted-foreground)]">
+                  {t('dashboard.dataEngine')}:{' '}
+                  <span className="tabular-nums text-[var(--color-foreground)]">v1 {v1Count}</span> ·{' '}
+                  <span className="tabular-nums text-[var(--color-foreground)]">v2 {v2Count}</span>
+                </div>
               </div>
             </CardContent>
           </Card>

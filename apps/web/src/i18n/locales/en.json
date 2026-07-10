@@ -318,7 +318,12 @@
     "noIo": "No live I/O yet",
     "attachedJobs": "Attached recurring jobs",
     "noAttachedJobs": "No recurring jobs attached",
-    "removeReplicaConfirm": "Remove replica {{name}}? Longhorn will rebuild it."
+    "removeReplicaConfirm": "Remove replica {{name}}? Longhorn will rebuild it.",
+    "restoreProgress": "Restore progress",
+    "backupTarget": "Backup target",
+    "backupMode": "Backup mode",
+    "full": "Full",
+    "incremental": "Incremental"
   },
   "nodes": {
     "title": "Nodes & Disks",
@@ -384,6 +389,7 @@
     "emptyVolumes": "No backup volumes",
     "lastBackup": "Last backup",
     "lastBackupAt": "Last backup at",
+    "stateProgress": "State / Progress",
     "target": "Target",
     "drStandby": "DR standby",
     "backupsFor": "Backups for {{name}}",
@@ -652,7 +658,8 @@
     "readThroughput": "Read throughput",
     "noIo": "No live I/O yet",
     "perNodeStorage": "Per node",
-    "clusterTotal": "Cluster total"
+    "clusterTotal": "Cluster total",
+    "dataEngine": "Data engine"
   },
   "theme": {
     "label": "Theme",

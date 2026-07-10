@@ -318,7 +318,12 @@
     "noIo": "Sin E/S en vivo aún",
     "attachedJobs": "Trabajos recurrentes adjuntos",
     "noAttachedJobs": "Sin trabajos recurrentes adjuntos",
-    "removeReplicaConfirm": "¿Eliminar la réplica {{name}}? Longhorn la reconstruirá."
+    "removeReplicaConfirm": "¿Eliminar la réplica {{name}}? Longhorn la reconstruirá.",
+    "restoreProgress": "Progreso de restauración",
+    "backupTarget": "Destino de copia de seguridad",
+    "backupMode": "Modo de copia de seguridad",
+    "full": "Completa",
+    "incremental": "Incremental"
   },
   "nodes": {
     "title": "Nodos y discos",
@@ -384,6 +389,7 @@
     "emptyVolumes": "Sin volúmenes de copia",
     "lastBackup": "Última copia",
     "lastBackupAt": "Última copia en",
+    "stateProgress": "Estado / Progreso",
     "target": "Destino",
     "drStandby": "DR en espera",
     "backupsFor": "Copias de {{name}}",
@@ -652,7 +658,8 @@
     "readThroughput": "Rendimiento de lectura",
     "noIo": "Sin E/S en vivo aún",
     "perNodeStorage": "Por nodo",
-    "clusterTotal": "Total del clúster"
+    "clusterTotal": "Total del clúster",
+    "dataEngine": "Motor de datos"
   },
   "theme": {
     "label": "Tema",
