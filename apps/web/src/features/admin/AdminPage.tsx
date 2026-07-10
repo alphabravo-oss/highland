@@ -44,6 +44,8 @@ export function AdminPage() {
   const [editUser, setEditUser] = useState<{ username: string; role: string } | null>(null)
   const [editRole, setEditRole] = useState('operator')
   const [editPassword, setEditPassword] = useState('')
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [selectedUsers, setSelectedUsers] = useState<HighlandUser[]>([])
 
   const columns = useMemo<ColumnDef<HighlandUser, any>[]>(
     () => [
@@ -216,6 +218,23 @@ export function AdminPage() {
           columns={columns}
           data={users.data?.data ?? []}
           getRowId={(u) => u.username}
+          tableId="users"
+          searchable
+          enableExport
+          exportName="highland-users"
+          enableSelection={isAdmin}
+          onSelectionChange={setSelectedUsers}
+          bulkActions={() => (
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              className="h-7 text-xs"
+              onClick={() => setBulkDeleteOpen(true)}
+            >
+              <Trash2 size={14} /> {t('common.delete')}
+            </Button>
+          )}
         />
       </QueryState>
 
@@ -312,6 +331,23 @@ export function AdminPage() {
           await qc.invalidateQueries({ queryKey: ['users'] })
         }}
       />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(v) => !v && setBulkDeleteOpen(false)}
+        title={t('admin.deleteUser')}
+        destructive
+        confirmLabel={t('common.delete')}
+        onConfirm={async () => {
+          for (const u of selectedUsers) {
+            // Mirror the per-row guard: never delete the current session's user.
+            if (u.username === user?.username) continue
+            await highlandDelete(`/users/${encodeURIComponent(u.username)}`)
+          }
+          setBulkDeleteOpen(false)
+          await qc.invalidateQueries({ queryKey: ['users'] })
+        }}
+      />
     </div>
   )
 }
@@ -399,6 +435,10 @@ export function AuditPage() {
           columns={columns}
           data={q.data?.data ?? []}
           getRowId={(e) => String(e.id)}
+          tableId="audit"
+          searchable
+          enableExport
+          exportName="highland-audit"
         />
       </QueryState>
     </div>

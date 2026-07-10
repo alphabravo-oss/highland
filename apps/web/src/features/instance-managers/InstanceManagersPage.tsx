@@ -78,6 +78,10 @@ export function InstanceManagersPage() {
           columns={columns}
           data={data}
           getRowId={(im) => im.id ?? im.name}
+          tableId="instance-managers"
+          searchable
+          enableExport
+          exportName="highland-instance-managers"
         />
       </QueryState>
     </div>

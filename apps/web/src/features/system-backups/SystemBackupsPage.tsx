@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Plus, RefreshCw, Trash2 } from 'lucide-react'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import {
   useCreateSystemBackup,
   useDeleteSystemBackup,
@@ -31,6 +31,8 @@ export function SystemBackupsPage() {
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<SystemBackup | null>(null)
+  const [selected, setSelected] = useState<RowSelectionState>({})
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
 
   const backupColumns: ColumnDef<SystemBackup, any>[] = [
     {
@@ -133,6 +135,24 @@ export function SystemBackupsPage() {
             columns={backupColumns}
             data={backups.data ?? []}
             getRowId={(b) => b.id ?? b.name}
+            tableId="system-backups"
+            searchable
+            enableExport
+            exportName="highland-system-backups"
+            enableSelection
+            rowSelection={selected}
+            onRowSelectionChange={setSelected}
+            bulkActions={() => (
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                className="h-7 text-xs"
+                onClick={() => setBulkDeleteOpen(true)}
+              >
+                {t('common.delete')}
+              </Button>
+            )}
           />
         </QueryState>
 
@@ -214,6 +234,24 @@ export function SystemBackupsPage() {
           if (!deleteTarget) return
           await delMut.mutateAsync(deleteTarget)
           setDeleteTarget(null)
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(v) => !v && setBulkDeleteOpen(false)}
+        title={t('systemBackups.delete')}
+        description={t('table.selectedCount', {
+          count: Object.values(selected).filter(Boolean).length,
+        })}
+        destructive
+        confirmLabel={t('common.delete')}
+        loading={delMut.isPending}
+        onConfirm={async () => {
+          const targets = (backups.data ?? []).filter((b) => selected[b.id ?? b.name])
+          for (const item of targets) await delMut.mutateAsync(item)
+          setSelected({})
+          setBulkDeleteOpen(false)
         }}
       />
     </div>

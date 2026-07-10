@@ -30,6 +30,8 @@ export function BackingImagesPage() {
   const [error, setError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BackingImage | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkRows, setBulkRows] = useState<BackingImage[]>([])
 
   const columns = useMemo<ColumnDef<BackingImage, any>[]>(
     () => [
@@ -153,6 +155,25 @@ export function BackingImagesPage() {
           columns={columns}
           data={q.data ?? []}
           getRowId={(img) => img.id ?? img.name}
+          tableId="backing-images"
+          searchable
+          enableExport
+          exportName="highland-backing-images"
+          enableSelection
+          bulkActions={(sel) => (
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              className="h-7 gap-1 text-xs"
+              onClick={() => {
+                setBulkRows(sel)
+                setBulkDeleteOpen(true)
+              }}
+            >
+              <Trash2 size={14} /> {t('common.delete')}
+            </Button>
+          )}
         />
       </QueryState>
 
@@ -210,6 +231,22 @@ export function BackingImagesPage() {
           if (!deleteTarget) return
           await delMut.mutateAsync(deleteTarget)
           setDeleteTarget(null)
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(v) => !v && setBulkDeleteOpen(false)}
+        title={t('backingImages.delete')}
+        destructive
+        confirmLabel={t('common.delete')}
+        loading={delMut.isPending}
+        onConfirm={async () => {
+          for (const img of bulkRows) {
+            await delMut.mutateAsync(img)
+          }
+          setBulkDeleteOpen(false)
+          setBulkRows([])
         }}
       />
     </div>

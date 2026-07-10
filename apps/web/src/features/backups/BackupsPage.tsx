@@ -30,6 +30,7 @@ export function BackupsPage() {
   const [backupList, setBackupList] = useState<Array<Record<string, unknown>>>([])
   const [backupListFor, setBackupListFor] = useState<string | null>(null)
   const [selected, setSelected] = useState<RowSelectionState>({})
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
 
   async function listBackups(bv: BackupVolume) {
     setError(null)
@@ -124,8 +125,7 @@ export function BackupsPage() {
     }
   }
 
-  async function bulkRestore() {
-    const targets = (q.data ?? []).filter((b) => selected[b.name])
+  async function bulkRestore(targets: BackupVolume[]) {
     for (const bv of targets) {
       setRestoreTarget(bv)
       setRestoreName(`${bv.name}-restore`)
@@ -252,16 +252,9 @@ export function BackupsPage() {
               <RefreshCw size={14} /> {t('common.refresh')}
             </Button>
             {canMutate ? (
-              <>
-                <Button type="button" size="sm" variant="outline" onClick={() => void syncAll()}>
-                  {t('backups.syncAll')}
-                </Button>
-                {Object.values(selected).some(Boolean) ? (
-                  <Button type="button" size="sm" onClick={() => void bulkRestore()}>
-                    {t('backups.bulkRestore')}
-                  </Button>
-                ) : null}
-              </>
+              <Button type="button" size="sm" variant="outline" onClick={() => void syncAll()}>
+                {t('backups.syncAll')}
+              </Button>
             ) : null}
           </>
         }
@@ -284,9 +277,35 @@ export function BackupsPage() {
           columns={columns}
           data={q.data ?? []}
           getRowId={(bv) => bv.name}
-          enableSelection
+          tableId="backups"
+          searchable
+          enableExport
+          exportName="highland-backups"
+          enableSelection={canMutate}
           rowSelection={selected}
           onRowSelectionChange={setSelected}
+          bulkActions={(sel) => (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => void bulkRestore(sel)}
+              >
+                {t('backups.bulkRestore')}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                className="h-7 text-xs"
+                onClick={() => setBulkDeleteOpen(true)}
+              >
+                {t('common.delete')}
+              </Button>
+            </>
+          )}
         />
       </QueryState>
 
@@ -375,6 +394,24 @@ export function BackupsPage() {
           if (!deleteTarget) return
           await delMut.mutateAsync(deleteTarget)
           setDeleteTarget(null)
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(v) => !v && setBulkDeleteOpen(false)}
+        title={t('backups.deleteBackupVolume')}
+        description={t('table.selectedCount', {
+          count: Object.values(selected).filter(Boolean).length,
+        })}
+        destructive
+        confirmLabel={t('common.delete')}
+        loading={delMut.isPending}
+        onConfirm={async () => {
+          const targets = (q.data ?? []).filter((b) => selected[b.name])
+          for (const item of targets) await delMut.mutateAsync(item)
+          setSelected({})
+          setBulkDeleteOpen(false)
         }}
       />
     </div>

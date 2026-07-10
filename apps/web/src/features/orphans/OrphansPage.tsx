@@ -16,6 +16,8 @@ export function OrphansPage() {
   const q = useOrphans()
   const delMut = useDeleteOrphan()
   const [deleteTarget, setDeleteTarget] = useState<Orphan | null>(null)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [selectedOrphans, setSelectedOrphans] = useState<Orphan[]>([])
 
   const columns = useMemo<ColumnDef<Orphan, any>[]>(
     () => [
@@ -91,6 +93,23 @@ export function OrphansPage() {
           columns={columns}
           data={data}
           getRowId={(o) => o.id ?? o.name}
+          tableId="orphans"
+          searchable
+          enableExport
+          exportName="highland-orphans"
+          enableSelection
+          onSelectionChange={setSelectedOrphans}
+          bulkActions={() => (
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              className="h-7 gap-1 text-xs"
+              onClick={() => setBulkDeleteOpen(true)}
+            >
+              <Trash2 size={14} /> {t('common.delete')}
+            </Button>
+          )}
         />
       </QueryState>
 
@@ -106,6 +125,22 @@ export function OrphansPage() {
           if (!deleteTarget) return
           await delMut.mutateAsync(deleteTarget)
           setDeleteTarget(null)
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(v) => !v && setBulkDeleteOpen(false)}
+        title={t('orphans.delete')}
+        description={t('table.selectedCount', { count: selectedOrphans.length })}
+        destructive
+        confirmLabel={t('common.delete')}
+        loading={delMut.isPending}
+        onConfirm={async () => {
+          for (const orphan of selectedOrphans) {
+            await delMut.mutateAsync(orphan)
+          }
+          setBulkDeleteOpen(false)
         }}
       />
     </div>

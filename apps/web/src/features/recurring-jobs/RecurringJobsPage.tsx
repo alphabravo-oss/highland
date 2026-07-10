@@ -30,6 +30,8 @@ export function RecurringJobsPage() {
   const [retain, setRetain] = useState('5')
   const [error, setError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<RecurringJob | null>(null)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkRows, setBulkRows] = useState<RecurringJob[]>([])
 
   async function onCreate() {
     setError(null)
@@ -136,6 +138,25 @@ export function RecurringJobsPage() {
           columns={columns}
           data={data}
           getRowId={(job) => job.id ?? job.name}
+          tableId="recurring-jobs"
+          searchable
+          enableExport
+          exportName="highland-recurring-jobs"
+          enableSelection
+          bulkActions={(sel) => (
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              className="h-7 gap-1 text-xs"
+              onClick={() => {
+                setBulkRows(sel)
+                setBulkDeleteOpen(true)
+              }}
+            >
+              <Trash2 size={14} /> {t('common.delete')}
+            </Button>
+          )}
         />
       </QueryState>
 
@@ -186,6 +207,22 @@ export function RecurringJobsPage() {
           if (!deleteTarget) return
           await delMut.mutateAsync(deleteTarget)
           setDeleteTarget(null)
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(v) => !v && setBulkDeleteOpen(false)}
+        title={t('recurringJobs.delete')}
+        destructive
+        confirmLabel={t('common.delete')}
+        loading={delMut.isPending}
+        onConfirm={async () => {
+          for (const job of bulkRows) {
+            await delMut.mutateAsync(job)
+          }
+          setBulkDeleteOpen(false)
+          setBulkRows([])
         }}
       />
     </div>

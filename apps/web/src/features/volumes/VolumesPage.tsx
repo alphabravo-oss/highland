@@ -372,6 +372,8 @@ export function VolumesPage() {
           getRowId={(v) => v.name}
           columnVisibility={columnVisibility}
           globalFilter={filter}
+          enableExport
+          exportName="highland-volumes"
           enableSelection
           rowSelection={selected}
           onRowSelectionChange={setSelected}

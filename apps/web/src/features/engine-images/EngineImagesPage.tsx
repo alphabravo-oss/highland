@@ -27,6 +27,8 @@ export function EngineImagesPage() {
   const [image, setImage] = useState('longhornio/longhorn-engine:v1.12.0')
   const [error, setError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<EngineImage | null>(null)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkRows, setBulkRows] = useState<EngineImage[]>([])
 
   const columns = useMemo<ColumnDef<EngineImage, any>[]>(
     () => [
@@ -115,6 +117,25 @@ export function EngineImagesPage() {
           columns={columns}
           data={q.data ?? []}
           getRowId={(img) => img.id ?? img.name}
+          tableId="engine-images"
+          searchable
+          enableExport
+          exportName="highland-engine-images"
+          enableSelection
+          bulkActions={(sel) => (
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              className="h-7 gap-1 text-xs"
+              onClick={() => {
+                setBulkRows(sel)
+                setBulkDeleteOpen(true)
+              }}
+            >
+              <Trash2 size={14} /> {t('common.delete')}
+            </Button>
+          )}
         />
       </QueryState>
 
@@ -157,6 +178,23 @@ export function EngineImagesPage() {
           if (!deleteTarget) return
           await delMut.mutateAsync(deleteTarget)
           setDeleteTarget(null)
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(v) => !v && setBulkDeleteOpen(false)}
+        title={t('engineImages.delete')}
+        destructive
+        confirmLabel={t('common.delete')}
+        loading={delMut.isPending}
+        onConfirm={async () => {
+          for (const img of bulkRows) {
+            if (img.default) continue
+            await delMut.mutateAsync(img)
+          }
+          setBulkDeleteOpen(false)
+          setBulkRows([])
         }}
       />
     </div>
