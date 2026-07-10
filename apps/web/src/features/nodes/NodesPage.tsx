@@ -97,6 +97,18 @@ export function NodesPage() {
     }
   }
 
+  async function bulkSchedule(nodes: Node[], allow: boolean) {
+    setError(null)
+    try {
+      for (const node of nodes) {
+        if (Boolean(node.allowScheduling) === allow) continue
+        await updateMut.mutateAsync({ node, body: { ...node, allowScheduling: allow } })
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('admin.updateFailed'))
+    }
+  }
+
   async function saveTags() {
     if (!tagNode) return
     setError(null)
@@ -340,6 +352,34 @@ export function NodesPage() {
           columns={columns}
           data={rows}
           getRowId={(n) => n.name}
+          tableId="nodes"
+          searchable
+          searchPlaceholder={t('nodes.searchPlaceholder')}
+          enableExport
+          exportName="highland-nodes"
+          enableSelection={canMutate}
+          bulkActions={(sel) => (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => void bulkSchedule(sel, true)}
+              >
+                {t('nodes.enableScheduling')}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => void bulkSchedule(sel, false)}
+              >
+                {t('nodes.disableScheduling')}
+              </Button>
+            </>
+          )}
         />
       </QueryState>
 

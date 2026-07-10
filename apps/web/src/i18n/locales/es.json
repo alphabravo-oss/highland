@@ -114,7 +114,8 @@
     "stopped": "detenido",
     "uploading": "Subiendo…",
     "select": "Seleccionar…",
-    "selectItem": "Seleccionar {{name}}"
+    "selectItem": "Seleccionar {{name}}",
+    "clear": "Limpiar"
   },
   "confirm": {
     "typeToConfirmBefore": "Escriba",
@@ -140,7 +141,9 @@
     "page": "Página {{page}} de {{total}}",
     "previous": "Anterior",
     "next": "Siguiente",
-    "selectedCount": "{{count}} seleccionados"
+    "selectedCount": "{{count}} seleccionados",
+    "columns": "Columnas",
+    "export": "Exportar CSV"
   },
   "compat": {
     "title": "Longhorn {{lh}} · Highland {{hVer}}"
@@ -311,7 +314,8 @@
     "newDisk": "Disco nuevo",
     "noDisks": "No hay discos configurados",
     "markedForRemoval": "Marcado para eliminación",
-    "pathPlaceholder": "Ruta montada por el disco, p. ej. /mnt/disk1"
+    "pathPlaceholder": "Ruta montada por el disco, p. ej. /mnt/disk1",
+    "searchPlaceholder": "Buscar nodos…"
   },
   "backups": {
     "title": "Copias de seguridad",
