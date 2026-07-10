@@ -149,7 +149,20 @@ export type BackingImage = LHResource & {
   uuid?: string
   size?: number
   currentChecksum?: string
+  minNumberOfCopies?: number
   diskFileStatusMap?: Record<string, { state?: string; message?: string }>
+}
+
+export type BackupBackingImage = LHResource & {
+  name: string
+  backingImageName?: string
+  state?: string
+  backupTargetName?: string
+  size?: string | number
+  url?: string
+  secret?: string
+  secretNamespace?: string
+  created?: string
 }
 
 export type InstanceManager = LHResource & {
@@ -343,6 +356,15 @@ export const backingImagesApi = {
   list: () => listCollection<BackingImage>('backingimages'),
   create: (body: Record<string, unknown>) => createResource<BackingImage>('backingimages', body),
   remove: (img: BackingImage) => deleteResource(img),
+  action: (img: BackingImage, name: string, params?: Record<string, unknown>) =>
+    execAction(img, name, params),
+}
+
+export const backupBackingImagesApi = {
+  list: () => listCollection<BackupBackingImage>('backupbackingimages'),
+  remove: (bbi: BackupBackingImage) => deleteResource(bbi),
+  action: (bbi: BackupBackingImage, name: string, params?: Record<string, unknown>) =>
+    execAction(bbi, name, params),
 }
 
 export const instanceManagersApi = {

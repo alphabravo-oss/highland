@@ -43,11 +43,47 @@ const VOLUME_COLUMN_IDS = [
   'state',
   'robustness',
   'size',
+  'actualSize',
+  'replicas',
+  'attachedTo',
+  'pvc',
+  'engine',
+  'dataLocality',
+  'accessMode',
+  'lastBackupAt',
+  'created',
+  'actions',
+] as const
+
+// Columns visible by default; the richer columns are opt-in via the ColumnPicker.
+const DEFAULT_VOLUME_COLUMN_IDS = [
+  'name',
+  'state',
+  'robustness',
+  'size',
   'replicas',
   'pvc',
   'engine',
   'actions',
-] as const
+]
+
+const ACCESS_MODE_LABELS: Record<string, string> = {
+  rwo: 'ReadWriteOnce',
+  rwop: 'ReadWriteOncePod',
+  rwx: 'ReadWriteMany',
+}
+
+/** Format an ISO/RFC timestamp for display; falls back to the raw value. */
+function formatTimestamp(value?: string): string {
+  if (!value) return '—'
+  const d = new Date(value)
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleString()
+}
+
+/** The node a volume is currently attached to (engine controller host). */
+function attachedNode(v: Volume): string {
+  return v.controllers?.[0]?.hostId ?? ''
+}
 
 const REPLICA_AUTO_BALANCE_OPTS = ['ignored', 'disabled', 'least-effort', 'best-effort'] as const
 const SNAPSHOT_DATA_INTEGRITY_OPTS = ['ignored', 'disabled', 'enabled', 'fast-check'] as const
@@ -88,6 +124,9 @@ export function VolumesPage() {
   )
 
   const [filter, setFilter] = useState('')
+  const [stateFilter, setStateFilter] = useState('')
+  const [robustnessFilter, setRobustnessFilter] = useState('')
+  const [nodeFilter, setNodeFilter] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [name, setName] = useState('')
   const [size, setSize] = useState('10Gi')
@@ -129,14 +168,44 @@ export function VolumesPage() {
 
   // Map the ColumnPicker/preferences visible-column set into TanStack VisibilityState.
   const columnVisibility = useMemo(() => {
-    const visible = new Set(resolveColumns(columnPrefs, VOLUMES_TABLE_ID, [...VOLUME_COLUMN_IDS]))
+    const visible = new Set(resolveColumns(columnPrefs, VOLUMES_TABLE_ID, DEFAULT_VOLUME_COLUMN_IDS))
     return Object.fromEntries(VOLUME_COLUMN_IDS.map((id) => [id, visible.has(id)])) as Record<
       string,
       boolean
     >
   }, [columnPrefs])
 
-  const data = q.data ?? []
+  const allVolumes = q.data ?? []
+
+  // Distinct option lists derived from the current volume data (sorted).
+  const stateOptions = useMemo(
+    () =>
+      Array.from(new Set(allVolumes.map((v) => v.state).filter(Boolean) as string[])).sort(),
+    [allVolumes],
+  )
+  const robustnessOptions = useMemo(
+    () =>
+      Array.from(new Set(allVolumes.map((v) => v.robustness).filter(Boolean) as string[])).sort(),
+    [allVolumes],
+  )
+  const nodeOptions = useMemo(
+    () =>
+      Array.from(new Set(allVolumes.map((v) => attachedNode(v)).filter(Boolean))).sort(),
+    [allVolumes],
+  )
+
+  // Structured filters combine with AND; free-text search is applied by DataTable.
+  const data = useMemo(
+    () =>
+      allVolumes.filter((v) => {
+        if (stateFilter && v.state !== stateFilter) return false
+        if (robustnessFilter && v.robustness !== robustnessFilter) return false
+        if (nodeFilter && attachedNode(v) !== nodeFilter) return false
+        return true
+      }),
+    [allVolumes, stateFilter, robustnessFilter, nodeFilter],
+  )
+
   const selectedVols = data.filter((v) => selected[v.name])
 
   const columns = useMemo<ColumnDef<Volume, any>[]>(
@@ -186,11 +255,52 @@ export function VolumesPage() {
         cell: ({ row }) => formatBytes(row.original.size),
       },
       {
+        id: 'actualSize',
+        accessorFn: (v) => Number(v.actualSize ?? 0),
+        header: t('volumes.columns.actualSize'),
+        meta: { className: 'tabular-nums' },
+        cell: ({ row }) => formatBytes(row.original.actualSize),
+      },
+      {
         id: 'replicas',
         accessorFn: (v) => v.numberOfReplicas ?? 0,
         header: t('volumes.columns.replicas'),
         meta: { className: 'tabular-nums' },
         cell: ({ row }) => row.original.numberOfReplicas ?? '—',
+      },
+      {
+        id: 'attachedTo',
+        accessorFn: (v) =>
+          v.kubernetesStatus?.workloadsStatus?.[0]?.workloadName ?? attachedNode(v) ?? '',
+        header: t('volumes.columns.attachedTo'),
+        meta: { className: 'text-xs' },
+        cell: ({ row }) => {
+          const v = row.original
+          const workloads = Array.from(
+            new Set(
+              (v.kubernetesStatus?.workloadsStatus ?? [])
+                .map((w) => w.workloadName)
+                .filter(Boolean) as string[],
+            ),
+          )
+          const node = attachedNode(v)
+          if (!workloads.length && !node) return '—'
+          return (
+            <div className="space-y-0.5">
+              {workloads.map((w) => (
+                <div key={w}>{w}</div>
+              ))}
+              {node ? (
+                <Link
+                  to={`/nodes/${encodeURIComponent(node)}`}
+                  className="font-mono text-[var(--color-primary)] hover:underline"
+                >
+                  {workloads.length ? `on ${node}` : node}
+                </Link>
+              ) : null}
+            </div>
+          )
+        },
       },
       {
         id: 'pvc',
@@ -206,6 +316,34 @@ export function VolumesPage() {
         id: 'engine',
         accessorFn: (v) => v.dataEngine ?? 'v1',
         header: t('volumes.columns.engine'),
+      },
+      {
+        id: 'dataLocality',
+        accessorFn: (v) => v.dataLocality ?? '',
+        header: t('volumes.columns.dataLocality'),
+        cell: ({ getValue }) => (getValue() as string) || '—',
+      },
+      {
+        id: 'accessMode',
+        accessorFn: (v) => v.accessMode ?? '',
+        header: t('volumes.columns.accessMode'),
+        cell: ({ row }) => {
+          const mode = row.original.accessMode ?? ''
+          return ACCESS_MODE_LABELS[mode] ?? mode ?? '—'
+        },
+      },
+      {
+        id: 'lastBackupAt',
+        accessorFn: (v) => (v as { lastBackupAt?: string }).lastBackupAt ?? '',
+        header: t('volumes.columns.lastBackupAt'),
+        cell: ({ row }) =>
+          formatTimestamp((row.original as { lastBackupAt?: string }).lastBackupAt),
+      },
+      {
+        id: 'created',
+        accessorFn: (v) => v.created ?? '',
+        header: t('volumes.columns.created'),
+        cell: ({ row }) => formatTimestamp(row.original.created),
       },
       {
         id: 'actions',
@@ -396,9 +534,66 @@ export function VolumesPage() {
           placeholder={t('volumes.filterPlaceholder')}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="max-w-md"
+          className="max-w-xs"
           data-testid="volume-filter"
         />
+        <Select
+          value={stateFilter}
+          onChange={(e) => setStateFilter(e.target.value)}
+          className="h-9 w-auto min-w-[9rem]"
+          aria-label={t('volumes.filterState')}
+          data-testid="volume-filter-state"
+        >
+          <option value="">{t('volumes.filterAllStates')}</option>
+          {stateOptions.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </Select>
+        <Select
+          value={robustnessFilter}
+          onChange={(e) => setRobustnessFilter(e.target.value)}
+          className="h-9 w-auto min-w-[9rem]"
+          aria-label={t('volumes.filterRobustness')}
+          data-testid="volume-filter-robustness"
+        >
+          <option value="">{t('volumes.filterAllRobustness')}</option>
+          {robustnessOptions.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </Select>
+        <Select
+          value={nodeFilter}
+          onChange={(e) => setNodeFilter(e.target.value)}
+          className="h-9 w-auto min-w-[9rem]"
+          aria-label={t('volumes.filterNode')}
+          data-testid="volume-filter-node"
+        >
+          <option value="">{t('volumes.filterAllNodes')}</option>
+          {nodeOptions.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </Select>
+        {stateFilter || robustnessFilter || nodeFilter ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setStateFilter('')
+              setRobustnessFilter('')
+              setNodeFilter('')
+            }}
+            data-testid="volume-filter-clear"
+          >
+            {t('common.clear')}
+          </Button>
+        ) : null}
         <DensityToggle />
         <ColumnPicker tableId={VOLUMES_TABLE_ID} allColumns={volumeColumns} />
         <SavedViews

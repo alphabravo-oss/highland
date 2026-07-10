@@ -1,30 +1,53 @@
 import { useMemo, useState } from 'react'
-import { Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Archive, Layers, Plus, RefreshCw, Trash2, Undo2 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import {
+  useBackingImageAction,
   useBackingImages,
+  useBackupBackingImage,
+  useBackupBackingImages,
   useCreateBackingImage,
   useDeleteBackingImage,
+  useDeleteBackupBackingImage,
+  useRestoreBackupBackingImage,
 } from '@/api/hooks'
 import { useAuth } from '@/auth/AuthContext'
-import { formatBytes, type BackingImage } from '@/api/longhorn'
+import {
+  formatBytes,
+  type BackingImage,
+  type BackupBackingImage,
+} from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { DataTable } from '@/components/data/DataTable'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Alert } from '@/components/ui/alert'
+import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
+/** True when at least one disk holds a ready copy — required before backing up / setting min copies. */
+function hasReadyDisk(img: BackingImage): boolean {
+  const m = img.diskFileStatusMap
+  if (!m) return false
+  return Object.values(m).some((d) => (d?.state ?? '').toLowerCase() === 'ready')
+}
+
 export function BackingImagesPage() {
   const { t } = useAppTranslation()
   const { canMutate } = useAuth()
   const q = useBackingImages()
+  const bbiQ = useBackupBackingImages()
   const createMut = useCreateBackingImage()
   const delMut = useDeleteBackingImage()
+  const backupMut = useBackupBackingImage()
+  const minCopiesMut = useBackingImageAction()
+  const restoreMut = useRestoreBackupBackingImage()
+  const delBbiMut = useDeleteBackupBackingImage()
+
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [sourceType, setSourceType] = useState('download')
@@ -35,6 +58,13 @@ export function BackingImagesPage() {
   const [uploading, setUploading] = useState(false)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [bulkRows, setBulkRows] = useState<BackingImage[]>([])
+
+  const [backupTarget, setBackupTarget] = useState<BackingImage | null>(null)
+  const [minCopiesTarget, setMinCopiesTarget] = useState<BackingImage | null>(null)
+  const [minCopies, setMinCopies] = useState('1')
+  const [restoreTarget, setRestoreTarget] = useState<BackupBackingImage | null>(null)
+  const [restoreEngine, setRestoreEngine] = useState('v1')
+  const [deleteBbiTarget, setDeleteBbiTarget] = useState<BackupBackingImage | null>(null)
 
   const columns = useMemo<ColumnDef<BackingImage, any>[]>(
     () => [
@@ -60,6 +90,13 @@ export function BackingImagesPage() {
         cell: ({ row }) => formatBytes(row.original.size),
       },
       {
+        id: 'minCopies',
+        accessorFn: (img) => Number(img.minNumberOfCopies ?? 0),
+        header: t('backingImages.minCopies'),
+        meta: { className: 'tabular-nums' },
+        cell: ({ row }) => row.original.minNumberOfCopies ?? '—',
+      },
+      {
         id: 'checksum',
         accessorFn: (img) => img.currentChecksum ?? '',
         header: t('backingImages.checksum'),
@@ -71,18 +108,131 @@ export function BackingImagesPage() {
         header: '',
         enableSorting: false,
         meta: { headerClassName: 'text-right', className: 'text-right' },
+        cell: ({ row }) => {
+          if (!canMutate) return null
+          const img = row.original
+          const ready = hasReadyDisk(img)
+          return (
+            <div className="flex justify-end gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={!ready}
+                title={ready ? undefined : t('backingImages.needsReadyDisk')}
+                aria-label={t('backingImages.backUp')}
+                onClick={() => setBackupTarget(img)}
+              >
+                <Archive size={14} aria-hidden />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={!ready}
+                title={ready ? undefined : t('backingImages.needsReadyDisk')}
+                aria-label={t('backingImages.minCopies')}
+                onClick={() => {
+                  setMinCopiesTarget(img)
+                  setMinCopies(String(img.minNumberOfCopies ?? 1))
+                }}
+              >
+                <Layers size={14} aria-hidden />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-label={t('common.delete')}
+                onClick={() => setDeleteTarget(img)}
+              >
+                <Trash2 size={14} aria-hidden />
+              </Button>
+            </div>
+          )
+        },
+      },
+    ],
+    [t, canMutate],
+  )
+
+  const bbiColumns = useMemo<ColumnDef<BackupBackingImage, any>[]>(
+    () => [
+      {
+        id: 'name',
+        accessorFn: (b) => b.backingImageName ?? b.name ?? '',
+        header: t('common.name'),
+        meta: { className: 'font-medium' },
+        cell: ({ row }) => row.original.backingImageName ?? row.original.name,
+      },
+      {
+        id: 'state',
+        accessorFn: (b) => b.state ?? '',
+        header: t('common.state'),
         cell: ({ row }) =>
-          canMutate ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              aria-label={t('common.delete')}
-              onClick={() => setDeleteTarget(row.original)}
-            >
-              <Trash2 size={14} aria-hidden />
-            </Button>
-          ) : null,
+          row.original.state ? (
+            <Badge tone={stateTone(row.original.state)}>{row.original.state}</Badge>
+          ) : (
+            '—'
+          ),
+      },
+      {
+        id: 'backupTarget',
+        accessorFn: (b) => b.backupTargetName ?? '',
+        header: t('backingImages.backupTarget'),
+        cell: ({ row }) => row.original.backupTargetName ?? '—',
+      },
+      {
+        id: 'size',
+        accessorFn: (b) => Number(b.size ?? 0),
+        header: t('common.size'),
+        meta: { className: 'tabular-nums' },
+        cell: ({ row }) => formatBytes(row.original.size),
+      },
+      {
+        id: 'url',
+        accessorFn: (b) => b.url ?? '',
+        header: t('backingImages.backupUrl'),
+        meta: { className: 'max-w-[14rem] truncate font-mono text-xs' },
+        cell: ({ row }) => row.original.url ?? '—',
+      },
+      {
+        id: 'actions',
+        header: '',
+        enableSorting: false,
+        meta: { headerClassName: 'text-right', className: 'text-right' },
+        cell: ({ row }) => {
+          if (!canMutate) return null
+          const bbi = row.original
+          const restorable = (bbi.state ?? '').toLowerCase() === 'completed'
+          return (
+            <div className="flex justify-end gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={!restorable}
+                title={restorable ? undefined : t('backingImages.onlyCompletedRestore')}
+                aria-label={t('common.restore')}
+                onClick={() => {
+                  setRestoreTarget(bbi)
+                  setRestoreEngine('v1')
+                }}
+              >
+                <Undo2 size={14} aria-hidden />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-label={t('common.delete')}
+                onClick={() => setDeleteBbiTarget(bbi)}
+              >
+                <Trash2 size={14} aria-hidden />
+              </Button>
+            </div>
+          )
+        },
       },
     ],
     [t, canMutate],
@@ -186,6 +336,28 @@ export function BackingImagesPage() {
         />
       </QueryState>
 
+      <section className="mt-8" data-testid="backup-backing-images-section">
+        <h2 className="mb-3 text-lg font-semibold">{t('backingImages.backupSection')}</h2>
+        <QueryState
+          isLoading={bbiQ.isLoading}
+          error={bbiQ.error as Error | null}
+          isEmpty={!bbiQ.data?.length}
+          emptyTitle={t('backingImages.backupEmpty')}
+          onRetry={() => void bbiQ.refetch()}
+        >
+          <DataTable
+            data-testid="backup-backing-images-table"
+            columns={bbiColumns}
+            data={bbiQ.data ?? []}
+            getRowId={(b) => b.id ?? b.name}
+            tableId="backup-backing-images"
+            searchable
+            enableExport
+            exportName="highland-backup-backing-images"
+          />
+        </QueryState>
+      </section>
+
       <Dialog
         open={open}
         onOpenChange={setOpen}
@@ -223,6 +395,122 @@ export function BackingImagesPage() {
           ) : null}
         </div>
       </Dialog>
+
+      <Dialog
+        open={Boolean(minCopiesTarget)}
+        onOpenChange={(v) => !v && setMinCopiesTarget(null)}
+        title={t('backingImages.minCopiesTitle')}
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setMinCopiesTarget(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              disabled={minCopiesMut.isPending || !minCopies}
+              onClick={async () => {
+                if (!minCopiesTarget) return
+                await minCopiesMut.mutateAsync({
+                  img: minCopiesTarget,
+                  action: 'updateMinNumberOfCopies',
+                  params: { minNumberOfCopies: Number(minCopies) },
+                })
+                setMinCopiesTarget(null)
+              }}
+            >
+              {t('common.save')}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <label className="text-sm text-[var(--color-muted-foreground)]">
+            {t('backingImages.minCopies')}
+          </label>
+          <Input
+            type="number"
+            min={1}
+            value={minCopies}
+            onChange={(e) => setMinCopies(e.target.value)}
+          />
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(restoreTarget)}
+        onOpenChange={(v) => !v && setRestoreTarget(null)}
+        title={t('backingImages.restoreTitle')}
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setRestoreTarget(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              disabled={restoreMut.isPending}
+              onClick={async () => {
+                if (!restoreTarget) return
+                await restoreMut.mutateAsync({
+                  bbi: restoreTarget,
+                  params: {
+                    secret: restoreTarget.secret ?? '',
+                    secretNamespace: restoreTarget.secretNamespace ?? '',
+                    dataEngine: restoreEngine,
+                  },
+                })
+                setRestoreTarget(null)
+              }}
+            >
+              {t('common.restore')}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Input
+            disabled
+            value={restoreTarget?.backingImageName ?? restoreTarget?.name ?? ''}
+          />
+          <div className="space-y-2">
+            <label className="text-sm text-[var(--color-muted-foreground)]">
+              {t('backingImages.dataEngine')}
+            </label>
+            <Select value={restoreEngine} onChange={(e) => setRestoreEngine(e.target.value)}>
+              <option value="v1">v1</option>
+              <option value="v2">v2</option>
+            </Select>
+          </div>
+        </div>
+      </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(backupTarget)}
+        onOpenChange={(v) => !v && setBackupTarget(null)}
+        title={t('backingImages.backUpTitle')}
+        confirmText={backupTarget?.name}
+        confirmLabel={t('backingImages.backUp')}
+        loading={backupMut.isPending}
+        onConfirm={async () => {
+          if (!backupTarget) return
+          await backupMut.mutateAsync(backupTarget)
+          setBackupTarget(null)
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteBbiTarget)}
+        onOpenChange={(v) => !v && setDeleteBbiTarget(null)}
+        title={t('backingImages.deleteBackup')}
+        confirmText={deleteBbiTarget?.backingImageName ?? deleteBbiTarget?.name}
+        destructive
+        confirmLabel={t('common.delete')}
+        loading={delBbiMut.isPending}
+        onConfirm={async () => {
+          if (!deleteBbiTarget) return
+          await delBbiMut.mutateAsync(deleteBbiTarget)
+          setDeleteBbiTarget(null)
+        }}
+      />
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

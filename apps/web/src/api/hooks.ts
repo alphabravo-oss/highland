@@ -9,6 +9,7 @@ import {
   backupTargetsApi,
   backupVolumesApi,
   backingImagesApi,
+  backupBackingImagesApi,
   dashboardApi,
   engineImagesApi,
   eventsApi,
@@ -24,6 +25,7 @@ import {
   type BackupTarget,
   type BackupVolume,
   type BackingImage,
+  type BackupBackingImage,
   type EngineImage,
   type Node,
   type Orphan,
@@ -129,6 +131,14 @@ export function useBackingImages() {
   return useQuery({
     queryKey: ['backingimages'],
     queryFn: () => backingImagesApi.list(),
+    ...poll,
+  })
+}
+
+export function useBackupBackingImages() {
+  return useQuery({
+    queryKey: ['backupbackingimages'],
+    queryFn: () => backupBackingImagesApi.list(),
     ...poll,
   })
 }
@@ -334,6 +344,53 @@ export function useDeleteBackingImage() {
   return useMutation({
     mutationFn: (img: BackingImage) => backingImagesApi.remove(img),
     onSuccess: () => inv(['backingimages']),
+  })
+}
+
+export function useBackingImageAction() {
+  const inv = useInvalidate()
+  return useMutation({
+    mutationFn: ({
+      img,
+      action,
+      params,
+    }: {
+      img: BackingImage
+      action: string
+      params?: Record<string, unknown>
+    }) => backingImagesApi.action(img, action, params),
+    onSuccess: () => inv(['backingimages', 'backupbackingimages']),
+  })
+}
+
+export function useBackupBackingImage() {
+  const inv = useInvalidate()
+  return useMutation({
+    mutationFn: (img: BackingImage) =>
+      backingImagesApi.action(img, 'backupBackingImageCreate'),
+    onSuccess: () => inv(['backingimages', 'backupbackingimages']),
+  })
+}
+
+export function useDeleteBackupBackingImage() {
+  const inv = useInvalidate()
+  return useMutation({
+    mutationFn: (bbi: BackupBackingImage) => backupBackingImagesApi.remove(bbi),
+    onSuccess: () => inv(['backupbackingimages']),
+  })
+}
+
+export function useRestoreBackupBackingImage() {
+  const inv = useInvalidate()
+  return useMutation({
+    mutationFn: ({
+      bbi,
+      params,
+    }: {
+      bbi: BackupBackingImage
+      params?: Record<string, unknown>
+    }) => backupBackingImagesApi.action(bbi, 'backupBackingImageRestore', params),
+    onSuccess: () => inv(['backingimages', 'backupbackingimages']),
   })
 }
 
