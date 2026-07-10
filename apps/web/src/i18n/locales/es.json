@@ -215,6 +215,7 @@
     "nodeTag": "Etiqueta de nodo",
     "diskTag": "Etiqueta de disco",
     "tagsPlaceholder": "etiquetas separadas por comas",
+    "tagsHint": "Escribe una etiqueta o elige una de las existentes.",
     "replicaAutoBalance": "Equilibrio automático de réplicas",
     "snapshotDataIntegrity": "Integridad de datos de instantánea",
     "replicaSoftAntiAffinity": "Anti-afinidad flexible de réplicas",
@@ -360,7 +361,8 @@
     "noDisks": "No hay discos configurados",
     "markedForRemoval": "Marcado para eliminación",
     "pathPlaceholder": "Ruta montada por el disco, p. ej. /mnt/disk1",
-    "searchPlaceholder": "Buscar nodos…"
+    "searchPlaceholder": "Buscar nodos…",
+    "existingTags": "Etiquetas existentes"
   },
   "backups": {
     "title": "Copias de seguridad",
@@ -368,6 +370,9 @@
     "syncAll": "Sincronizar todo",
     "bulkRestore": "Restaurar selección",
     "restore": "Restaurar",
+    "restoreEntry": "Restaurar",
+    "copyUrl": "Copiar URL",
+    "urlCopied": "Copiado",
     "deleteBackup": "Eliminar copia",
     "deleteBackupVolume": "Eliminar volumen de copia",
     "deleteAllBackups": "Eliminar todas las copias",
@@ -461,14 +466,24 @@
   "instanceManagers": {
     "title": "Gestores de instancia",
     "description": "Gestores de instancia de motor y réplica",
-    "empty": "Sin gestores de instancia"
+    "empty": "Sin gestores de instancia",
+    "instances": "Instancias",
+    "viewInstances": "Ver",
+    "instancesFor": "Instancias de {{name}}",
+    "instancesCount": "{{count}} instancia(s)",
+    "instanceName": "Nombre de la instancia",
+    "noInstances": "Sin instancias"
   },
   "orphans": {
     "title": "Datos huérfanos",
     "description": "Datos huérfanos de réplica o instancia",
     "delete": "Eliminar huérfano",
     "empty": "Sin huérfanos",
-    "emptyDescription": "No se detectaron datos huérfanos de réplica o instancia."
+    "emptyDescription": "No se detectaron datos huérfanos de réplica o instancia.",
+    "tabs": {
+      "replicaData": "Datos de réplica",
+      "instances": "Instancias"
+    }
   },
   "supportBundle": {
     "title": "Paquete de soporte",
@@ -520,7 +535,8 @@
     "saved": "Guardado {{name}}",
     "dangerTitle": "Ajuste de zona de peligro",
     "dangerDescription": "Está cambiando el ajuste de zona de peligro \"{{name}}\" a \"{{value}}\". Esto puede interrumpir el clúster.",
-    "applyDangerous": "Aplicar cambio peligroso"
+    "applyDangerous": "Aplicar cambio peligroso",
+    "dataEngineLabel": "Motor de datos {{engine}}"
   },
   "admin": {
     "title": "Gestión de usuarios",
@@ -689,6 +705,12 @@
     "bulkEngineUpgrade": "Motor en bloque",
     "bulkActivate": "Activar DR en bloque",
     "bulkDelete": "Eliminar en bloque",
+    "bulkSnapshotPurge": "Purgar instantáneas en bloque",
+    "bulkTrimFilesystem": "Recortar sistema de archivos en bloque",
+    "bulkSnapshotDataIntegrity": "Integridad de instantáneas en bloque",
+    "bulkReplicaAutoBalance": "Equilibrio automático de réplicas en bloque",
+    "bulkBackupTargetName": "Destino de copia de seguridad en bloque",
+    "bulkOfflineReplicaRebuilding": "Reconstrucción offline en bloque",
     "actionFailed": "Error en la acción",
     "bulkFailed": "Error en la operación masiva",
     "snapshotPurge": "Purgar snapshots",
@@ -723,6 +745,9 @@
     "smartOk": "OK",
     "scheduledReplicas": "Réplicas programadas ({{count}})",
     "replica": "Réplica",
-    "size": "Tamaño"
+    "size": "Tamaño",
+    "components": "Componentes",
+    "instanceManagers": "Gestores de instancias",
+    "engineImages": "Imágenes de motor"
   }
 }

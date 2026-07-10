@@ -1,12 +1,12 @@
 import { useMemo } from 'react'
 import { ArrowLeft, Cpu, HardDrive, MemoryStick } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
-import { useClusterMetrics, useNode } from '@/api/hooks'
-import { formatBytes, toConditionArray, type Node } from '@/api/longhorn'
+import { useClusterMetrics, useEngineImages, useInstanceManagers, useNode } from '@/api/hooks'
+import { formatBytes, toConditionArray, type EngineImage, type Node } from '@/api/longhorn'
 import { MetricLine, UsageBar } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
-import { Badge } from '@/components/ui/badge'
+import { Badge, stateTone } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
@@ -26,6 +26,10 @@ type NodeEx = Node & {
   address?: string
   autoEvicting?: boolean
   evictionRequested?: boolean
+}
+// nodeDeploymentMap maps nodeID -> deployed(bool); not on the shared type.
+type EngineImageEx = EngineImage & {
+  nodeDeploymentMap?: Record<string, boolean>
 }
 
 function latest(series: Series[], name: string, node: string): number | undefined {
@@ -84,8 +88,24 @@ export function NodeDetailPage() {
   const { name } = useParams<{ name: string }>()
   const q = useNode(name)
   const metrics = useClusterMetrics()
+  const instanceManagersQ = useInstanceManagers()
+  const engineImagesQ = useEngineImages()
   const node = q.data as NodeEx | undefined
   const series = (metrics.data?.series ?? []) as Series[]
+
+  const nodeInstanceManagers = useMemo(
+    () => (instanceManagersQ.data ?? []).filter((im) => im.nodeID === name),
+    [instanceManagersQ.data, name],
+  )
+  const nodeEngineImages = useMemo(() => {
+    const imgs = (engineImagesQ.data ?? []) as EngineImageEx[]
+    return imgs.filter((img) => {
+      const map = img.nodeDeploymentMap
+      // If the API reports per-node deployment, only show images on this node;
+      // otherwise fall back to showing all cluster engine images.
+      return map ? Boolean(name && map[name]) : true
+    })
+  }, [engineImagesQ.data, name])
 
   const cpuU = latest(series, 'longhorn_node_cpu_usage_millicpu', name ?? '')
   const cpuC = latest(series, 'longhorn_node_cpu_capacity_millicpu', name ?? '')
@@ -195,6 +215,83 @@ export function NodeDetailPage() {
                 </div>
               ))
             )}
+          </CardContent>
+        </Card>
+
+        {/* node components / readiness */}
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>{t('nodeDetail.components')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <p className="mb-1 text-xs font-medium text-[var(--color-muted-foreground)]">
+                {t('nodeDetail.instanceManagers')}
+              </p>
+              {nodeInstanceManagers.length === 0 ? (
+                <p className="text-sm text-[var(--color-muted-foreground)]">{t('common.none')}</p>
+              ) : (
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>{t('common.name')}</TH>
+                      <TH>{t('common.type')}</TH>
+                      <TH>{t('common.state')}</TH>
+                      <TH>{t('common.image')}</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {nodeInstanceManagers.map((im) => (
+                      <TR key={im.name}>
+                        <TD className="max-w-xs truncate font-mono text-xs">{im.name}</TD>
+                        <TD>{im.instanceManagerType ?? '—'}</TD>
+                        <TD>
+                          <Badge tone={stateTone(im.currentState ?? '')}>
+                            {im.currentState ?? t('common.unknown')}
+                          </Badge>
+                        </TD>
+                        <TD className="max-w-xs truncate font-mono text-xs" title={im.image}>
+                          {im.image ?? '—'}
+                        </TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              )}
+            </div>
+            <div>
+              <p className="mb-1 text-xs font-medium text-[var(--color-muted-foreground)]">
+                {t('nodeDetail.engineImages')}
+              </p>
+              {nodeEngineImages.length === 0 ? (
+                <p className="text-sm text-[var(--color-muted-foreground)]">{t('common.none')}</p>
+              ) : (
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>{t('common.name')}</TH>
+                      <TH>{t('common.state')}</TH>
+                      <TH>{t('common.refs')}</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {nodeEngineImages.map((img) => (
+                      <TR key={img.name}>
+                        <TD className="max-w-xs truncate font-mono text-xs" title={img.image ?? img.name}>
+                          {img.image ?? img.name}
+                        </TD>
+                        <TD>
+                          <Badge tone={stateTone(img.state ?? '')}>
+                            {img.state ?? t('common.unknown')}
+                          </Badge>
+                        </TD>
+                        <TD className="tabular-nums">{img.refCount ?? 0}</TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              )}
+            </div>
           </CardContent>
         </Card>
 

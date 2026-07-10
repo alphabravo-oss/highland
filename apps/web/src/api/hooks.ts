@@ -21,6 +21,7 @@ import {
   supportBundlesApi,
   systemBackupsApi,
   systemRestoresApi,
+  tagsApi,
   volumesApi,
   type BackupTarget,
   type BackupVolume,
@@ -85,6 +86,14 @@ export function useNodes() {
     queryFn: () => nodesApi.list(),
     ...poll,
   })
+}
+
+export function useNodeTags() {
+  return useQuery({ queryKey: ['nodetags'], queryFn: () => tagsApi.node(), refetchInterval: 60_000 })
+}
+
+export function useDiskTags() {
+  return useQuery({ queryKey: ['disktags'], queryFn: () => tagsApi.disk(), refetchInterval: 60_000 })
 }
 
 export function useSettings() {

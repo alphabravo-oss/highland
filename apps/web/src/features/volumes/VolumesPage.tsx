@@ -6,8 +6,10 @@ import {
   useBackingImages,
   useCreateVolume,
   useDeleteVolume,
+  useDiskTags,
   useEngineImages,
   useNodes,
+  useNodeTags,
   useVolumeAction,
   useVolumes,
 } from '@/api/hooks'
@@ -109,6 +111,8 @@ export function VolumesPage() {
   const nodesQ = useNodes()
   const imagesQ = useEngineImages()
   const backingImagesQ = useBackingImages()
+  const nodeTagsQ = useNodeTags()
+  const diskTagsQ = useDiskTags()
   const createMut = useCreateVolume()
   const deleteMut = useDeleteVolume()
   const actionMut = useVolumeAction()
@@ -165,6 +169,8 @@ export function VolumesPage() {
   const hosts = (nodesQ.data ?? []).map((n) => n.name)
   const images = (imagesQ.data ?? []).map((i) => i.image ?? i.name).filter(Boolean) as string[]
   const backingImages = (backingImagesQ.data ?? []).map((b) => b.name).filter(Boolean) as string[]
+  const nodeTagOptions = nodeTagsQ.data ?? []
+  const diskTagOptions = diskTagsQ.data ?? []
 
   // Map the ColumnPicker/preferences visible-column set into TanStack VisibilityState.
   const columnVisibility = useMemo(() => {
@@ -493,6 +499,14 @@ export function VolumesPage() {
           params.dataLocality = bulkValue || 'disabled'
         } else if (bulkKey === 'updateAccessMode') {
           params.accessMode = bulkValue || 'rwo'
+        } else if (bulkKey === 'updateSnapshotDataIntegrity') {
+          params.snapshotDataIntegrity = bulkValue || 'enabled'
+        } else if (bulkKey === 'updateReplicaAutoBalance') {
+          params.replicaAutoBalance = bulkValue || 'ignored'
+        } else if (bulkKey === 'updateBackupTargetName') {
+          params.backupTargetName = bulkValue
+        } else if (bulkKey === 'offlineReplicaRebuilding') {
+          params.offlineReplicaRebuilding = bulkValue || 'enabled'
         } else if (bulkKey === 'engineUpgrade') {
           params.image = bulkValue
         } else if (bulkKey === 'activate') {
@@ -798,7 +812,34 @@ export function VolumesPage() {
                   value={nodeSelector}
                   onChange={(e) => setNodeSelector(e.target.value)}
                   placeholder={t('volumes.tagsPlaceholder')}
+                  list="node-tag-options"
+                  data-testid="create-volume-node-tag"
                 />
+                <datalist id="node-tag-options">
+                  {nodeTagOptions.map((tag) => (
+                    <option key={tag} value={tag} />
+                  ))}
+                </datalist>
+                {nodeTagOptions.length ? (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {nodeTagOptions.map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs hover:bg-[var(--color-muted)]"
+                        onClick={() =>
+                          setNodeSelector((prev) =>
+                            parseTags(`${prev},${tag}`).join(', '),
+                          )
+                        }
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-[var(--color-muted-foreground)]">{t('volumes.tagsHint')}</p>
+                )}
               </label>
               <label className="block space-y-1 text-sm">
                 <span className="font-medium">{t('volumes.diskTag')}</span>
@@ -806,7 +847,34 @@ export function VolumesPage() {
                   value={diskSelector}
                   onChange={(e) => setDiskSelector(e.target.value)}
                   placeholder={t('volumes.tagsPlaceholder')}
+                  list="disk-tag-options"
+                  data-testid="create-volume-disk-tag"
                 />
+                <datalist id="disk-tag-options">
+                  {diskTagOptions.map((tag) => (
+                    <option key={tag} value={tag} />
+                  ))}
+                </datalist>
+                {diskTagOptions.length ? (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {diskTagOptions.map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs hover:bg-[var(--color-muted)]"
+                        onClick={() =>
+                          setDiskSelector((prev) =>
+                            parseTags(`${prev},${tag}`).join(', '),
+                          )
+                        }
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-[var(--color-muted-foreground)]">{t('volumes.tagsHint')}</p>
+                )}
               </label>
               <label className="block space-y-1 text-sm">
                 <span className="font-medium">{t('volumes.replicaAutoBalance')}</span>
@@ -960,6 +1028,48 @@ export function VolumesPage() {
             <option value="rwo">rwo</option>
             <option value="rwx">rwx</option>
           </select>
+        ) : null}
+        {bulkKey === 'updateSnapshotDataIntegrity' ? (
+          <select
+            className="flex h-9 w-full rounded-md border border-[var(--color-input)] bg-[var(--color-background)] px-3 text-sm"
+            value={bulkValue}
+            onChange={(e) => setBulkValue(e.target.value)}
+          >
+            {SNAPSHOT_DATA_INTEGRITY_OPTS.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        {bulkKey === 'updateReplicaAutoBalance' ? (
+          <select
+            className="flex h-9 w-full rounded-md border border-[var(--color-input)] bg-[var(--color-background)] px-3 text-sm"
+            value={bulkValue}
+            onChange={(e) => setBulkValue(e.target.value)}
+          >
+            {REPLICA_AUTO_BALANCE_OPTS.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        {bulkKey === 'offlineReplicaRebuilding' ? (
+          <select
+            className="flex h-9 w-full rounded-md border border-[var(--color-input)] bg-[var(--color-background)] px-3 text-sm"
+            value={bulkValue}
+            onChange={(e) => setBulkValue(e.target.value)}
+          >
+            {['enabled', 'disabled'].map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        {bulkKey === 'updateBackupTargetName' ? (
+          <Input value={bulkValue} onChange={(e) => setBulkValue(e.target.value)} placeholder={t('volumeActions.updateBackupTargetName')} />
         ) : null}
         {bulkKey === 'engineUpgrade' ? (
           <Input value={bulkValue} onChange={(e) => setBulkValue(e.target.value)} placeholder={t('volumes.engineImagePlaceholder')} list="eng-images" />

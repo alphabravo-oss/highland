@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { ChevronRight, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
-import { useNodeAction, useNodes, useUpdateNode } from '@/api/hooks'
+import { useDiskTags, useNodeAction, useNodes, useNodeTags, useUpdateNode } from '@/api/hooks'
 import { useAuth } from '@/auth/AuthContext'
 import { formatBytes, hasAction, toConditionArray, type Node } from '@/api/longhorn'
 import { DataTable } from '@/components/data/DataTable'
@@ -74,6 +74,10 @@ export function NodesPage() {
   const { t } = useAppTranslation()
   const { canMutate, isAdmin } = useAuth()
   const q = useNodes()
+  const nodeTagsQ = useNodeTags()
+  const diskTagsQ = useDiskTags()
+  const nodeTagOptions = nodeTagsQ.data ?? []
+  const diskTagOptions = diskTagsQ.data ?? []
   const updateMut = useUpdateNode()
   const actionMut = useNodeAction()
   const [error, setError] = useState<string | null>(null)
@@ -398,7 +402,24 @@ export function NodesPage() {
           </>
         }
       >
-        <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder={t('nodes.tagsPlaceholder')} />
+        <Input
+          value={tags}
+          list="node-tag-options"
+          onChange={(e) => setTags(e.target.value)}
+          placeholder={t('nodes.tagsPlaceholder')}
+        />
+        {nodeTagOptions.length > 0 ? (
+          <datalist id="node-tag-options">
+            {nodeTagOptions.map((tag) => (
+              <option key={tag} value={tag} />
+            ))}
+          </datalist>
+        ) : null}
+        {nodeTagOptions.length > 0 ? (
+          <p className="mt-2 text-xs text-[var(--color-muted-foreground)]">
+            {t('nodes.existingTags')}: {nodeTagOptions.join(', ')}
+          </p>
+        ) : null}
       </Dialog>
 
       <Dialog
@@ -419,6 +440,13 @@ export function NodesPage() {
         }
       >
         <div className="max-h-[65vh] space-y-3 overflow-y-auto">
+          {diskTagOptions.length > 0 ? (
+            <datalist id="disk-tag-options">
+              {diskTagOptions.map((tag) => (
+                <option key={tag} value={tag} />
+              ))}
+            </datalist>
+          ) : null}
           {diskDrafts.length === 0 ? (
             <p className="text-sm text-[var(--color-muted-foreground)]">{t('nodes.noDisks')}</p>
           ) : null}
@@ -511,6 +539,7 @@ export function NodesPage() {
                   <Input
                     id={`disk-tags-${d.id}`}
                     value={d.tags}
+                    list="disk-tag-options"
                     disabled={d.removed}
                     placeholder={t('nodes.tagsPlaceholder')}
                     onChange={(e) => updateDraft(d.id, { tags: e.target.value })}

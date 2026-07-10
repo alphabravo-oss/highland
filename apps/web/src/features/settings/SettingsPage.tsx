@@ -21,6 +21,34 @@ function isDanger(s: Setting): boolean {
   return DANGER_CATEGORIES.has(cat) || cat.includes('danger')
 }
 
+type EngineMap = { engines: string[]; values: Record<string, string> }
+
+// Detect data-engine-specific settings: either the definition marks it via
+// `dataEngineSpecific`, or the stored value parses as a JSON object with v1/v2
+// keys. Returns the per-engine value map, or null to fall back to a single input
+// (also when a flagged value cannot be parsed as a JSON object — defensive).
+function engineMapOf(s: Setting): EngineMap | null {
+  const def = s.definition as (Setting['definition'] & { dataEngineSpecific?: boolean }) | undefined
+  const raw = s.value ?? def?.default ?? ''
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    parsed = null
+  }
+  const isObj = !!parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+  const hasEngineKeys = isObj && ('v1' in (parsed as object) || 'v2' in (parsed as object))
+  if (!def?.dataEngineSpecific && !hasEngineKeys) return null
+  if (!isObj) return null
+  const values: Record<string, string> = {}
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    values[k] = v == null ? '' : String(v)
+  }
+  const engines = Object.keys(values)
+  if (engines.length === 0) return null
+  return { engines, values }
+}
+
 export function SettingsPage() {
   const { t } = useAppTranslation()
   const { canMutate } = useAuth()
@@ -30,7 +58,7 @@ export function SettingsPage() {
   const [filter, setFilter] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
-  const [dangerTarget, setDangerTarget] = useState<Setting | null>(null)
+  const [dangerTarget, setDangerTarget] = useState<{ setting: Setting; value: string } | null>(null)
 
   const grouped = useMemo(() => {
     const items = q.data ?? []
@@ -56,15 +84,42 @@ export function SettingsPage() {
     return drafts[s.name] ?? s.value ?? ''
   }
 
-  async function applySave(s: Setting) {
+  function engineKey(name: string, engine: string): string {
+    return `${name}::${engine}`
+  }
+
+  function engineValueOf(s: Setting, engine: string, em: EngineMap): string {
+    return drafts[engineKey(s.name, engine)] ?? em.values[engine] ?? ''
+  }
+
+  // Serialize the per-engine inputs back into the JSON-object string Longhorn expects.
+  function serializeEngineMap(s: Setting, em: EngineMap): string {
+    const merged: Record<string, string> = {}
+    for (const engine of em.engines) {
+      merged[engine] = engineValueOf(s, engine, em)
+    }
+    return JSON.stringify(merged)
+  }
+
+  function isEngineDirty(s: Setting, em: EngineMap): boolean {
+    return em.engines.some((engine) => {
+      const draft = drafts[engineKey(s.name, engine)]
+      return draft !== undefined && draft !== (em.values[engine] ?? '')
+    })
+  }
+
+  async function applySave(s: Setting, value: string, em: EngineMap | null) {
     setError(null)
     setSaved(null)
     try {
-      await updateMut.mutateAsync({ setting: s, value: valueOf(s) })
+      await updateMut.mutateAsync({ setting: s, value })
       setSaved(s.name)
       setDrafts((d) => {
         const next = { ...d }
         delete next[s.name]
+        if (em) {
+          for (const engine of em.engines) delete next[engineKey(s.name, engine)]
+        }
         return next
       })
       setDangerTarget(null)
@@ -73,12 +128,12 @@ export function SettingsPage() {
     }
   }
 
-  function save(s: Setting) {
+  function save(s: Setting, value: string, em: EngineMap | null) {
     if (isDanger(s)) {
-      setDangerTarget(s)
+      setDangerTarget({ setting: s, value })
       return
     }
-    void applySave(s)
+    void applySave(s, value, em)
   }
 
   return (
@@ -132,7 +187,10 @@ export function SettingsPage() {
                 <CardContent className="space-y-4">
                   {settings.map((s) => {
                     const readOnly = s.definition?.readOnly
-                    const dirty = drafts[s.name] !== undefined && drafts[s.name] !== (s.value ?? '')
+                    const em = engineMapOf(s)
+                    const dirty = em
+                      ? isEngineDirty(s, em)
+                      : drafts[s.name] !== undefined && drafts[s.name] !== (s.value ?? '')
                     return (
                       <div
                         key={s.id ?? s.name}
@@ -151,8 +209,45 @@ export function SettingsPage() {
                             </p>
                           ) : null}
                         </div>
-                        <div>
-                          {s.definition?.options?.length ? (
+                        <div className="space-y-2">
+                          {em ? (
+                            em.engines.map((engine) => (
+                              <div key={engine}>
+                                <label className="mb-1 block text-xs font-medium text-[var(--color-muted-foreground)]">
+                                  {t('settings.dataEngineLabel', { engine })}
+                                </label>
+                                {s.definition?.options?.length ? (
+                                  <Select
+                                    value={engineValueOf(s, engine, em)}
+                                    disabled={readOnly}
+                                    onChange={(e) =>
+                                      setDrafts((d) => ({
+                                        ...d,
+                                        [engineKey(s.name, engine)]: e.target.value,
+                                      }))
+                                    }
+                                  >
+                                    {s.definition.options.map((o) => (
+                                      <option key={o} value={o}>
+                                        {o}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                ) : (
+                                  <Input
+                                    value={engineValueOf(s, engine, em)}
+                                    disabled={readOnly}
+                                    onChange={(e) =>
+                                      setDrafts((d) => ({
+                                        ...d,
+                                        [engineKey(s.name, engine)]: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                )}
+                              </div>
+                            ))
+                          ) : s.definition?.options?.length ? (
                             <Select
                               value={valueOf(s)}
                               disabled={readOnly}
@@ -182,7 +277,9 @@ export function SettingsPage() {
                               type="button"
                               size="sm"
                               disabled={readOnly || !dirty || updateMut.isPending}
-                              onClick={() => void save(s)}
+                              onClick={() =>
+                                void save(s, em ? serializeEngineMap(s, em) : valueOf(s), em)
+                              }
                             >
                               <Save size={14} /> {t('common.save')}
                             </Button>
@@ -205,18 +302,23 @@ export function SettingsPage() {
         description={
           dangerTarget
             ? t('settings.dangerDescription', {
-                name: dangerTarget.definition?.displayName || dangerTarget.name,
-                value: valueOf(dangerTarget),
+                name: dangerTarget.setting.definition?.displayName || dangerTarget.setting.name,
+                value: dangerTarget.value,
               })
             : undefined
         }
-        confirmText={dangerTarget?.name}
+        confirmText={dangerTarget?.setting.name}
         confirmLabel={t('settings.applyDangerous')}
         destructive
         loading={updateMut.isPending}
         error={updateMut.error ? (updateMut.error as Error).message : null}
         onConfirm={async () => {
-          if (dangerTarget) await applySave(dangerTarget)
+          if (dangerTarget)
+            await applySave(
+              dangerTarget.setting,
+              dangerTarget.value,
+              engineMapOf(dangerTarget.setting),
+            )
         }}
       />
     </div>

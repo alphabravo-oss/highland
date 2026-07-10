@@ -27,6 +27,8 @@ export function BackupsPage() {
   const [restoreTarget, setRestoreTarget] = useState<BackupVolume | null>(null)
   const [restoreName, setRestoreName] = useState('')
   const [standby, setStandby] = useState(false)
+  const [restoreOverride, setRestoreOverride] = useState<string | null>(null)
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [backupList, setBackupList] = useState<Array<Record<string, unknown>>>([])
   const [backupListFor, setBackupListFor] = useState<string | null>(null)
   const [selected, setSelected] = useState<RowSelectionState>({})
@@ -94,17 +96,34 @@ export function BackupsPage() {
     setError(null)
     try {
       const last = restoreTarget.lastBackupName
+      const fromBackup =
+        restoreOverride ?? (last ? `backup://${restoreTarget.name}/${last}` : undefined)
       await createVol.mutateAsync({
         name: restoreName,
         size: restoreTarget.size,
         numberOfReplicas: 3,
         frontend: standby ? '' : 'blockdev',
         standby,
-        fromBackup: last ? `backup://${restoreTarget.name}/${last}` : undefined,
+        fromBackup,
       })
       setRestoreTarget(null)
       setRestoreName('')
       setStandby(false)
+      setRestoreOverride(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
+    }
+  }
+
+  async function copyBackupUrl(bv: BackupVolume, entry: Record<string, unknown>, key: string) {
+    setError(null)
+    const url =
+      (typeof entry.url === 'string' && entry.url) ||
+      `backup://${bv.name}/${String(entry.backupName ?? entry.name ?? '')}`
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopiedKey(key)
+      window.setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 1500)
     } catch (e) {
       setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
     }
@@ -214,6 +233,7 @@ export function BackupsPage() {
                     setRestoreTarget(bv)
                     setRestoreName(`${bv.name}-restore`)
                     setStandby(false)
+                    setRestoreOverride(null)
                   }}
                 >
                   {t('backups.restore')}
@@ -226,6 +246,7 @@ export function BackupsPage() {
                     setRestoreTarget(bv)
                     setRestoreName(`${bv.name}-dr`)
                     setStandby(true)
+                    setRestoreOverride(null)
                   }}
                 >
                   {t('backups.drStandby')}
@@ -341,19 +362,53 @@ export function BackupsPage() {
                     {b.labels ? JSON.stringify(b.labels) : '—'}
                   </TD>
                   <TD>
-                    {canMutate ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          const bv = (q.data ?? []).find((x) => x.name === backupListFor)
-                          if (bv) void deleteBackupEntry(bv, String(b.name ?? ''))
-                        }}
-                      >
-                        {t('common.delete')}
-                      </Button>
-                    ) : null}
+                    <div className="flex flex-wrap justify-end gap-1">
+                      {canMutate ? (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const bv = (q.data ?? []).find((x) => x.name === backupListFor)
+                              if (!bv) return
+                              const backupId = String(b.backupName ?? b.name ?? '')
+                              setRestoreTarget(bv)
+                              setRestoreName(`${bv.name}-restore`)
+                              setStandby(false)
+                              setRestoreOverride(`backup://${bv.name}/${backupId}`)
+                            }}
+                          >
+                            {t('backups.restoreEntry')}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const bv = (q.data ?? []).find((x) => x.name === backupListFor)
+                              const key = String(b.name ?? b.id ?? i)
+                              if (bv) void copyBackupUrl(bv, b, key)
+                            }}
+                          >
+                            {copiedKey === String(b.name ?? b.id ?? i)
+                              ? t('backups.urlCopied')
+                              : t('backups.copyUrl')}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const bv = (q.data ?? []).find((x) => x.name === backupListFor)
+                              if (bv) void deleteBackupEntry(bv, String(b.name ?? ''))
+                            }}
+                          >
+                            {t('common.delete')}
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
                   </TD>
                 </TR>
               ))}

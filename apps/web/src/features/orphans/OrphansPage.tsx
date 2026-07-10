@@ -11,6 +11,18 @@ import { QueryState } from '@/components/data/QueryState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
+import { cn } from '@/lib/utils'
+
+// Longhorn orphanType values that represent orphaned instances (engine/replica
+// process instances) as opposed to on-disk replica data. Anything that is not
+// one of these — including missing/unknown types — is treated as replica data.
+const INSTANCE_ORPHAN_TYPES = new Set(['instance', 'engine-instance', 'replica-instance'])
+
+function isInstanceOrphan(o: Orphan): boolean {
+  return INSTANCE_ORPHAN_TYPES.has(o.orphanType ?? '')
+}
+
+type OrphanTab = 'replicaData' | 'instances'
 
 export function OrphansPage() {
   const { t } = useAppTranslation()
@@ -20,6 +32,7 @@ export function OrphansPage() {
   const [deleteTarget, setDeleteTarget] = useState<Orphan | null>(null)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [selectedOrphans, setSelectedOrphans] = useState<Orphan[]>([])
+  const [activeTab, setActiveTab] = useState<OrphanTab>('replicaData')
 
   const columns = useMemo<ColumnDef<Orphan, any>[]>(
     () => [
@@ -74,6 +87,23 @@ export function OrphansPage() {
 
   const data = q.data ?? []
 
+  const { replicaData, instances } = useMemo(() => {
+    const replicaData: Orphan[] = []
+    const instances: Orphan[] = []
+    for (const o of data) {
+      if (isInstanceOrphan(o)) instances.push(o)
+      else replicaData.push(o)
+    }
+    return { replicaData, instances }
+  }, [data])
+
+  const tabs: { id: OrphanTab; label: string; count: number }[] = [
+    { id: 'replicaData', label: t('orphans.tabs.replicaData'), count: replicaData.length },
+    { id: 'instances', label: t('orphans.tabs.instances'), count: instances.length },
+  ]
+
+  const currentData = activeTab === 'instances' ? instances : replicaData
+
   return (
     <div data-testid="orphans-page">
       <PageHeader
@@ -93,14 +123,46 @@ export function OrphansPage() {
         emptyDescription={t('orphans.emptyDescription')}
         onRetry={() => void q.refetch()}
       >
+        <div
+          role="tablist"
+          aria-label={t('orphans.title')}
+          className="mb-4 inline-flex gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-muted)] p-1"
+        >
+          {tabs.map((tab) => {
+            const selected = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => {
+                  setActiveTab(tab.id)
+                  setSelectedOrphans([])
+                }}
+                className={cn(
+                  'inline-flex items-center gap-2 rounded px-3 py-1.5 text-sm font-medium transition-colors',
+                  selected
+                    ? 'bg-[var(--color-card)] text-[var(--color-foreground)] shadow-[var(--shadow-sm)]'
+                    : 'text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]',
+                )}
+              >
+                {tab.label}
+                <Badge tone={selected ? 'primary' : 'default'}>{tab.count}</Badge>
+              </button>
+            )
+          })}
+        </div>
+
         <DataTable
+          key={activeTab}
           columns={columns}
-          data={data}
+          data={currentData}
           getRowId={(o) => o.id ?? o.name}
-          tableId="orphans"
+          tableId={`orphans-${activeTab}`}
           searchable
           enableExport
-          exportName="highland-orphans"
+          exportName={`highland-orphans-${activeTab}`}
           enableSelection
           onSelectionChange={setSelectedOrphans}
           bulkActions={() =>

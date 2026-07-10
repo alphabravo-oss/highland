@@ -215,6 +215,7 @@
     "nodeTag": "Node tag",
     "diskTag": "Disk tag",
     "tagsPlaceholder": "comma-separated tags",
+    "tagsHint": "Type to enter a tag, or pick from existing tags.",
     "replicaAutoBalance": "Replica auto balance",
     "snapshotDataIntegrity": "Snapshot data integrity",
     "replicaSoftAntiAffinity": "Replica soft anti-affinity",
@@ -360,7 +361,8 @@
     "noDisks": "No disks configured",
     "markedForRemoval": "Marked for removal",
     "pathPlaceholder": "Path mounted by the disk, e.g. /mnt/disk1",
-    "searchPlaceholder": "Search nodes…"
+    "searchPlaceholder": "Search nodes…",
+    "existingTags": "Existing tags"
   },
   "backups": {
     "title": "Backups",
@@ -368,6 +370,9 @@
     "syncAll": "Sync all",
     "bulkRestore": "Bulk restore selected",
     "restore": "Restore",
+    "restoreEntry": "Restore",
+    "copyUrl": "Copy URL",
+    "urlCopied": "Copied",
     "deleteBackup": "Delete backup",
     "deleteBackupVolume": "Delete backup volume",
     "deleteAllBackups": "Delete all backups",
@@ -461,14 +466,24 @@
   "instanceManagers": {
     "title": "Instance Managers",
     "description": "Engine and replica instance managers",
-    "empty": "No instance managers"
+    "empty": "No instance managers",
+    "instances": "Instances",
+    "viewInstances": "View",
+    "instancesFor": "Instances of {{name}}",
+    "instancesCount": "{{count}} instance(s)",
+    "instanceName": "Instance name",
+    "noInstances": "No instances"
   },
   "orphans": {
     "title": "Orphaned Data",
     "description": "Orphaned replica or instance data",
     "delete": "Delete orphan",
     "empty": "No orphans",
-    "emptyDescription": "No orphaned replica or instance data detected."
+    "emptyDescription": "No orphaned replica or instance data detected.",
+    "tabs": {
+      "replicaData": "Replica data",
+      "instances": "Instances"
+    }
   },
   "supportBundle": {
     "title": "Support Bundle",
@@ -520,7 +535,8 @@
     "saved": "Saved {{name}}",
     "dangerTitle": "Danger zone setting",
     "dangerDescription": "You are changing danger-zone setting \"{{name}}\" to \"{{value}}\". This can disrupt the cluster.",
-    "applyDangerous": "Apply dangerous change"
+    "applyDangerous": "Apply dangerous change",
+    "dataEngineLabel": "Data engine {{engine}}"
   },
   "admin": {
     "title": "User management",
@@ -689,6 +705,12 @@
     "bulkEngineUpgrade": "Bulk engine upgrade",
     "bulkActivate": "Bulk activate DR",
     "bulkDelete": "Bulk delete",
+    "bulkSnapshotPurge": "Bulk purge snapshots",
+    "bulkTrimFilesystem": "Bulk trim filesystem",
+    "bulkSnapshotDataIntegrity": "Bulk snapshot integrity",
+    "bulkReplicaAutoBalance": "Bulk replica auto-balance",
+    "bulkBackupTargetName": "Bulk backup target",
+    "bulkOfflineReplicaRebuilding": "Bulk offline rebuild",
     "actionFailed": "Action failed",
     "bulkFailed": "Bulk failed",
     "snapshotPurge": "Purge snapshots",
@@ -723,6 +745,9 @@
     "smartOk": "OK",
     "scheduledReplicas": "Scheduled replicas ({{count}})",
     "replica": "Replica",
-    "size": "Size"
+    "size": "Size",
+    "components": "Components",
+    "instanceManagers": "Instance managers",
+    "engineImages": "Engine images"
   }
 }

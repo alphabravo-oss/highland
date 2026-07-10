@@ -316,6 +316,19 @@ export const nodesApi = {
     execAction(node, name, params),
 }
 
+/** Existing node/disk tags for autocomplete in scheduling/tag forms. */
+export const tagsApi = {
+  node: () => fetchTags('/nodetags'),
+  disk: () => fetchTags('/disktags'),
+}
+
+async function fetchTags(path: string): Promise<string[]> {
+  const res = await lhGet<{ data?: Array<string | { name?: string; tag?: string }> }>(path)
+  return (res?.data ?? [])
+    .map((t) => (typeof t === 'string' ? t : (t.name ?? t.tag ?? '')))
+    .filter(Boolean)
+}
+
 export const settingsApi = {
   list: () => listCollection<Setting>('settings'),
   get: (name: string) => getResource<Setting>('settings', name),
