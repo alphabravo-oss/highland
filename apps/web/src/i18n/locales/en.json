@@ -736,7 +736,15 @@
     "updateReplicaRebuildingBandwidthLimit": "Rebuild bandwidth limit",
     "updateUblkNumberOfQueue": "UBLK queues",
     "updateUblkQueueDepth": "UBLK queue depth",
-    "updateRebuildConcurrentSyncLimit": "Rebuild concurrent sync limit"
+    "updateRebuildConcurrentSyncLimit": "Rebuild concurrent sync limit",
+    "group": {
+      "lifecycle": "Lifecycle",
+      "snapshots": "Snapshots",
+      "replicas": "Replicas & scheduling",
+      "access": "Access & backup",
+      "kubernetes": "Kubernetes",
+      "advanced": "Advanced"
+    }
   },
   "nodeDetail": {
     "address": "Address",

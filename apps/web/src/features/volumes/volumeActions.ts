@@ -41,6 +41,44 @@ export const VOLUME_ACTION_DEFS = [
 
 export type VolumeActionDef = (typeof VOLUME_ACTION_DEFS)[number]
 
+/**
+ * Ordered grouping for the volume Actions menu so a long action list reads as
+ * labeled sections (Lifecycle, Snapshots, …) instead of one flat scroll.
+ * Any action key not listed here falls into the trailing "advanced" bucket.
+ */
+export const ACTION_GROUPS = [
+  {
+    id: 'lifecycle',
+    keys: ['attach', 'detach', 'salvage', 'activate', 'expand', 'cancelExpansion', 'cloneVolume', 'trimFilesystem', 'engineUpgrade'],
+  },
+  {
+    id: 'snapshots',
+    keys: ['snapshotCreate', 'snapshotPurge', 'updateSnapshotDataIntegrity', 'updateSnapshotMaxCount', 'updateSnapshotMaxSize', 'updateFreezeFilesystemForSnapshot', 'updateUnmapMarkSnapChainRemoved'],
+  },
+  {
+    id: 'replicas',
+    keys: ['updateReplicaCount', 'updateDataLocality', 'updateReplicaAutoBalance', 'offlineReplicaRebuilding', 'updateReplicaSoftAntiAffinity', 'updateReplicaZoneSoftAntiAffinity', 'updateReplicaDiskSoftAntiAffinity', 'updateReplicaRebuildingBandwidthLimit', 'updateRebuildConcurrentSyncLimit'],
+  },
+  { id: 'access', keys: ['updateAccessMode', 'updateBackupTargetName'] },
+  { id: 'kubernetes', keys: ['pvCreate', 'pvcCreate', 'recurringJobAdd', 'recurringJobDelete'] },
+] as const
+
+/**
+ * Split available action defs into ordered { id, items } groups for rendering.
+ * Unlisted keys collect under a trailing `advanced` group so nothing is dropped.
+ */
+export function groupActions<T extends { key: string }>(defs: T[]): Array<{ id: string; items: T[] }> {
+  const seen = new Set<string>()
+  const groups: Array<{ id: string; items: T[] }> = ACTION_GROUPS.map((g) => {
+    const items = defs.filter((d) => (g.keys as readonly string[]).includes(d.key))
+    items.forEach((d) => seen.add(d.key))
+    return { id: g.id, items }
+  }).filter((g) => g.items.length > 0)
+  const rest = defs.filter((d) => !seen.has(d.key))
+  if (rest.length) groups.push({ id: 'advanced', items: rest })
+  return groups
+}
+
 export const BULK_ACTIONS = [
   { key: 'detach', label: 'Bulk detach', labelKey: 'volumeActions.bulkDetach' },
   { key: 'snapshotCreate', label: 'Bulk snapshot', labelKey: 'volumeActions.bulkSnapshot' },

@@ -736,7 +736,15 @@
     "updateReplicaRebuildingBandwidthLimit": "Límite de ancho de banda de reconstrucción",
     "updateUblkNumberOfQueue": "Colas UBLK",
     "updateUblkQueueDepth": "Profundidad de cola UBLK",
-    "updateRebuildConcurrentSyncLimit": "Límite de sincronización concurrente"
+    "updateRebuildConcurrentSyncLimit": "Límite de sincronización concurrente",
+    "group": {
+      "lifecycle": "Ciclo de vida",
+      "snapshots": "Snapshots",
+      "replicas": "Réplicas y programación",
+      "access": "Acceso y respaldo",
+      "kubernetes": "Kubernetes",
+      "advanced": "Avanzado"
+    }
   },
   "nodeDetail": {
     "address": "Dirección",

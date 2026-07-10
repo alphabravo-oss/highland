@@ -35,6 +35,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -43,7 +44,7 @@ import { Select } from '@/components/ui/select'
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 import { ActionFormDialog } from './ActionFormDialog'
-import { VOLUME_ACTION_DEFS, volumeActionLabel, type VolumeActionDef } from './volumeActions'
+import { VOLUME_ACTION_DEFS, groupActions, volumeActionLabel, type VolumeActionDef } from './volumeActions'
 
 type SnapshotRow = { name: string; created?: string; size?: string | number; [k: string]: unknown }
 
@@ -270,23 +271,31 @@ export function VolumeDetailPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="max-h-96 overflow-y-auto">
-                    {availableActions.map((d) => (
-                      <DropdownMenuItem
-                        key={d.key}
-                        onSelect={() => {
-                          if (d.key === 'snapshotCreate') {
-                            setSnapCreateOpen(true)
-                            return
-                          }
-                          if (d.key === 'recurringJobAdd') {
-                            setJobAttachOpen(true)
-                            return
-                          }
-                          setActionDef(d as VolumeActionDef)
-                        }}
-                      >
-                        {volumeActionLabel(t, d.key, d.label)}
-                      </DropdownMenuItem>
+                    {groupActions(availableActions).map((g, gi) => (
+                      <div key={g.id}>
+                        {gi > 0 ? <DropdownMenuSeparator /> : null}
+                        <DropdownMenuLabel className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+                          {t(`volumeActions.group.${g.id}`)}
+                        </DropdownMenuLabel>
+                        {g.items.map((d) => (
+                          <DropdownMenuItem
+                            key={d.key}
+                            onSelect={() => {
+                              if (d.key === 'snapshotCreate') {
+                                setSnapCreateOpen(true)
+                                return
+                              }
+                              if (d.key === 'recurringJobAdd') {
+                                setJobAttachOpen(true)
+                                return
+                              }
+                              setActionDef(d as VolumeActionDef)
+                            }}
+                          >
+                            {volumeActionLabel(t, d.key, d.label)}
+                          </DropdownMenuItem>
+                        ))}
+                      </div>
                     ))}
                     {extraActions.length > 0 ? <DropdownMenuSeparator /> : null}
                     {extraActions.map((k) => (
