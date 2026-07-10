@@ -86,12 +86,15 @@ func main() {
 
 	auditStore := audit.NewStore(2000, cfg.AuditFile)
 	k8sRunner := benchmark.NewK8sRunnerFromEnv()
-	if k8sRunner != nil && k8sRunner.Available() {
-		slog.Info("benchmark mode", "mode", "kubernetes-job")
-	} else {
-		slog.Info("benchmark mode", "mode", "synthetic")
-	}
 	benchStore := benchmark.NewStore(k8sRunner)
+	if k8sRunner != nil && k8sRunner.Available() {
+		// Persist benchmark records as ConfigMaps (etcd) so they survive restarts.
+		benchStore.SetPersister(benchmark.NewConfigMapPersister(k8sRunner.Clientset(), k8sRunner.Namespace()))
+		benchStore.Load()
+		slog.Info("benchmark mode", "mode", "kubernetes-job", "persistence", "configmap")
+	} else {
+		slog.Info("benchmark mode", "mode", "synthetic", "persistence", "memory")
+	}
 	scraper := metrics.NewScraper(cfg.ManagerURL, cfg.MetricsInterval, 60)
 	scraper.Start()
 	defer scraper.Stop()

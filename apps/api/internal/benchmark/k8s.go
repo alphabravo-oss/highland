@@ -70,6 +70,13 @@ func NewK8sRunnerFromEnv() *K8sRunner {
 	return &K8sRunner{client: client, namespace: ns, fioImage: img, storageClass: sc, size: size}
 }
 
+// Clientset exposes the k8s client so other components (e.g. the ConfigMap
+// persister) can reuse it.
+func (k *K8sRunner) Clientset() kubernetes.Interface { return k.client }
+
+// Namespace is where Highland's cluster resources live.
+func (k *K8sRunner) Namespace() string { return k.namespace }
+
 // Available reports whether Jobs can be created.
 func (k *K8sRunner) Available() bool {
 	return k != nil && k.client != nil

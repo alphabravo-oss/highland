@@ -44,14 +44,63 @@ type Benchmark struct {
 
 // Store manages benchmarks (synthetic and/or k8s Job).
 type Store struct {
-	mu     sync.RWMutex
-	items  map[string]*Benchmark
-	runner *K8sRunner
+	mu      sync.RWMutex
+	items   map[string]*Benchmark
+	runner  *K8sRunner
+	persist Persister
 }
 
 // NewStore creates a store; runner may be nil (offline synthetic only).
 func NewStore(runner *K8sRunner) *Store {
 	return &Store{items: map[string]*Benchmark{}, runner: runner}
+}
+
+// SetPersister attaches a durable store for benchmark records.
+func (s *Store) SetPersister(p Persister) {
+	s.mu.Lock()
+	s.persist = p
+	s.mu.Unlock()
+}
+
+// Load hydrates in-memory items from the persister (call once at startup).
+func (s *Store) Load() {
+	if s.persist == nil {
+		return
+	}
+	items := s.persist.LoadAll()
+	s.mu.Lock()
+	for _, b := range items {
+		// A run in flight when the API restarted can no longer be tracked; mark
+		// it failed rather than leaving it stuck "Running".
+		if b.Phase == PhasePending || b.Phase == PhaseRunning {
+			b.Phase = PhaseFailed
+			b.Message = "interrupted by API restart"
+		}
+		s.items[b.Name] = b
+	}
+	s.mu.Unlock()
+}
+
+// persistItem writes the current state of name to the durable store (or removes
+// it if gone). Runs the network I/O outside the store lock.
+func (s *Store) persistItem(name string) {
+	s.mu.RLock()
+	p := s.persist
+	b, ok := s.items[name]
+	var cp *Benchmark
+	if ok {
+		c := *b
+		cp = &c
+	}
+	s.mu.RUnlock()
+	if p == nil {
+		return
+	}
+	if cp != nil {
+		p.Save(cp)
+	} else {
+		p.Remove(name)
+	}
 }
 
 func (s *Store) List() []Benchmark {
@@ -108,6 +157,7 @@ func (s *Store) Create(b Benchmark) (*Benchmark, error) {
 	s.mu.Lock()
 	s.items[b.Name] = &b
 	s.mu.Unlock()
+	s.persistItem(b.Name)
 
 	go s.run(b.Name)
 	cp := b
@@ -119,6 +169,7 @@ func (s *Store) Delete(name string) bool {
 	_, ok := s.items[name]
 	delete(s.items, name)
 	s.mu.Unlock()
+	s.persistItem(name) // item gone -> removes the persisted record
 	if ok && s.runner != nil && s.runner.Available() {
 		// Tear down any cluster resources (Job + PVC we created) for this run.
 		go func() {
@@ -150,15 +201,16 @@ func (s *Store) run(name string) {
 	}
 	profile := b.Profile
 	s.mu.Unlock()
+	s.persistItem(name) // Running
 
 	if mode == "kubernetes-job" && s.runner != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 		defer cancel()
 		res, msg, err := s.runner.RunJob(ctx, &req)
 		s.mu.Lock()
-		defer s.mu.Unlock()
 		bb, ok := s.items[name]
 		if !ok {
+			s.mu.Unlock()
 			return
 		}
 		now := time.Now().UTC()
@@ -166,11 +218,13 @@ func (s *Store) run(name string) {
 		if err != nil {
 			bb.Phase = PhaseFailed
 			bb.Message = err.Error()
-			return
+		} else {
+			bb.Phase = PhaseSucceeded
+			bb.Message = msg
+			bb.Results = res
 		}
-		bb.Phase = PhaseSucceeded
-		bb.Message = msg
-		bb.Results = res
+		s.mu.Unlock()
+		s.persistItem(name)
 		return
 	}
 
@@ -185,9 +239,9 @@ func (s *Store) run(name string) {
 	time.Sleep(delay)
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	bb, ok := s.items[name]
 	if !ok {
+		s.mu.Unlock()
 		return
 	}
 	now := time.Now().UTC()
@@ -209,6 +263,8 @@ func (s *Store) run(name string) {
 		"latReadUs":     280 / mult,
 		"latWriteUs":    320 / mult,
 	}
+	s.mu.Unlock()
+	s.persistItem(name)
 }
 
 // fioCmdFor builds an fio command that runs four sequential (stonewalled) jobs —
