@@ -3,7 +3,7 @@ import { ArrowLeft, Cpu, HardDrive, MemoryStick } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { useClusterMetrics, useNode } from '@/api/hooks'
 import { formatBytes, toConditionArray, type Node } from '@/api/longhorn'
-import { AreaSparkline, UsageBar } from '@/components/data/dashcharts'
+import { MetricLine, UsageBar } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Badge } from '@/components/ui/badge'
@@ -156,20 +156,20 @@ export function NodeDetailPage() {
             <CardTitle>{t('nodeDetail.io')}</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <div className="mb-1 flex justify-between text-xs text-[var(--color-muted-foreground)]">
-                <span>{t('nodeDetail.writeThroughput')}</span>
-                <span className="tabular-nums">{formatBytes(writeAgg.at(-1) ?? 0)}/s</span>
-              </div>
-              <AreaSparkline points={writeAgg} emptyLabel={t('nodeDetail.noIo')} format={(v) => `${formatBytes(v)}/s`} />
-            </div>
-            <div>
-              <div className="mb-1 flex justify-between text-xs text-[var(--color-muted-foreground)]">
-                <span>{t('nodeDetail.readThroughput')}</span>
-                <span className="tabular-nums">{formatBytes(readAgg.at(-1) ?? 0)}/s</span>
-              </div>
-              <AreaSparkline points={readAgg} emptyLabel={t('nodeDetail.noIo')} format={(v) => `${formatBytes(v)}/s`} />
-            </div>
+            <MetricLine
+              label={t('nodeDetail.writeThroughput')}
+              points={writeAgg}
+              format={(v) => `${formatBytes(v)}/s`}
+              emptyLabel={t('nodeDetail.noIo')}
+              peakLabel={t('common.peak')}
+            />
+            <MetricLine
+              label={t('nodeDetail.readThroughput')}
+              points={readAgg}
+              format={(v) => `${formatBytes(v)}/s`}
+              emptyLabel={t('nodeDetail.noIo')}
+              peakLabel={t('common.peak')}
+            />
           </CardContent>
         </Card>
 

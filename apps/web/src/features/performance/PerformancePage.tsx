@@ -11,7 +11,7 @@ import {
 } from '@/api/hooks'
 import { useAuth } from '@/auth/AuthContext'
 import { formatBytes } from '@/api/longhorn'
-import { AreaSparkline } from '@/components/data/dashcharts'
+import { MetricLine } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Badge, stateTone } from '@/components/ui/badge'
@@ -20,40 +20,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
-/**
- * A labelled metric line: shows what is being measured, the current value and
- * peak (with units), and a trend chart with a hover tooltip.
- */
-function MetricLine({
-  label,
-  points,
-  format,
-  emptyLabel,
-}: {
-  label: string
-  points: Array<{ v: number }>
-  format: (v: number) => string
-  emptyLabel: string
-}) {
-  const vals = points.map((p) => p.v)
-  const current = vals.at(-1) ?? 0
-  const peak = vals.length ? Math.max(...vals) : 0
-  const { t } = useAppTranslation()
-  return (
-    <div>
-      <div className="mb-0.5 flex items-baseline justify-between gap-2">
-        <span className="text-xs font-medium text-[var(--color-foreground)]">{label}</span>
-        <span className="tabular-nums text-sm font-semibold text-[var(--color-foreground)]">
-          {format(current)}
-        </span>
-      </div>
-      <div className="mb-1 text-[10px] text-[var(--color-muted-foreground)]">
-        {t('performance.peak')}: <span className="tabular-nums">{format(peak)}</span>
-      </div>
-      <AreaSparkline points={vals} emptyLabel={emptyLabel} height={44} format={format} />
-    </div>
-  )
-}
+// Human-readable rendering for the raw fio result keys.
+const BENCH_METRICS: Array<{ key: string; labelKey: string; fmt: (v: number) => string }> = [
+  { key: 'seqReadMBps', labelKey: 'performance.benchSeqRead', fmt: (v) => `${v.toFixed(0)} MB/s` },
+  { key: 'seqWriteMBps', labelKey: 'performance.benchSeqWrite', fmt: (v) => `${v.toFixed(0)} MB/s` },
+  { key: 'randReadIOPS', labelKey: 'performance.benchRandRead', fmt: (v) => `${Math.round(v).toLocaleString()} IOPS` },
+  { key: 'randWriteIOPS', labelKey: 'performance.benchRandWrite', fmt: (v) => `${Math.round(v).toLocaleString()} IOPS` },
+  { key: 'latReadUs', labelKey: 'performance.benchReadLat', fmt: (v) => `${(v / 1000).toFixed(2)} ms` },
+  { key: 'latWriteUs', labelKey: 'performance.benchWriteLat', fmt: (v) => `${(v / 1000).toFixed(2)} ms` },
+]
 
 export function PerformancePage() {
   const { t } = useAppTranslation()
@@ -62,10 +37,15 @@ export function PerformancePage() {
   const attached = (q.data ?? []).filter((v) => (v.state ?? '').toLowerCase() === 'attached')
   const series = metrics.data?.series ?? []
 
+  // Only show volumes that currently exist. The scraper retains a short ring of
+  // samples, so recently-deleted volumes (e.g. finished benchmark PVCs) can
+  // still have series until they age out — filter them against the live list.
+  const liveVolumes = new Set((q.data ?? []).map((v) => v.name))
+
   const byVolume = new Map<string, typeof series>()
   for (const s of series) {
     const vol = s.labels?.volume
-    if (!vol) continue
+    if (!vol || !liveVolumes.has(vol)) continue
     if (!byVolume.has(vol)) byVolume.set(vol, [])
     byVolume.get(vol)!.push(s)
   }
@@ -88,12 +68,14 @@ export function PerformancePage() {
       >
         <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[...byVolume.entries()].map(([vol, ss]) => {
-            const read = ss.find((s) => s.name.includes('read_throughput'))
-            const write = ss.find((s) => s.name.includes('write_throughput'))
-            const readIops = ss.find((s) => s.name.includes('read_iops'))
-            const writeIops = ss.find((s) => s.name.includes('write_iops'))
+            const pv = (name: string) => (ss.find((s) => s.name.includes(name))?.points ?? []).map((p) => p.v)
+            const read = pv('read_throughput')
+            const write = pv('write_throughput')
+            const readIops = pv('read_iops')
+            const writeIops = pv('write_iops')
             const mbps = (v: number) => `${formatBytes(v)}/s`
             const iops = (v: number) => `${Math.round(v).toLocaleString()} IOPS`
+            const peak = t('performance.peak')
             return (
               <Card key={vol}>
                 <CardHeader className="flex-row items-center justify-between space-y-0">
@@ -108,30 +90,10 @@ export function PerformancePage() {
                   <Activity size={16} className="text-[var(--color-primary)]" />
                 </CardHeader>
                 <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3">
-                  <MetricLine
-                    label={t('performance.readThroughput')}
-                    points={read?.points ?? []}
-                    format={mbps}
-                    emptyLabel={t('performance.noSamples')}
-                  />
-                  <MetricLine
-                    label={t('performance.writeThroughput')}
-                    points={write?.points ?? []}
-                    format={mbps}
-                    emptyLabel={t('performance.noSamples')}
-                  />
-                  <MetricLine
-                    label={t('performance.readIops')}
-                    points={readIops?.points ?? []}
-                    format={iops}
-                    emptyLabel={t('performance.noSamples')}
-                  />
-                  <MetricLine
-                    label={t('performance.writeIops')}
-                    points={writeIops?.points ?? []}
-                    format={iops}
-                    emptyLabel={t('performance.noSamples')}
-                  />
+                  <MetricLine label={t('performance.readThroughput')} points={read} format={mbps} emptyLabel={t('performance.noSamples')} peakLabel={peak} />
+                  <MetricLine label={t('performance.writeThroughput')} points={write} format={mbps} emptyLabel={t('performance.noSamples')} peakLabel={peak} />
+                  <MetricLine label={t('performance.readIops')} points={readIops} format={iops} emptyLabel={t('performance.noSamples')} peakLabel={peak} />
+                  <MetricLine label={t('performance.writeIops')} points={writeIops} format={iops} emptyLabel={t('performance.noSamples')} peakLabel={peak} />
                 </CardContent>
               </Card>
             )
@@ -173,6 +135,22 @@ export function BenchmarksPage() {
   const [nodeName, setNodeName] = useState('')
 
   const nodeNames = (nodesQ.data ?? []).map((n) => n.name).filter(Boolean)
+
+  function formatBenchResults(results: Record<string, number>) {
+    const out: Array<{ key: string; label: string; value: string }> = []
+    for (const m of BENCH_METRICS) {
+      const val = results[m.key]
+      if (typeof val === 'number') {
+        out.push({ key: m.key, label: t(m.labelKey), value: m.fmt(val) })
+      }
+    }
+    for (const [k, v] of Object.entries(results)) {
+      if (!BENCH_METRICS.some((m) => m.key === k)) {
+        out.push({ key: k, label: k, value: typeof v === 'number' ? v.toFixed(1) : String(v) })
+      }
+    }
+    return out
+  }
 
   return (
     <div data-testid="benchmarks-page">
@@ -241,10 +219,15 @@ export function BenchmarksPage() {
                   {String(b.profile)} · {String(b.phase)} · {String(b.message ?? '')}
                 </div>
                 {b.results && typeof b.results === 'object' ? (
-                  <div className="mt-1 font-mono text-xs">
-                    {Object.entries(b.results as Record<string, number>)
-                      .map(([k, v]) => `${k}=${typeof v === 'number' ? v.toFixed(1) : v}`)
-                      .join(' · ')}
+                  <div className="mt-2 grid max-w-lg grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3">
+                    {formatBenchResults(b.results as Record<string, number>).map((m) => (
+                      <div key={m.key}>
+                        <div className="text-[10px] uppercase tracking-wide text-[var(--color-muted-foreground)]">
+                          {m.label}
+                        </div>
+                        <div className="tabular-nums font-semibold">{m.value}</div>
+                      </div>
+                    ))}
                   </div>
                 ) : null}
                 {b.fioCmd ? (

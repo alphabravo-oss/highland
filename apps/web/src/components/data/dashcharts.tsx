@@ -121,3 +121,41 @@ export function LegendRow({ color, label, value }: { color: string; label: strin
     </div>
   )
 }
+
+/**
+ * A labelled metric line: names what is measured, shows the current value and
+ * peak (with units), and a trend chart with a hover tooltip. Used across the
+ * dashboard, performance, and detail pages so every chart has a reference.
+ */
+export function MetricLine({
+  label,
+  points,
+  format,
+  emptyLabel,
+  peakLabel,
+  height = 48,
+}: {
+  label: string
+  points: number[]
+  format: (v: number) => string
+  emptyLabel: string
+  peakLabel: string
+  height?: number
+}) {
+  const current = points.at(-1) ?? 0
+  const peak = points.length ? Math.max(...points) : 0
+  return (
+    <div>
+      <div className="mb-0.5 flex items-baseline justify-between gap-2">
+        <span className="text-xs font-medium text-[var(--color-foreground)]">{label}</span>
+        <span className="tabular-nums text-sm font-semibold text-[var(--color-foreground)]">
+          {format(current)}
+        </span>
+      </div>
+      <div className="mb-1 text-[10px] text-[var(--color-muted-foreground)]">
+        {peakLabel}: <span className="tabular-nums">{format(peak)}</span>
+      </div>
+      <AreaSparkline points={points} emptyLabel={emptyLabel} height={height} format={format} />
+    </div>
+  )
+}

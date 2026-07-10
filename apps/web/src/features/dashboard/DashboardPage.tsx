@@ -10,7 +10,7 @@ import {
   useVolumes,
 } from '@/api/hooks'
 import { formatBytes } from '@/api/longhorn'
-import { AreaSparkline, Donut, LegendRow, UsageBar } from '@/components/data/dashcharts'
+import { Donut, LegendRow, MetricLine, UsageBar } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Badge, stateTone } from '@/components/ui/badge'
@@ -229,29 +229,21 @@ export function DashboardPage() {
                 {t('dashboard.liveIo')}
               </Link>
             </CardHeader>
-            <CardContent className="space-y-2">
-              <div>
-                <div className="mb-1 flex items-center justify-between text-xs text-[var(--color-muted-foreground)]">
-                  <span>{t('dashboard.writeThroughput')}</span>
-                  <span className="tabular-nums">{formatBytes(writeAgg.at(-1) ?? 0)}/s</span>
-                </div>
-                <AreaSparkline
-                  points={writeAgg}
-                  emptyLabel={t('dashboard.noIo')}
-                  format={(v) => `${formatBytes(v)}/s`}
-                />
-              </div>
-              <div>
-                <div className="mb-1 flex items-center justify-between text-xs text-[var(--color-muted-foreground)]">
-                  <span>{t('dashboard.readThroughput')}</span>
-                  <span className="tabular-nums">{formatBytes(readAgg.at(-1) ?? 0)}/s</span>
-                </div>
-                <AreaSparkline
-                  points={readAgg}
-                  emptyLabel={t('dashboard.noIo')}
-                  format={(v) => `${formatBytes(v)}/s`}
-                />
-              </div>
+            <CardContent className="space-y-3">
+              <MetricLine
+                label={t('dashboard.writeThroughput')}
+                points={writeAgg}
+                format={(v) => `${formatBytes(v)}/s`}
+                emptyLabel={t('dashboard.noIo')}
+                peakLabel={t('common.peak')}
+              />
+              <MetricLine
+                label={t('dashboard.readThroughput')}
+                points={readAgg}
+                format={(v) => `${formatBytes(v)}/s`}
+                emptyLabel={t('dashboard.noIo')}
+                peakLabel={t('common.peak')}
+              />
             </CardContent>
           </Card>
         </div>

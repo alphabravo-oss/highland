@@ -115,7 +115,8 @@
     "uploading": "Uploading…",
     "select": "Select…",
     "selectItem": "Select {{name}}",
-    "clear": "Clear"
+    "clear": "Clear",
+    "peak": "Peak"
   },
   "confirm": {
     "typeToConfirmBefore": "Type",
@@ -436,7 +437,13 @@
     "runBenchmark": "Run benchmark",
     "peak": "Peak",
     "readIops": "Read IOPS",
-    "writeIops": "Write IOPS"
+    "writeIops": "Write IOPS",
+    "benchSeqRead": "Seq read",
+    "benchSeqWrite": "Seq write",
+    "benchRandRead": "Rand read",
+    "benchRandWrite": "Rand write",
+    "benchReadLat": "Read latency",
+    "benchWriteLat": "Write latency"
   },
   "settings": {
     "title": "Settings",

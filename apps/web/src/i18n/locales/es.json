@@ -115,7 +115,8 @@
     "uploading": "Subiendo…",
     "select": "Seleccionar…",
     "selectItem": "Seleccionar {{name}}",
-    "clear": "Limpiar"
+    "clear": "Limpiar",
+    "peak": "Pico"
   },
   "confirm": {
     "typeToConfirmBefore": "Escriba",
@@ -436,7 +437,13 @@
     "runBenchmark": "Ejecutar benchmark",
     "peak": "Pico",
     "readIops": "IOPS de lectura",
-    "writeIops": "IOPS de escritura"
+    "writeIops": "IOPS de escritura",
+    "benchSeqRead": "Lectura sec.",
+    "benchSeqWrite": "Escritura sec.",
+    "benchRandRead": "Lectura aleat.",
+    "benchRandWrite": "Escritura aleat.",
+    "benchReadLat": "Latencia lectura",
+    "benchWriteLat": "Latencia escritura"
   },
   "settings": {
     "title": "Configuración",
