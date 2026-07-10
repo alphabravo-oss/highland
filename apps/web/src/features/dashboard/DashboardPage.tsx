@@ -1,5 +1,7 @@
+import { useMemo } from 'react'
 import { Activity, HardDrive, Server, TriangleAlert } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import type { ColumnDef } from '@tanstack/react-table'
 import {
   useCapacity,
   useClusterMetrics,
@@ -9,13 +11,13 @@ import {
   useNodes,
   useVolumes,
 } from '@/api/hooks'
-import { formatBytes } from '@/api/longhorn'
+import { formatBytes, type Event, type Volume } from '@/api/longhorn'
+import { DataTable } from '@/components/data/DataTable'
 import { Donut, LegendRow, MetricLine, UsageBar } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Badge, stateTone } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 const ROBUSTNESS_COLORS = {
@@ -109,6 +111,59 @@ export function DashboardPage() {
   const metricSeries = metrics.data?.series ?? []
   const writeAgg = aggregateSeries(metricSeries, 'write_throughput')
   const readAgg = aggregateSeries(metricSeries, 'read_throughput')
+
+  const volHealthColumns = useMemo<ColumnDef<Volume, any>[]>(
+    () => [
+      {
+        id: 'name',
+        accessorFn: (v) => v.name ?? '',
+        header: t('common.name'),
+        meta: { className: 'font-medium' },
+        cell: ({ row }) => (
+          <Link to={`/volumes/${encodeURIComponent(row.original.name ?? '')}`} className="hover:underline">
+            {row.original.name}
+          </Link>
+        ),
+      },
+      {
+        id: 'state',
+        accessorFn: (v) => v.state ?? '',
+        header: t('common.state'),
+        cell: ({ row }) => <Badge tone={stateTone(row.original.state)}>{row.original.state ?? '—'}</Badge>,
+      },
+      {
+        id: 'robustness',
+        accessorFn: (v) => v.robustness ?? '',
+        header: t('common.robustness'),
+        cell: ({ row }) => <Badge tone={stateTone(row.original.robustness)}>{row.original.robustness ?? '—'}</Badge>,
+      },
+    ],
+    [t],
+  )
+
+  const eventColumns = useMemo<ColumnDef<Event, any>[]>(
+    () => [
+      {
+        id: 'reason',
+        accessorFn: (e) => e.reason ?? e.eventType ?? '',
+        header: t('common.reason'),
+        meta: { className: 'whitespace-nowrap' },
+      },
+      {
+        id: 'object',
+        accessorFn: (e) => `${e.involvedObject?.kind ?? ''}/${e.involvedObject?.name ?? ''}`,
+        header: t('common.object'),
+        meta: { className: 'whitespace-nowrap' },
+      },
+      {
+        id: 'message',
+        accessorFn: (e) => e.message ?? '',
+        header: t('common.message'),
+        meta: { className: 'max-w-md truncate' },
+      },
+    ],
+    [t],
+  )
 
   const loading = volumes.isLoading || nodes.isLoading
   const error =
@@ -284,19 +339,17 @@ export function DashboardPage() {
             <CardHeader>
               <CardTitle>{t('dashboard.volumeHealth')}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent>
               {volList.length === 0 ? (
                 <p className="text-sm text-[var(--color-muted-foreground)]">{t('dashboard.noVolumesYet')}</p>
               ) : (
-                volList.slice(0, 8).map((v) => (
-                  <div key={v.id ?? v.name} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="truncate font-medium">{v.name}</span>
-                    <div className="flex gap-1">
-                      <Badge tone={stateTone(v.state)}>{v.state ?? '—'}</Badge>
-                      <Badge tone={stateTone(v.robustness)}>{v.robustness ?? '—'}</Badge>
-                    </div>
-                  </div>
-                ))
+                <DataTable
+                  columns={volHealthColumns}
+                  data={volList}
+                  getRowId={(v) => v.name ?? v.id}
+                  initialPageSize={10}
+                  data-testid="dashboard-volume-health-table"
+                />
               )}
             </CardContent>
           </Card>
@@ -313,26 +366,13 @@ export function DashboardPage() {
                 emptyTitle={t('dashboard.noEvents')}
                 emptyDescription={t('dashboard.noEventsDescription')}
               >
-                <Table>
-                  <THead>
-                    <TR>
-                      <TH>{t('common.reason')}</TH>
-                      <TH>{t('common.object')}</TH>
-                      <TH>{t('common.message')}</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {(events.data ?? []).slice(0, 10).map((e) => (
-                      <TR key={e.id}>
-                        <TD className="whitespace-nowrap">{e.reason ?? e.eventType ?? '—'}</TD>
-                        <TD className="whitespace-nowrap">
-                          {e.involvedObject?.kind}/{e.involvedObject?.name}
-                        </TD>
-                        <TD className="max-w-xs truncate">{e.message ?? '—'}</TD>
-                      </TR>
-                    ))}
-                  </TBody>
-                </Table>
+                <DataTable
+                  columns={eventColumns}
+                  data={events.data ?? []}
+                  getRowId={(e) => String(e.id)}
+                  initialPageSize={10}
+                  data-testid="dashboard-events-table"
+                />
               </QueryState>
             </CardContent>
           </Card>
