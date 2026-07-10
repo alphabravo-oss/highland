@@ -283,6 +283,15 @@ export function useCreateRecurringJob() {
   })
 }
 
+export function useUpdateRecurringJob() {
+  const inv = useInvalidate()
+  return useMutation({
+    mutationFn: ({ job, body }: { job: RecurringJob; body: Record<string, unknown> }) =>
+      recurringJobsApi.update(job, body),
+    onSuccess: () => inv(['recurringjobs']),
+  })
+}
+
 export function useDeleteRecurringJob() {
   const inv = useInvalidate()
   return useMutation({

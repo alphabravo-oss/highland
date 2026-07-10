@@ -410,7 +410,13 @@
     "create": "Create recurring job",
     "delete": "Delete recurring job",
     "empty": "No recurring jobs",
-    "taskHint": "Task (snapshot | backup | filesystem-trim)"
+    "taskHint": "Task (snapshot | backup | filesystem-trim)",
+    "edit": "Edit recurring job",
+    "concurrency": "Concurrency",
+    "groupsHint": "Comma-separated group names",
+    "labelsHint": "One key=value per line",
+    "cronHint": "Cron expression, e.g. 0 0 * * *",
+    "parameterPolicy": "Volume backup policy"
   },
   "systemBackups": {
     "title": "System Backups",

@@ -134,6 +134,7 @@ export type RecurringJob = LHResource & {
   concurrency?: number
   labels?: Record<string, string>
   groups?: string[]
+  parameters?: Record<string, string>
 }
 
 export type EngineImage = LHResource & {
