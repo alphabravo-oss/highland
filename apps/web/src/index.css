@@ -39,29 +39,31 @@
   --shadow-md: 0 4px 16px oklch(0.2 0.02 260 / 0.08);
 }
 
+/* Neutral black/grey dark theme — no blue tint (chroma 0 on surfaces + accent).
+   Semantic red/green/amber and chart hues keep their color for meaning. */
 .dark {
-  --color-background: oklch(0.14 0.02 260);
-  --color-foreground: oklch(0.96 0.01 260);
-  --color-card: oklch(0.18 0.02 260);
-  --color-card-foreground: oklch(0.96 0.01 260);
-  --color-muted: oklch(0.22 0.02 260);
-  --color-muted-foreground: oklch(0.7 0.02 260);
-  --color-border: oklch(0.28 0.02 260);
-  --color-input: oklch(0.28 0.02 260);
-  --color-primary: oklch(0.68 0.13 255);
-  --color-primary-foreground: oklch(0.14 0.02 260);
-  --color-secondary: oklch(0.24 0.03 255);
-  --color-secondary-foreground: oklch(0.92 0.02 255);
+  --color-background: oklch(0.14 0 0);
+  --color-foreground: oklch(0.96 0 0);
+  --color-card: oklch(0.18 0 0);
+  --color-card-foreground: oklch(0.96 0 0);
+  --color-muted: oklch(0.23 0 0);
+  --color-muted-foreground: oklch(0.71 0 0);
+  --color-border: oklch(0.28 0 0);
+  --color-input: oklch(0.28 0 0);
+  --color-primary: oklch(0.86 0 0);
+  --color-primary-foreground: oklch(0.16 0 0);
+  --color-secondary: oklch(0.24 0 0);
+  --color-secondary-foreground: oklch(0.92 0 0);
   --color-destructive: oklch(0.6 0.18 25);
   --color-destructive-foreground: oklch(0.99 0 0);
   --color-success: oklch(0.7 0.14 155);
   --color-warning: oklch(0.78 0.14 75);
-  --color-sidebar: oklch(0.12 0.02 260);
-  --color-sidebar-foreground: oklch(0.88 0.02 260);
-  --color-sidebar-active: oklch(0.24 0.04 255);
-  --color-accent: oklch(0.24 0.03 255);
-  --color-ring: oklch(0.65 0.12 255);
-  --color-chart-1: oklch(0.7 0.14 250);
+  --color-sidebar: oklch(0.11 0 0);
+  --color-sidebar-foreground: oklch(0.88 0 0);
+  --color-sidebar-active: oklch(0.26 0 0);
+  --color-accent: oklch(0.24 0 0);
+  --color-ring: oklch(0.6 0 0);
+  --color-chart-1: oklch(0.72 0.02 260);
   --color-chart-2: oklch(0.72 0.12 160);
   --color-chart-3: oklch(0.75 0.14 50);
   --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.35);
