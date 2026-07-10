@@ -101,6 +101,16 @@ export function DashboardPage() {
   const attached = volList.filter((v) => (v.state ?? '').toLowerCase() === 'attached').length
   const schedulable = nodeList.filter((n) => n.allowScheduling).length
 
+  // Per-node storage (used/total) aggregated from each node's disks.
+  const perNodeStorage = nodeList
+    .map((n) => {
+      const disks = Object.values(n.disks ?? {})
+      const total = disks.reduce((s, d) => s + (d.storageMaximum ?? 0), 0)
+      const used = disks.reduce((s, d) => s + ((d.storageMaximum ?? 0) - (d.storageAvailable ?? 0)), 0)
+      return { name: n.name ?? '', used, total }
+    })
+    .filter((n) => n.total > 0)
+
   // Prefer live collection counts; overlay dashboard API if present
   const d = dash.data
   const storageTotal =
@@ -258,6 +268,9 @@ export function DashboardPage() {
             <CardContent className="space-y-3">
               {capacity.data && capacity.data.totalBytes > 0 ? (
                 <>
+                  <div className="text-xs font-medium text-[var(--color-muted-foreground)]">
+                    {t('dashboard.clusterTotal')}
+                  </div>
                   <UsageBar used={capacity.data.usedBytes} total={capacity.data.totalBytes} />
                   <div className="flex justify-between text-sm">
                     <span className="text-[var(--color-muted-foreground)]">
@@ -274,6 +287,27 @@ export function DashboardPage() {
               ) : (
                 <p className="text-sm text-[var(--color-muted-foreground)]">{t('dashboard.capacityUnavailable')}</p>
               )}
+
+              {perNodeStorage.length > 0 ? (
+                <div className="space-y-2 border-t border-[var(--color-border)] pt-3">
+                  <div className="text-xs font-medium text-[var(--color-muted-foreground)]">
+                    {t('dashboard.perNodeStorage')}
+                  </div>
+                  {perNodeStorage.map((n) => (
+                    <div key={n.name} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <Link to={`/nodes/${encodeURIComponent(n.name)}`} className="truncate font-medium hover:text-[var(--color-primary)] hover:underline">
+                          {n.name}
+                        </Link>
+                        <span className="tabular-nums text-[var(--color-muted-foreground)]">
+                          {formatBytes(n.used)} / {formatBytes(n.total)}
+                        </span>
+                      </div>
+                      <UsageBar used={n.used} total={n.total} />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 

@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 import { ActionFormDialog } from './ActionFormDialog'
@@ -108,11 +109,11 @@ export function VolumeDetailPage() {
     try {
       setSnapshots(normalizeSnapshots(await execAction(volume, 'snapshotList', {})))
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'snapshotList failed')
+      setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
     } finally {
       setSnapLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (vol) void refreshSnapshots(vol)
@@ -580,10 +581,10 @@ export function VolumeDetailPage() {
           </>
         }
       >
-        <select
-          className="flex h-9 w-full rounded-md border border-[var(--color-input)] bg-[var(--color-background)] px-3 text-sm"
+        <Select
           value={jobName}
           onChange={(e) => setJobName(e.target.value)}
+          aria-label={t('volumeDetail.selectJob')}
         >
           <option value="">{t('volumeDetail.selectJob')}</option>
           {(jobsQ.data ?? []).map((j) => (
@@ -591,7 +592,7 @@ export function VolumeDetailPage() {
               {j.name} ({j.task})
             </option>
           ))}
-        </select>
+        </Select>
       </Dialog>
     </div>
   )

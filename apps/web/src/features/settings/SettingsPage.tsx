@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { RefreshCw, Save } from 'lucide-react'
 import { useSettings, useUpdateSetting } from '@/api/hooks'
+import { useAuth } from '@/auth/AuthContext'
 import type { Setting } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { PageHeader } from '@/components/data/PageHeader'
@@ -9,6 +10,7 @@ import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
@@ -21,6 +23,7 @@ function isDanger(s: Setting): boolean {
 
 export function SettingsPage() {
   const { t } = useAppTranslation()
+  const { canMutate } = useAuth()
   const q = useSettings()
   const updateMut = useUpdateSetting()
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -150,8 +153,7 @@ export function SettingsPage() {
                         </div>
                         <div>
                           {s.definition?.options?.length ? (
-                            <select
-                              className="flex h-9 w-full rounded-md border border-[var(--color-input)] bg-[var(--color-background)] px-3 text-sm"
+                            <Select
                               value={valueOf(s)}
                               disabled={readOnly}
                               onChange={(e) =>
@@ -163,7 +165,7 @@ export function SettingsPage() {
                                   {o}
                                 </option>
                               ))}
-                            </select>
+                            </Select>
                           ) : (
                             <Input
                               value={valueOf(s)}
@@ -174,16 +176,18 @@ export function SettingsPage() {
                             />
                           )}
                         </div>
-                        <div className="flex items-start">
-                          <Button
-                            type="button"
-                            size="sm"
-                            disabled={readOnly || !dirty || updateMut.isPending}
-                            onClick={() => void save(s)}
-                          >
-                            <Save size={14} /> {t('common.save')}
-                          </Button>
-                        </div>
+                        {canMutate ? (
+                          <div className="flex items-start">
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={readOnly || !dirty || updateMut.isPending}
+                              onClick={() => void save(s)}
+                            >
+                              <Save size={14} /> {t('common.save')}
+                            </Button>
+                          </div>
+                        ) : null}
                       </div>
                     )
                   })}

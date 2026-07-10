@@ -4,7 +4,7 @@ import {
   useQueryClient,
   type UseQueryOptions,
 } from '@tanstack/react-query'
-import { highlandDelete, highlandGet, highlandPost } from './client'
+import { highlandDelete, highlandGet, highlandPost, highlandPut } from './client'
 import {
   backupTargetsApi,
   backupVolumesApi,
@@ -369,6 +369,15 @@ export function useHighlandUsers() {
   return useQuery({
     queryKey: ['users'],
     queryFn: () => highlandGet<{ data: Array<{ username: string; role: string }> }>('/users'),
+  })
+}
+
+export function useUpdateHighlandUser() {
+  const inv = useInvalidate()
+  return useMutation({
+    mutationFn: ({ username, body }: { username: string; body: Record<string, unknown> }) =>
+      highlandPut(`/users/${encodeURIComponent(username)}`, body),
+    onSuccess: () => inv(['users']),
   })
 }
 

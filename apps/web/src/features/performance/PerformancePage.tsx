@@ -206,11 +206,15 @@ export function BenchmarksPage() {
           ) : null
         }
       />
-      {q.error ? (
-        <p className="text-sm text-red-600">{(q.error as Error).message}</p>
-      ) : null}
-      <div className="space-y-2">
-        {(q.data?.data ?? []).map((b) => (
+      <QueryState
+        isLoading={q.isLoading}
+        error={q.error as Error | null}
+        isEmpty={!(q.data?.data ?? []).length}
+        emptyTitle={t('performance.empty')}
+        onRetry={() => void q.refetch()}
+      >
+        <div className="space-y-2">
+          {(q.data?.data ?? []).map((b) => (
           <Card key={String(b.name)}>
             <CardContent className="flex flex-wrap items-center justify-between gap-2 py-4 text-sm">
               <div>
@@ -248,11 +252,9 @@ export function BenchmarksPage() {
               ) : null}
             </CardContent>
           </Card>
-        ))}
-        {!q.isLoading && !(q.data?.data ?? []).length ? (
-          <p className="text-sm text-[var(--color-muted-foreground)]">{t('performance.empty')}</p>
-        ) : null}
-      </div>
+          ))}
+        </div>
+      </QueryState>
     </div>
   )
 }

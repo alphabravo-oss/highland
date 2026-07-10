@@ -6,6 +6,7 @@ import {
   useCreateBackingImage,
   useDeleteBackingImage,
 } from '@/api/hooks'
+import { useAuth } from '@/auth/AuthContext'
 import { formatBytes, type BackingImage } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { DataTable } from '@/components/data/DataTable'
@@ -15,10 +16,12 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 export function BackingImagesPage() {
   const { t } = useAppTranslation()
+  const { canMutate } = useAuth()
   const q = useBackingImages()
   const createMut = useCreateBackingImage()
   const delMut = useDeleteBackingImage()
@@ -68,19 +71,21 @@ export function BackingImagesPage() {
         header: '',
         enableSorting: false,
         meta: { headerClassName: 'text-right', className: 'text-right' },
-        cell: ({ row }) => (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => setDeleteTarget(row.original)}
-          >
-            <Trash2 size={14} />
-          </Button>
-        ),
+        cell: ({ row }) =>
+          canMutate ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-label={t('common.delete')}
+              onClick={() => setDeleteTarget(row.original)}
+            >
+              <Trash2 size={14} aria-hidden />
+            </Button>
+          ) : null,
       },
     ],
-    [t],
+    [t, canMutate],
   )
 
   async function createOrUpload() {
@@ -98,7 +103,7 @@ export function BackingImagesPage() {
           (created as BackingImage).actions?.upload ||
           (created as BackingImage).links?.upload ||
           `/api/v1/lh/backingimages/${encodeURIComponent(name)}`
-        const res = await fetch(uploadUrl.startsWith('http') ? uploadUrl : uploadUrl, {
+        const res = await fetch(uploadUrl, {
           method: 'POST',
           credentials: 'include',
           body: file,
@@ -107,7 +112,7 @@ export function BackingImagesPage() {
           },
         })
         if (!res.ok) {
-          throw new Error(`upload failed: ${res.status}`)
+          throw new Error(t('admin.createFailed'))
         }
         setOpen(false)
         await q.refetch()
@@ -136,9 +141,11 @@ export function BackingImagesPage() {
             <Button type="button" variant="outline" size="sm" onClick={() => void q.refetch()}>
               <RefreshCw size={14} /> {t('common.refresh')}
             </Button>
-            <Button type="button" size="sm" onClick={() => setOpen(true)}>
-              <Plus size={14} /> {t('common.create')}
-            </Button>
+            {canMutate ? (
+              <Button type="button" size="sm" onClick={() => setOpen(true)}>
+                <Plus size={14} /> {t('common.create')}
+              </Button>
+            ) : null}
           </>
         }
       />
@@ -160,20 +167,22 @@ export function BackingImagesPage() {
           enableExport
           exportName="highland-backing-images"
           enableSelection
-          bulkActions={(sel) => (
-            <Button
-              type="button"
-              size="sm"
-              variant="destructive"
-              className="h-7 gap-1 text-xs"
-              onClick={() => {
-                setBulkRows(sel)
-                setBulkDeleteOpen(true)
-              }}
-            >
-              <Trash2 size={14} /> {t('common.delete')}
-            </Button>
-          )}
+          bulkActions={(sel) =>
+            canMutate ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                className="h-7 gap-1 text-xs"
+                onClick={() => {
+                  setBulkRows(sel)
+                  setBulkDeleteOpen(true)
+                }}
+              >
+                <Trash2 size={14} aria-hidden /> {t('common.delete')}
+              </Button>
+            ) : null
+          }
         />
       </QueryState>
 
@@ -194,15 +203,11 @@ export function BackingImagesPage() {
       >
         <div className="space-y-3">
           <Input placeholder={t('common.name')} value={name} onChange={(e) => setName(e.target.value)} />
-          <select
-            className="flex h-9 w-full rounded-md border border-[var(--color-input)] bg-[var(--color-background)] px-3 text-sm"
-            value={sourceType}
-            onChange={(e) => setSourceType(e.target.value)}
-          >
+          <Select value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
             <option value="download">download</option>
             <option value="upload">{t('backingImages.uploadOption')}</option>
             <option value="clone-from-volume">clone-from-volume</option>
-          </select>
+          </Select>
           {sourceType === 'download' ? (
             <Input
               placeholder={t('backingImages.imageUrl')}

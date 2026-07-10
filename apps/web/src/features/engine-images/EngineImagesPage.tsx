@@ -6,6 +6,7 @@ import {
   useDeleteEngineImage,
   useEngineImages,
 } from '@/api/hooks'
+import { useAuth } from '@/auth/AuthContext'
 import type { EngineImage } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { DataTable } from '@/components/data/DataTable'
@@ -20,6 +21,7 @@ import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 export function EngineImagesPage() {
   const { t } = useAppTranslation()
+  const { canMutate } = useAuth()
   const q = useEngineImages()
   const createMut = useCreateEngineImage()
   const delMut = useDeleteEngineImage()
@@ -73,19 +75,20 @@ export function EngineImagesPage() {
         enableSorting: false,
         meta: { headerClassName: 'text-right', className: 'text-right' },
         cell: ({ row }) =>
-          !row.original.default ? (
+          canMutate && !row.original.default ? (
             <Button
               type="button"
               size="sm"
               variant="ghost"
+              aria-label={t('common.delete')}
               onClick={() => setDeleteTarget(row.original)}
             >
-              <Trash2 size={14} />
+              <Trash2 size={14} aria-hidden />
             </Button>
           ) : null,
       },
     ],
-    [t],
+    [t, canMutate],
   )
 
   return (
@@ -98,9 +101,11 @@ export function EngineImagesPage() {
             <Button type="button" variant="outline" size="sm" onClick={() => void q.refetch()}>
               <RefreshCw size={14} /> {t('common.refresh')}
             </Button>
-            <Button type="button" size="sm" onClick={() => setOpen(true)}>
-              <Plus size={14} /> {t('common.deploy')}
-            </Button>
+            {canMutate ? (
+              <Button type="button" size="sm" onClick={() => setOpen(true)}>
+                <Plus size={14} /> {t('common.deploy')}
+              </Button>
+            ) : null}
           </>
         }
       />
@@ -122,20 +127,24 @@ export function EngineImagesPage() {
           enableExport
           exportName="highland-engine-images"
           enableSelection
-          bulkActions={(sel) => (
-            <Button
-              type="button"
-              size="sm"
-              variant="destructive"
-              className="h-7 gap-1 text-xs"
-              onClick={() => {
-                setBulkRows(sel)
-                setBulkDeleteOpen(true)
-              }}
-            >
-              <Trash2 size={14} /> {t('common.delete')}
-            </Button>
-          )}
+          bulkActions={
+            canMutate
+              ? (sel) => (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    className="h-7 gap-1 text-xs"
+                    onClick={() => {
+                      setBulkRows(sel)
+                      setBulkDeleteOpen(true)
+                    }}
+                  >
+                    <Trash2 size={14} aria-hidden /> {t('common.delete')}
+                  </Button>
+                )
+              : undefined
+          }
         />
       </QueryState>
 

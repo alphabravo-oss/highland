@@ -7,6 +7,7 @@ import {
   useSystemBackups,
   useSystemRestores,
 } from '@/api/hooks'
+import { useAuth } from '@/auth/AuthContext'
 import { systemRestoresApi, type SystemBackup } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { DataTable } from '@/components/data/DataTable'
@@ -23,6 +24,7 @@ import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 export function SystemBackupsPage() {
   const { t } = useAppTranslation()
+  const { canMutate } = useAuth()
   const backups = useSystemBackups()
   const restores = useSystemRestores()
   const createMut = useCreateSystemBackup()
@@ -68,6 +70,7 @@ export function SystemBackupsPage() {
       meta: { headerClassName: 'text-right' },
       cell: ({ row }) => {
         const b = row.original
+        if (!canMutate) return null
         return (
           <div className="flex justify-end gap-1">
             <Button
@@ -87,8 +90,14 @@ export function SystemBackupsPage() {
             >
               {t('common.restore')}
             </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(b)}>
-              <Trash2 size={14} />
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-label={t('common.delete')}
+              onClick={() => setDeleteTarget(b)}
+            >
+              <Trash2 size={14} aria-hidden />
             </Button>
           </div>
         )
@@ -114,9 +123,11 @@ export function SystemBackupsPage() {
             >
               <RefreshCw size={14} /> {t('common.refresh')}
             </Button>
-            <Button type="button" size="sm" onClick={() => setOpen(true)}>
-              <Plus size={14} /> {t('common.create')}
-            </Button>
+            {canMutate ? (
+              <Button type="button" size="sm" onClick={() => setOpen(true)}>
+                <Plus size={14} /> {t('common.create')}
+              </Button>
+            ) : null}
           </>
         }
       />
@@ -142,17 +153,21 @@ export function SystemBackupsPage() {
             enableSelection
             rowSelection={selected}
             onRowSelectionChange={setSelected}
-            bulkActions={() => (
-              <Button
-                type="button"
-                size="sm"
-                variant="destructive"
-                className="h-7 text-xs"
-                onClick={() => setBulkDeleteOpen(true)}
-              >
-                {t('common.delete')}
-              </Button>
-            )}
+            bulkActions={
+              canMutate
+                ? () => (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      className="h-7 text-xs"
+                      onClick={() => setBulkDeleteOpen(true)}
+                    >
+                      {t('common.delete')}
+                    </Button>
+                  )
+                : undefined
+            }
           />
         </QueryState>
 

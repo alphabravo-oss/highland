@@ -574,7 +574,9 @@
     "liveIo": "Live I/O →",
     "writeThroughput": "Write throughput",
     "readThroughput": "Read throughput",
-    "noIo": "No live I/O yet"
+    "noIo": "No live I/O yet",
+    "perNodeStorage": "Per node",
+    "clusterTotal": "Cluster total"
   },
   "theme": {
     "label": "Theme",

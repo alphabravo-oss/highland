@@ -7,6 +7,7 @@ import {
   useCompatibility,
   useHighlandUsers,
   usePreflight,
+  useUpdateHighlandUser,
 } from '@/api/hooks'
 import { highlandDelete, highlandPost } from '@/api/client'
 import { useQueryClient } from '@tanstack/react-query'
@@ -32,6 +33,7 @@ export function AdminPage() {
   const { t } = useAppTranslation()
   const { user, isAdmin } = useAuth()
   const users = useHighlandUsers()
+  const updateUserMut = useUpdateHighlandUser()
   const compat = useCompatibility()
   const qc = useQueryClient()
   const toast = useToast()
@@ -98,10 +100,11 @@ export function AdminPage() {
                 type="button"
                 size="sm"
                 variant="ghost"
+                aria-label={t('common.delete')}
                 disabled={u.username === user?.username}
                 onClick={() => setDeleteUser(u.username)}
               >
-                <Trash2 size={14} />
+                <Trash2 size={14} aria-hidden />
               </Button>
             </div>
           )
@@ -128,21 +131,13 @@ export function AdminPage() {
   async function updateUser() {
     if (!editUser) return
     try {
-      // use fetch put via highland API
-      const res = await fetch(`/api/v1/users/${encodeURIComponent(editUser.username)}`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: editRole, password: editPassword || undefined }),
+      await updateUserMut.mutateAsync({
+        username: editUser.username,
+        body: { role: editRole, password: editPassword || undefined },
       })
-      if (!res.ok) {
-        const b = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(b.error ?? res.statusText)
-      }
       toast.success(t('admin.userUpdated'), editUser.username)
       setEditUser(null)
       setEditPassword('')
-      await qc.invalidateQueries({ queryKey: ['users'] })
     } catch (e) {
       toast.error(t('admin.updateFailed'), e instanceof Error ? e.message : undefined)
     }

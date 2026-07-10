@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { RefreshCw, Trash2 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useDeleteOrphan, useOrphans } from '@/api/hooks'
+import { useAuth } from '@/auth/AuthContext'
 import type { Orphan } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { DataTable } from '@/components/data/DataTable'
@@ -13,6 +14,7 @@ import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 export function OrphansPage() {
   const { t } = useAppTranslation()
+  const { canMutate } = useAuth()
   const q = useOrphans()
   const delMut = useDeleteOrphan()
   const [deleteTarget, setDeleteTarget] = useState<Orphan | null>(null)
@@ -53,19 +55,21 @@ export function OrphansPage() {
         header: '',
         enableSorting: false,
         meta: { className: 'text-right' },
-        cell: ({ row }) => (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => setDeleteTarget(row.original)}
-          >
-            <Trash2 size={14} />
-          </Button>
-        ),
+        cell: ({ row }) =>
+          canMutate ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-label={t('common.delete')}
+              onClick={() => setDeleteTarget(row.original)}
+            >
+              <Trash2 size={14} aria-hidden />
+            </Button>
+          ) : null,
       },
     ],
-    [t],
+    [t, canMutate],
   )
 
   const data = q.data ?? []
@@ -99,17 +103,19 @@ export function OrphansPage() {
           exportName="highland-orphans"
           enableSelection
           onSelectionChange={setSelectedOrphans}
-          bulkActions={() => (
-            <Button
-              type="button"
-              size="sm"
-              variant="destructive"
-              className="h-7 gap-1 text-xs"
-              onClick={() => setBulkDeleteOpen(true)}
-            >
-              <Trash2 size={14} /> {t('common.delete')}
-            </Button>
-          )}
+          bulkActions={() =>
+            canMutate ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                className="h-7 gap-1 text-xs"
+                onClick={() => setBulkDeleteOpen(true)}
+              >
+                <Trash2 size={14} aria-hidden /> {t('common.delete')}
+              </Button>
+            ) : null
+          }
         />
       </QueryState>
 

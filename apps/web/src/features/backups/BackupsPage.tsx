@@ -36,7 +36,7 @@ export function BackupsPage() {
     setError(null)
     try {
       if (!hasAction(bv, 'backupList')) {
-        setError('backupList action not available')
+        setError(t('volumeActions.actionFailed'))
         return
       }
       const res = (await backupVolumesApi.action(bv, 'backupList', {})) as {
@@ -46,7 +46,7 @@ export function BackupsPage() {
       setBackupList(data as Array<Record<string, unknown>>)
       setBackupListFor(bv.name)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'List backups failed')
+      setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
     }
   }
 
@@ -59,13 +59,13 @@ export function BackupsPage() {
           ? 'sync'
           : null
       if (!action) {
-        setError('sync action not available')
+        setError(t('volumeActions.actionFailed'))
         return
       }
       await backupVolumesApi.action(bv, action, {})
       await q.refetch()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Sync failed')
+      setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
     }
   }
 
@@ -84,7 +84,7 @@ export function BackupsPage() {
         }
         await q.refetch()
       } catch (e2) {
-        setError(e2 instanceof Error ? e2.message : 'Sync all failed')
+        setError(e2 instanceof Error ? e2.message : t('volumeActions.actionFailed'))
       }
     }
   }
@@ -106,7 +106,7 @@ export function BackupsPage() {
       setRestoreName('')
       setStandby(false)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Restore failed')
+      setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
     }
   }
 
@@ -116,12 +116,12 @@ export function BackupsPage() {
       if (hasAction(bv, 'backupDelete')) {
         await backupVolumesApi.action(bv, 'backupDelete', { name: backupName })
       } else {
-        setError('backupDelete not available')
+        setError(t('volumeActions.actionFailed'))
         return
       }
       await listBackups(bv)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Delete backup failed')
+      setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
     }
   }
 
@@ -140,7 +140,7 @@ export function BackupsPage() {
           fromBackup: last ? `backup://${bv.name}/${last}` : undefined,
         })
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Bulk restore failed')
+        setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
         break
       }
     }
@@ -230,8 +230,14 @@ export function BackupsPage() {
                 >
                   {t('backups.drStandby')}
                 </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(bv)}>
-                  <Trash2 size={14} />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={t('common.delete')}
+                  onClick={() => setDeleteTarget(bv)}
+                >
+                  <Trash2 size={14} aria-hidden />
                 </Button>
               </>
             ) : null}

@@ -574,7 +574,9 @@
     "liveIo": "E/S en vivo →",
     "writeThroughput": "Rendimiento de escritura",
     "readThroughput": "Rendimiento de lectura",
-    "noIo": "Sin E/S en vivo aún"
+    "noIo": "Sin E/S en vivo aún",
+    "perNodeStorage": "Por nodo",
+    "clusterTotal": "Total del clúster"
   },
   "theme": {
     "label": "Tema",

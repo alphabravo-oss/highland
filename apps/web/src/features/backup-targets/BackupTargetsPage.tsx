@@ -7,6 +7,7 @@ import {
   useDeleteBackupTarget,
 } from '@/api/hooks'
 import { hasAction, type BackupTarget } from '@/api/longhorn'
+import { useAuth } from '@/auth/AuthContext'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { DataTable } from '@/components/data/DataTable'
 import { PageHeader } from '@/components/data/PageHeader'
@@ -21,6 +22,7 @@ import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 export function BackupTargetsPage() {
   const { t } = useAppTranslation()
+  const { canMutate } = useAuth()
   const q = useBackupTargets()
   const createMut = useCreateBackupTarget()
   const delMut = useDeleteBackupTarget()
@@ -61,11 +63,11 @@ export function BackupTargetsPage() {
           pollInterval: bt.pollInterval,
         })
       } else {
-        setError('No sync/update action on target')
+        setError(t('volumeActions.actionFailed'))
       }
       await q.refetch()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Sync failed')
+      setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
     }
   }
 
@@ -115,13 +117,20 @@ export function BackupTargetsPage() {
         meta: { headerClassName: 'text-right' },
         cell: ({ row }) => {
           const bt = row.original
+          if (!canMutate) return null
           return (
             <div className="flex justify-end gap-1">
               <Button type="button" size="sm" variant="outline" onClick={() => void syncTarget(bt)}>
                 {t('common.sync')}
               </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(bt)}>
-                <Trash2 size={14} />
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-label={t('common.delete')}
+                onClick={() => setDeleteTarget(bt)}
+              >
+                <Trash2 size={14} aria-hidden />
               </Button>
             </div>
           )
@@ -129,7 +138,7 @@ export function BackupTargetsPage() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t],
+    [t, canMutate],
   )
 
   const data = q.data ?? []
@@ -144,9 +153,11 @@ export function BackupTargetsPage() {
             <Button type="button" variant="outline" size="sm" onClick={() => void q.refetch()}>
               <RefreshCw size={14} /> {t('common.refresh')}
             </Button>
-            <Button type="button" size="sm" onClick={() => setOpen(true)}>
-              <Plus size={14} /> {t('common.create')}
-            </Button>
+            {canMutate ? (
+              <Button type="button" size="sm" onClick={() => setOpen(true)}>
+                <Plus size={14} /> {t('common.create')}
+              </Button>
+            ) : null}
           </>
         }
       />
@@ -176,17 +187,19 @@ export function BackupTargetsPage() {
           enableSelection
           rowSelection={selected}
           onRowSelectionChange={setSelected}
-          bulkActions={() => (
-            <Button
-              type="button"
-              size="sm"
-              variant="destructive"
-              className="h-7 text-xs"
-              onClick={() => setBulkDeleteOpen(true)}
-            >
-              {t('common.delete')}
-            </Button>
-          )}
+          bulkActions={() =>
+            canMutate ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                className="h-7 text-xs"
+                onClick={() => setBulkDeleteOpen(true)}
+              >
+                {t('common.delete')}
+              </Button>
+            ) : null
+          }
         />
       </QueryState>
 
