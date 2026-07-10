@@ -714,7 +714,11 @@
     "actionFailed": "Action failed",
     "bulkFailed": "Bulk failed",
     "snapshotPurge": "Purge snapshots",
-    "removeReplica": "Remove replica"
+    "removeReplica": "Remove replica",
+    "updateReplicaRebuildingBandwidthLimit": "Rebuild bandwidth limit",
+    "updateUblkNumberOfQueue": "UBLK queues",
+    "updateUblkQueueDepth": "UBLK queue depth",
+    "updateRebuildConcurrentSyncLimit": "Rebuild concurrent sync limit"
   },
   "nodeDetail": {
     "address": "Address",

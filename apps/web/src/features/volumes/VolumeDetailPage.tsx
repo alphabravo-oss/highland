@@ -105,13 +105,20 @@ export function VolumeDetailPage() {
   const images = (imagesQ.data ?? []).map((i) => i.image ?? i.name).filter(Boolean) as string[]
 
   const refreshSnapshots = useCallback(async (volume: Volume) => {
-    if (!hasAction(volume, 'snapshotList')) {
+    // Modern Longhorn exposes the CRD-backed snapshotCRList; older managers use
+    // the legacy snapshotList. Prefer CR, fall back to legacy, then to inline.
+    const listAction = hasAction(volume, 'snapshotCRList')
+      ? 'snapshotCRList'
+      : hasAction(volume, 'snapshotList')
+        ? 'snapshotList'
+        : null
+    if (!listAction) {
       if (Array.isArray(volume.snapshots)) setSnapshots(normalizeSnapshots(volume.snapshots))
       return
     }
     setSnapLoading(true)
     try {
-      setSnapshots(normalizeSnapshots(await execAction(volume, 'snapshotList', {})))
+      setSnapshots(normalizeSnapshots(await execAction(volume, listAction, {})))
     } catch (e) {
       setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
     } finally {
@@ -357,7 +364,7 @@ export function VolumeDetailPage() {
                   <Button type="button" size="sm" variant="outline" disabled={snapLoading} onClick={() => void refreshSnapshots(vol)}>
                     {t('common.refresh')}
                   </Button>
-                  {hasAction(vol, 'snapshotCreate') && canMutate ? (
+                  {(hasAction(vol, 'snapshotCRCreate') || hasAction(vol, 'snapshotCreate')) && canMutate ? (
                     <Button type="button" size="sm" data-testid="snapshot-create" onClick={() => setSnapCreateOpen(true)}>
                       {t('volumeDetail.createSnapshot')}
                     </Button>
@@ -564,7 +571,11 @@ export function VolumeDetailPage() {
               data-testid="snapshot-create-confirm"
               onClick={() => {
                 if (!vol) return
-                void runAction(vol, 'snapshotCreate', { name: snapName }).then(() => setSnapCreateOpen(false))
+                void runAction(
+                  vol,
+                  hasAction(vol, 'snapshotCRCreate') ? 'snapshotCRCreate' : 'snapshotCreate',
+                  { name: snapName },
+                ).then(() => setSnapCreateOpen(false))
               }}
             >
               {t('common.create')}

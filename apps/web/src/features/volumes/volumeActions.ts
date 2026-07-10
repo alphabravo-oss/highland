@@ -33,6 +33,10 @@ export const VOLUME_ACTION_DEFS = [
   { key: 'updateReplicaZoneSoftAntiAffinity', label: 'Zone soft AA', priority: 'P2', field: 'replicaZoneSoftAntiAffinity', options: ['ignored', 'enabled', 'disabled'] },
   { key: 'updateReplicaDiskSoftAntiAffinity', label: 'Disk soft AA', priority: 'P2', field: 'replicaDiskSoftAntiAffinity', options: ['ignored', 'enabled', 'disabled'] },
   { key: 'updateFreezeFilesystemForSnapshot', label: 'Freeze FS for snap', priority: 'P2', field: 'freezeFilesystemForSnapshot', options: ['ignored', 'enabled', 'disabled'] },
+  { key: 'updateReplicaRebuildingBandwidthLimit', label: 'Rebuild bandwidth limit', priority: 'P2', field: 'replicaRebuildingBandwidthLimit', type: 'number' },
+  { key: 'updateUblkNumberOfQueue', label: 'UBLK queues', priority: 'P2', field: 'ublkNumberOfQueue', type: 'number' },
+  { key: 'updateUblkQueueDepth', label: 'UBLK queue depth', priority: 'P2', field: 'ublkQueueDepth', type: 'number' },
+  { key: 'updateRebuildConcurrentSyncLimit', label: 'Rebuild concurrent sync limit', priority: 'P2', field: 'rebuildConcurrentSyncLimit', type: 'number' },
 ] as const
 
 export type VolumeActionDef = (typeof VOLUME_ACTION_DEFS)[number]

@@ -714,7 +714,11 @@
     "actionFailed": "Error en la acción",
     "bulkFailed": "Error en la operación masiva",
     "snapshotPurge": "Purgar snapshots",
-    "removeReplica": "Eliminar réplica"
+    "removeReplica": "Eliminar réplica",
+    "updateReplicaRebuildingBandwidthLimit": "Límite de ancho de banda de reconstrucción",
+    "updateUblkNumberOfQueue": "Colas UBLK",
+    "updateUblkQueueDepth": "Profundidad de cola UBLK",
+    "updateRebuildConcurrentSyncLimit": "Límite de sincronización concurrente"
   },
   "nodeDetail": {
     "address": "Dirección",
