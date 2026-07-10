@@ -10,6 +10,8 @@ import {
   useVolumes,
 } from '@/api/hooks'
 import { useAuth } from '@/auth/AuthContext'
+import { formatBytes } from '@/api/longhorn'
+import { AreaSparkline } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Badge, stateTone } from '@/components/ui/badge'
@@ -18,31 +20,38 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
-function Sparkline({ points, emptyLabel }: { points: Array<{ v: number }>; emptyLabel: string }) {
-  if (!points.length) {
-    return (
-      <div className="h-10 text-xs text-[var(--color-muted-foreground)]">
-        {emptyLabel}
-      </div>
-    )
-  }
+/**
+ * A labelled metric line: shows what is being measured, the current value and
+ * peak (with units), and a trend chart with a hover tooltip.
+ */
+function MetricLine({
+  label,
+  points,
+  format,
+  emptyLabel,
+}: {
+  label: string
+  points: Array<{ v: number }>
+  format: (v: number) => string
+  emptyLabel: string
+}) {
   const vals = points.map((p) => p.v)
-  const min = Math.min(...vals)
-  const max = Math.max(...vals)
-  const w = 160
-  const h = 40
-  const span = max - min || 1
-  const d = vals
-    .map((v, i) => {
-      const x = (i / Math.max(vals.length - 1, 1)) * w
-      const y = h - ((v - min) / span) * (h - 4) - 2
-      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
+  const current = vals.at(-1) ?? 0
+  const peak = vals.length ? Math.max(...vals) : 0
+  const { t } = useAppTranslation()
   return (
-    <svg width={w} height={h} className="overflow-visible" aria-hidden>
-      <path d={d} fill="none" stroke="var(--color-primary)" strokeWidth="1.75" />
-    </svg>
+    <div>
+      <div className="mb-0.5 flex items-baseline justify-between gap-2">
+        <span className="text-xs font-medium text-[var(--color-foreground)]">{label}</span>
+        <span className="tabular-nums text-sm font-semibold text-[var(--color-foreground)]">
+          {format(current)}
+        </span>
+      </div>
+      <div className="mb-1 text-[10px] text-[var(--color-muted-foreground)]">
+        {t('performance.peak')}: <span className="tabular-nums">{format(peak)}</span>
+      </div>
+      <AreaSparkline points={vals} emptyLabel={emptyLabel} height={44} format={format} />
+    </div>
   )
 }
 
@@ -81,10 +90,14 @@ export function PerformancePage() {
           {[...byVolume.entries()].map(([vol, ss]) => {
             const read = ss.find((s) => s.name.includes('read_throughput'))
             const write = ss.find((s) => s.name.includes('write_throughput'))
+            const readIops = ss.find((s) => s.name.includes('read_iops'))
+            const writeIops = ss.find((s) => s.name.includes('write_iops'))
+            const mbps = (v: number) => `${formatBytes(v)}/s`
+            const iops = (v: number) => `${Math.round(v).toLocaleString()} IOPS`
             return (
               <Card key={vol}>
                 <CardHeader className="flex-row items-center justify-between space-y-0">
-                  <CardTitle>
+                  <CardTitle className="truncate">
                     <Link
                       to={`/volumes/${encodeURIComponent(vol)}`}
                       className="hover:underline"
@@ -94,19 +107,31 @@ export function PerformancePage() {
                   </CardTitle>
                   <Activity size={16} className="text-[var(--color-primary)]" />
                 </CardHeader>
-                <CardContent className="space-y-2 text-xs text-[var(--color-muted-foreground)]">
-                  <div>
-                    <div className="mb-1 font-medium text-[var(--color-foreground)]">
-                      {t('performance.readThroughput')}
-                    </div>
-                    <Sparkline points={read?.points ?? []} emptyLabel={t('performance.noSamples')} />
-                  </div>
-                  <div>
-                    <div className="mb-1 font-medium text-[var(--color-foreground)]">
-                      {t('performance.writeThroughput')}
-                    </div>
-                    <Sparkline points={write?.points ?? []} emptyLabel={t('performance.noSamples')} />
-                  </div>
+                <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  <MetricLine
+                    label={t('performance.readThroughput')}
+                    points={read?.points ?? []}
+                    format={mbps}
+                    emptyLabel={t('performance.noSamples')}
+                  />
+                  <MetricLine
+                    label={t('performance.writeThroughput')}
+                    points={write?.points ?? []}
+                    format={mbps}
+                    emptyLabel={t('performance.noSamples')}
+                  />
+                  <MetricLine
+                    label={t('performance.readIops')}
+                    points={readIops?.points ?? []}
+                    format={iops}
+                    emptyLabel={t('performance.noSamples')}
+                  />
+                  <MetricLine
+                    label={t('performance.writeIops')}
+                    points={writeIops?.points ?? []}
+                    format={iops}
+                    emptyLabel={t('performance.noSamples')}
+                  />
                 </CardContent>
               </Card>
             )

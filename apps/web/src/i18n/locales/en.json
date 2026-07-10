@@ -433,7 +433,10 @@
     "profileStandard": "Standard (~20s)",
     "profileThorough": "Thorough (~45s)",
     "anyNode": "Any node",
-    "runBenchmark": "Run benchmark"
+    "runBenchmark": "Run benchmark",
+    "peak": "Peak",
+    "readIops": "Read IOPS",
+    "writeIops": "Write IOPS"
   },
   "settings": {
     "title": "Settings",
