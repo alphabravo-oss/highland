@@ -101,6 +101,7 @@ export function VolumeDetailPage() {
   const [events, setEvents] = useState<LHResource[]>([])
   const [attachments, setAttachments] = useState<LHResource[]>([])
   const [removeReplica, setRemoveReplica] = useState<string | null>(null)
+  const [deleteSnapshot, setDeleteSnapshot] = useState<string | null>(null)
   const [backupSnap, setBackupSnap] = useState<string | null>(null)
   const [backupTargetName, setBackupTargetName] = useState('')
   const [backupMode, setBackupMode] = useState<'full' | 'incremental'>('incremental')
@@ -454,7 +455,7 @@ export function VolumeDetailPage() {
                           </Button>
                         ) : null}
                         {hasAction(vol, 'snapshotDelete') ? (
-                          <Button type="button" size="sm" variant="ghost" disabled={!canMutate} onClick={() => void runAction(vol, 'snapshotDelete', { name: s.name })}>
+                          <Button type="button" size="sm" variant="ghost" disabled={!canMutate} onClick={() => setDeleteSnapshot(s.name)}>
                             {t('common.delete')}
                           </Button>
                         ) : null}
@@ -750,6 +751,19 @@ export function VolumeDetailPage() {
         onConfirm={async () => {
           if (vol && removeReplica) await runAction(vol, 'replicaRemove', { name: removeReplica })
           setRemoveReplica(null)
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteSnapshot)}
+        onOpenChange={(v) => !v && setDeleteSnapshot(null)}
+        title={t('volumeDetail.deleteSnapshot')}
+        description={deleteSnapshot ? t('volumeDetail.deleteSnapshotConfirm', { name: deleteSnapshot }) : ''}
+        confirmLabel={t('common.delete')}
+        destructive
+        onConfirm={async () => {
+          if (vol && deleteSnapshot) await runAction(vol, 'snapshotDelete', { name: deleteSnapshot })
+          setDeleteSnapshot(null)
         }}
       />
     </div>

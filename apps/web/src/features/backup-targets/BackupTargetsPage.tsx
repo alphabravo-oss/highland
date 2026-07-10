@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import {
   useBackupTargets,
@@ -10,6 +10,7 @@ import { hasAction, type BackupTarget } from '@/api/longhorn'
 import { useAuth } from '@/auth/AuthContext'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { DataTable } from '@/components/data/DataTable'
+import { BackupSetupWizard } from './BackupSetupWizard'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Alert } from '@/components/ui/alert'
@@ -27,6 +28,7 @@ export function BackupTargetsPage() {
   const createMut = useCreateBackupTarget()
   const delMut = useDeleteBackupTarget()
   const [open, setOpen] = useState(false)
+  const [wizardOpen, setWizardOpen] = useState(false)
   const [name, setName] = useState('default')
   const [url, setUrl] = useState('s3://bucket@us-east-1/')
   const [secret, setSecret] = useState('')
@@ -154,13 +156,19 @@ export function BackupTargetsPage() {
               <RefreshCw size={14} /> {t('common.refresh')}
             </Button>
             {canMutate ? (
-              <Button type="button" size="sm" onClick={() => setOpen(true)}>
-                <Plus size={14} /> {t('common.create')}
-              </Button>
+              <>
+                <Button type="button" size="sm" onClick={() => setWizardOpen(true)}>
+                  <Sparkles size={14} /> {t('backupWizard.setUp')}
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
+                  <Plus size={14} /> {t('backupTargets.manual')}
+                </Button>
+              </>
             ) : null}
           </>
         }
       />
+      <BackupSetupWizard open={wizardOpen} onOpenChange={setWizardOpen} onDone={() => void q.refetch()} />
       {error ? (
         <Alert tone="danger" className="mb-3">
           {error}

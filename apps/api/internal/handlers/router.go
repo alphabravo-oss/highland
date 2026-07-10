@@ -122,6 +122,7 @@ func NewRouter(d Deps) http.Handler {
 		r.Put("/api/v1/auth/oidc-config", api.PutOIDCConfig)
 		r.Get("/api/v1/compatibility", hapi.Compatibility)
 		r.Get("/api/v1/status", hapi.Status)
+		r.Post("/api/v1/backup-credential", hapi.CreateBackupCredential)
 		r.Get("/api/v1/health", hapi.HealthNarrative)
 		r.Get("/api/v1/preflight", hapi.Preflight)
 		r.Get("/api/v1/dashboard", hapi.DashboardAggregate)

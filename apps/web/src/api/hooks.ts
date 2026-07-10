@@ -284,6 +284,13 @@ export function useUpdateSetting() {
   })
 }
 
+export function useCreateBackupCredential() {
+  return useMutation({
+    mutationFn: (body: { name: string; data: Record<string, string> }) =>
+      highlandPost('/backup-credential', body),
+  })
+}
+
 export function useCreateBackupTarget() {
   const inv = useInvalidate()
   return useMutation({

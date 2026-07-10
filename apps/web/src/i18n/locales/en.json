@@ -324,7 +324,9 @@
     "backupTarget": "Backup target",
     "backupMode": "Backup mode",
     "full": "Full",
-    "incremental": "Incremental"
+    "incremental": "Incremental",
+    "deleteSnapshot": "Delete snapshot",
+    "deleteSnapshotConfirm": "Delete snapshot \"{{name}}\"? This cannot be undone."
   },
   "nodes": {
     "title": "Nodes & Disks",
@@ -414,7 +416,8 @@
     "empty": "No backup targets",
     "emptyDescription": "Create a target to enable volume backups.",
     "credentialSecret": "Credential secret (optional)",
-    "pollInterval": "Poll interval (seconds)"
+    "pollInterval": "Poll interval (seconds)",
+    "manual": "Manual"
   },
   "recurringJobs": {
     "title": "Recurring Jobs",
@@ -528,7 +531,9 @@
     "benchRandRead": "Rand read",
     "benchRandWrite": "Rand write",
     "benchReadLat": "Read latency",
-    "benchWriteLat": "Write latency"
+    "benchWriteLat": "Write latency",
+    "deleteBenchmark": "Delete benchmark",
+    "deleteBenchmarkConfirm": "Delete benchmark \"{{name}}\" and its results? This also removes its fio Job and PVC."
   },
   "settings": {
     "title": "Settings",
@@ -797,5 +802,35 @@
     "minCopiesExceedsNodes": "Default minimum backing-image copies is {{count}} but the cluster has {{nodes}} node(s) — backing images can't reach the minimum.",
     "noBackupTarget": "No backup target is configured — backups and DR volumes are unavailable.",
     "dismiss": "Dismiss"
+  },
+  "backupWizard": {
+    "title": "Set up backup target",
+    "subtitle": "Guided setup — Highland creates the credential secret and backup target for you",
+    "step": "Step {{step}} of {{total}}",
+    "back": "Back",
+    "next": "Next",
+    "finish": "Create backup target",
+    "creating": "Creating…",
+    "s3": "S3 / S3-compatible",
+    "s3Desc": "AWS S3, MinIO, Wasabi, Ceph, etc.",
+    "nfs": "NFS",
+    "nfsDesc": "An NFS export on your network",
+    "azure": "Azure Blob",
+    "azureDesc": "Azure Blob Storage container",
+    "bucket": "Bucket",
+    "region": "Region",
+    "endpoint": "Endpoint",
+    "accessKey": "Access key ID",
+    "secretKey": "Secret access key",
+    "nfsServer": "NFS server",
+    "nfsPath": "Export path",
+    "azContainer": "Container",
+    "azAccount": "Account name",
+    "azKey": "Account key",
+    "name": "Backup target name",
+    "poll": "Poll interval (seconds)",
+    "review": "Review",
+    "credNote": "A credential Secret will be created in the Longhorn namespace and referenced by the target.",
+    "setUp": "Set up backup"
   }
 }

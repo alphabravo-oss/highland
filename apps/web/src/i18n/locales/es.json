@@ -324,7 +324,9 @@
     "backupTarget": "Destino de copia de seguridad",
     "backupMode": "Modo de copia de seguridad",
     "full": "Completa",
-    "incremental": "Incremental"
+    "incremental": "Incremental",
+    "deleteSnapshot": "Eliminar snapshot",
+    "deleteSnapshotConfirm": "¿Eliminar el snapshot \"{{name}}\"? Esto no se puede deshacer."
   },
   "nodes": {
     "title": "Nodos y discos",
@@ -414,7 +416,8 @@
     "empty": "Sin destinos de copia",
     "emptyDescription": "Cree un destino para habilitar copias de volúmenes.",
     "credentialSecret": "Secret de credenciales (opcional)",
-    "pollInterval": "Intervalo de sondeo (segundos)"
+    "pollInterval": "Intervalo de sondeo (segundos)",
+    "manual": "Manual"
   },
   "recurringJobs": {
     "title": "Trabajos recurrentes",
@@ -528,7 +531,9 @@
     "benchRandRead": "Lectura aleat.",
     "benchRandWrite": "Escritura aleat.",
     "benchReadLat": "Latencia lectura",
-    "benchWriteLat": "Latencia escritura"
+    "benchWriteLat": "Latencia escritura",
+    "deleteBenchmark": "Eliminar benchmark",
+    "deleteBenchmarkConfirm": "¿Eliminar el benchmark \"{{name}}\" y sus resultados? Esto también elimina su Job de fio y su PVC."
   },
   "settings": {
     "title": "Configuración",
@@ -797,5 +802,35 @@
     "minCopiesExceedsNodes": "El mínimo de copias de imagen base por defecto es {{count}} pero el clúster tiene {{nodes}} nodo(s) — las imágenes base no pueden alcanzar el mínimo.",
     "noBackupTarget": "No hay destino de copia configurado — las copias de seguridad y los volúmenes DR no están disponibles.",
     "dismiss": "Descartar"
+  },
+  "backupWizard": {
+    "title": "Configurar destino de copia",
+    "subtitle": "Configuración guiada — Highland crea el secreto de credenciales y el destino de copia por ti",
+    "step": "Paso {{step}} de {{total}}",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "finish": "Crear destino de copia",
+    "creating": "Creando…",
+    "s3": "S3 / compatible con S3",
+    "s3Desc": "AWS S3, MinIO, Wasabi, Ceph, etc.",
+    "nfs": "NFS",
+    "nfsDesc": "Una exportación NFS en tu red",
+    "azure": "Azure Blob",
+    "azureDesc": "Contenedor de Azure Blob Storage",
+    "bucket": "Bucket",
+    "region": "Región",
+    "endpoint": "Endpoint",
+    "accessKey": "ID de clave de acceso",
+    "secretKey": "Clave de acceso secreta",
+    "nfsServer": "Servidor NFS",
+    "nfsPath": "Ruta de exportación",
+    "azContainer": "Contenedor",
+    "azAccount": "Nombre de cuenta",
+    "azKey": "Clave de cuenta",
+    "name": "Nombre del destino",
+    "poll": "Intervalo de sondeo (segundos)",
+    "review": "Revisar",
+    "credNote": "Se creará un Secret de credenciales en el namespace de Longhorn y el destino lo referenciará.",
+    "setUp": "Configurar copia"
   }
 }

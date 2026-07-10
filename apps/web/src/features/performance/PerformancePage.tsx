@@ -13,6 +13,7 @@ import { useAuth } from '@/auth/AuthContext'
 import { formatBytes } from '@/api/longhorn'
 import { MetricLine } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
+import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { QueryState } from '@/components/data/QueryState'
 import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -133,6 +134,7 @@ export function BenchmarksPage() {
   const nodesQ = useNodes()
   const [profile, setProfile] = useState('quick')
   const [nodeName, setNodeName] = useState('')
+  const [deleteBench, setDeleteBench] = useState<string | null>(null)
 
   const nodeNames = (nodesQ.data ?? []).map((n) => n.name).filter(Boolean)
 
@@ -245,7 +247,8 @@ export function BenchmarksPage() {
                   type="button"
                   size="sm"
                   variant="ghost"
-                  onClick={() => void del.mutateAsync(String(b.name))}
+                  aria-label={t('common.delete')}
+                  onClick={() => setDeleteBench(String(b.name))}
                 >
                   {t('common.delete')}
                 </Button>
@@ -255,6 +258,19 @@ export function BenchmarksPage() {
           ))}
         </div>
       </QueryState>
+
+      <ConfirmDialog
+        open={Boolean(deleteBench)}
+        onOpenChange={(v) => !v && setDeleteBench(null)}
+        title={t('performance.deleteBenchmark')}
+        description={deleteBench ? t('performance.deleteBenchmarkConfirm', { name: deleteBench }) : ''}
+        confirmLabel={t('common.delete')}
+        destructive
+        onConfirm={async () => {
+          if (deleteBench) await del.mutateAsync(deleteBench)
+          setDeleteBench(null)
+        }}
+      />
     </div>
   )
 }
