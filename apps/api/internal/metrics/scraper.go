@@ -26,10 +26,11 @@ type Series struct {
 
 // Scraper polls manager /metrics and keeps a short ring buffer per series key.
 type Scraper struct {
-	baseURL  string
-	client   *http.Client
-	interval time.Duration
-	window   int // points per series
+	baseURL    string
+	client     *http.Client
+	interval   time.Duration
+	window     int           // points per series
+	staleAfter time.Duration // drop a series after it goes this long without a sample
 
 	mu      sync.RWMutex
 	series  map[string]*Series
@@ -45,13 +46,20 @@ func NewScraper(baseURL string, interval time.Duration, window int) *Scraper {
 	if window <= 0 {
 		window = 60
 	}
+	// Prune a series after ~3 missed scrapes (min 30s) so deleted volumes/nodes
+	// don't linger as ghost series after the manager stops reporting them.
+	staleAfter := 3 * interval
+	if staleAfter < 30*time.Second {
+		staleAfter = 30 * time.Second
+	}
 	return &Scraper{
-		baseURL:  strings.TrimRight(baseURL, "/"),
-		client:   &http.Client{Timeout: 8 * time.Second},
-		interval: interval,
-		window:   window,
-		series:   map[string]*Series{},
-		stop:     make(chan struct{}),
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		client:     &http.Client{Timeout: 8 * time.Second},
+		interval:   interval,
+		window:     window,
+		staleAfter: staleAfter,
+		series:     map[string]*Series{},
+		stop:       make(chan struct{}),
 	}
 }
 
@@ -122,6 +130,13 @@ func (s *Scraper) poll() {
 		ser.Points = append(ser.Points, Sample{T: now, V: p.Value})
 		if len(ser.Points) > s.window {
 			ser.Points = ser.Points[len(ser.Points)-s.window:]
+		}
+	}
+	// Drop series the manager has stopped reporting (e.g. deleted volumes).
+	staleBefore := now.Add(-s.staleAfter)
+	for key, ser := range s.series {
+		if len(ser.Points) == 0 || ser.Points[len(ser.Points)-1].T.Before(staleBefore) {
+			delete(s.series, key)
 		}
 	}
 }

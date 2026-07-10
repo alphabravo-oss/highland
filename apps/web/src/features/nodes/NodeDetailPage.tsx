@@ -162,6 +162,7 @@ export function NodeDetailPage() {
               format={(v) => `${formatBytes(v)}/s`}
               emptyLabel={t('nodeDetail.noIo')}
               peakLabel={t('common.peak')}
+            axis
             />
             <MetricLine
               label={t('nodeDetail.readThroughput')}
@@ -169,6 +170,7 @@ export function NodeDetailPage() {
               format={(v) => `${formatBytes(v)}/s`}
               emptyLabel={t('nodeDetail.noIo')}
               peakLabel={t('common.peak')}
+            axis
             />
           </CardContent>
         </Card>

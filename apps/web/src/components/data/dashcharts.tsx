@@ -2,6 +2,7 @@
 import {
   Area,
   AreaChart,
+  CartesianGrid,
   Cell,
   Pie,
   PieChart,
@@ -64,33 +65,48 @@ export function UsageBar({ used, total }: { used: number; total: number }) {
   )
 }
 
-/** Filled area sparkline for a numeric series, with a hover tooltip. */
+/** Filled area sparkline for a numeric series, with a hover tooltip. When
+ * `axis` is set it becomes a fuller chart with a formatted Y-axis + gridlines. */
 export function AreaSparkline({
   points,
   emptyLabel,
   height = 64,
   format,
+  axis = false,
 }: {
   points: number[]
   emptyLabel: string
   height?: number
   format?: (v: number) => string
+  axis?: boolean
 }) {
   if (points.length < 2) {
     return <div className="flex items-center text-xs text-[var(--color-muted-foreground)]" style={{ height }}>{emptyLabel}</div>
   }
   const data = points.map((v, i) => ({ i, v }))
+  const tickFmt = format ? (v: number) => format(v) : undefined
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+      <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: axis ? 4 : 0 }}>
         <defs>
           <linearGradient id="dashArea" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.35} />
             <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
           </linearGradient>
         </defs>
+        {axis ? (
+          <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
+        ) : null}
         <XAxis dataKey="i" hide />
-        <YAxis hide domain={[0, 'dataMax']} />
+        <YAxis
+          hide={!axis}
+          width={axis ? 56 : 0}
+          domain={[0, 'dataMax']}
+          tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }}
+          tickFormatter={tickFmt}
+          tickCount={4}
+          stroke="var(--color-border)"
+        />
         <Tooltip
           contentStyle={tooltipStyle}
           labelFormatter={() => ''}
@@ -134,6 +150,7 @@ export function MetricLine({
   emptyLabel,
   peakLabel,
   height = 48,
+  axis = false,
 }: {
   label: string
   points: number[]
@@ -141,6 +158,7 @@ export function MetricLine({
   emptyLabel: string
   peakLabel: string
   height?: number
+  axis?: boolean
 }) {
   const current = points.at(-1) ?? 0
   const peak = points.length ? Math.max(...points) : 0
@@ -155,7 +173,13 @@ export function MetricLine({
       <div className="mb-1 text-[10px] text-[var(--color-muted-foreground)]">
         {peakLabel}: <span className="tabular-nums">{format(peak)}</span>
       </div>
-      <AreaSparkline points={points} emptyLabel={emptyLabel} height={height} format={format} />
+      <AreaSparkline
+        points={points}
+        emptyLabel={emptyLabel}
+        height={axis ? Math.max(height, 120) : height}
+        format={format}
+        axis={axis}
+      />
     </div>
   )
 }

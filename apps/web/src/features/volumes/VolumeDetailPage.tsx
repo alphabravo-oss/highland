@@ -281,6 +281,7 @@ export function VolumeDetailPage() {
                     format={(v) => `${formatBytes(v)}/s`}
                     emptyLabel={t('volumeDetail.noIo')}
                     peakLabel={t('common.peak')}
+                    axis
                   />
                   <MetricLine
                     label={t('volumeDetail.writeThroughput')}
@@ -288,6 +289,7 @@ export function VolumeDetailPage() {
                     format={(v) => `${formatBytes(v)}/s`}
                     emptyLabel={t('volumeDetail.noIo')}
                     peakLabel={t('common.peak')}
+                    axis
                   />
                   <MetricLine
                     label={t('volumeDetail.readIops')}
@@ -295,6 +297,7 @@ export function VolumeDetailPage() {
                     format={(v) => `${Math.round(v).toLocaleString()} IOPS`}
                     emptyLabel={t('volumeDetail.noIo')}
                     peakLabel={t('common.peak')}
+                    axis
                   />
                   <MetricLine
                     label={t('volumeDetail.writeIops')}
@@ -302,6 +305,7 @@ export function VolumeDetailPage() {
                     format={(v) => `${Math.round(v).toLocaleString()} IOPS`}
                     emptyLabel={t('volumeDetail.noIo')}
                     peakLabel={t('common.peak')}
+                    axis
                   />
                   {metrics.data?.scrapeError ? (
                     <p className="col-span-2 text-xs text-amber-600 dark:text-amber-300">
