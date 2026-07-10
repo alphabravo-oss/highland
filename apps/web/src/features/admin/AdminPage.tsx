@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Plus, Shield, Trash2, UserPlus } from 'lucide-react'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useAuth } from '@/auth/AuthContext'
 import {
   useAuditLog,
@@ -20,10 +21,12 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { useToast } from '@/components/ui/toast'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
+import { DataTable } from '@/components/data/DataTable'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
+
+type HighlandUser = { username: string; role: string }
 
 export function AdminPage() {
   const { t } = useAppTranslation()
@@ -41,6 +44,70 @@ export function AdminPage() {
   const [editUser, setEditUser] = useState<{ username: string; role: string } | null>(null)
   const [editRole, setEditRole] = useState('operator')
   const [editPassword, setEditPassword] = useState('')
+
+  const columns = useMemo<ColumnDef<HighlandUser, any>[]>(
+    () => [
+      {
+        id: 'username',
+        accessorFn: (u) => u.username,
+        header: t('common.username'),
+        meta: { className: 'font-medium' },
+        cell: ({ row }) => row.original.username,
+      },
+      {
+        id: 'role',
+        accessorFn: (u) => u.role,
+        header: t('admin.role'),
+        cell: ({ row }) => (
+          <Badge
+            tone={
+              row.original.role === 'admin'
+                ? 'primary'
+                : row.original.role === 'operator'
+                  ? 'info'
+                  : 'default'
+            }
+          >
+            {row.original.role}
+          </Badge>
+        ),
+      },
+      {
+        id: 'actions',
+        header: t('common.actions'),
+        enableSorting: false,
+        meta: { className: 'text-right', headerClassName: 'text-right' },
+        cell: ({ row }) => {
+          const u = row.original
+          return (
+            <div className="flex justify-end gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditUser(u)
+                  setEditRole(u.role)
+                }}
+              >
+                {t('common.edit')}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={u.username === user?.username}
+                onClick={() => setDeleteUser(u.username)}
+              >
+                <Trash2 size={14} />
+              </Button>
+            </div>
+          )
+        },
+      },
+    ],
+    [t, user?.username],
+  )
 
   async function createUser() {
     setError(null)
@@ -144,57 +211,12 @@ export function AdminPage() {
         emptyDescription={t('admin.noUsersDescription')}
         onRetry={() => void users.refetch()}
       >
-        <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] shadow-[var(--shadow-sm)]">
-          <Table>
-            <THead>
-              <TR>
-                <TH>{t('common.username')}</TH>
-                <TH>{t('admin.role')}</TH>
-                <TH className="text-right">{t('common.actions')}</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {(users.data?.data ?? []).map((u) => (
-                <TR key={u.username}>
-                  <TD className="font-medium">{u.username}</TD>
-                  <TD>
-                    <Badge
-                      tone={
-                        u.role === 'admin' ? 'primary' : u.role === 'operator' ? 'info' : 'default'
-                      }
-                    >
-                      {u.role}
-                    </Badge>
-                  </TD>
-                  <TD className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setEditUser(u)
-                          setEditRole(u.role)
-                        }}
-                      >
-                        {t('common.edit')}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        disabled={u.username === user?.username}
-                        onClick={() => setDeleteUser(u.username)}
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  </TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-        </div>
+        <DataTable
+          data-testid="users-table"
+          columns={columns}
+          data={users.data?.data ?? []}
+          getRowId={(u) => u.username}
+        />
       </QueryState>
 
       <Dialog
@@ -294,10 +316,56 @@ export function AdminPage() {
   )
 }
 
+type AuditEntry = Record<string, unknown>
+
 export function AuditPage() {
   const { t } = useAppTranslation()
   const { isAdmin } = useAuth()
   const q = useAuditLog()
+
+  const columns = useMemo<ColumnDef<AuditEntry, any>[]>(
+    () => [
+      {
+        id: 'time',
+        accessorFn: (e) => String(e.timestamp ?? ''),
+        header: t('audit.time'),
+        meta: { className: 'whitespace-nowrap text-xs' },
+        cell: ({ getValue }) => getValue() as string,
+      },
+      {
+        id: 'user',
+        accessorFn: (e) => String(e.username ?? ''),
+        header: t('audit.user'),
+        cell: ({ getValue }) => getValue() as string,
+      },
+      {
+        id: 'role',
+        accessorFn: (e) => String(e.role ?? ''),
+        header: t('audit.role'),
+        cell: ({ getValue }) => <Badge>{getValue() as string}</Badge>,
+      },
+      {
+        id: 'action',
+        accessorFn: (e) => String(e.action ?? e.method ?? ''),
+        header: t('audit.action'),
+        cell: ({ getValue }) => getValue() as string,
+      },
+      {
+        id: 'result',
+        accessorFn: (e) => String(e.result ?? ''),
+        header: t('audit.result'),
+        cell: ({ getValue }) => getValue() as string,
+      },
+      {
+        id: 'path',
+        accessorFn: (e) => String(e.path ?? ''),
+        header: t('audit.path'),
+        meta: { className: 'max-w-xs truncate font-mono text-xs' },
+        cell: ({ getValue }) => getValue() as string,
+      },
+    ],
+    [t],
+  )
 
   if (!isAdmin) {
     return (
@@ -326,34 +394,12 @@ export function AuditPage() {
         emptyDescription={t('audit.emptyDescription')}
         onRetry={() => void q.refetch()}
       >
-        <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] shadow-[var(--shadow-sm)]">
-          <Table>
-            <THead>
-              <TR>
-                <TH>{t('audit.time')}</TH>
-                <TH>{t('audit.user')}</TH>
-                <TH>{t('audit.role')}</TH>
-                <TH>{t('audit.action')}</TH>
-                <TH>{t('audit.result')}</TH>
-                <TH>{t('audit.path')}</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {(q.data?.data ?? []).map((e) => (
-                <TR key={String(e.id)}>
-                  <TD className="whitespace-nowrap text-xs">{String(e.timestamp ?? '')}</TD>
-                  <TD>{String(e.username ?? '')}</TD>
-                  <TD>
-                    <Badge>{String(e.role ?? '')}</Badge>
-                  </TD>
-                  <TD>{String(e.action ?? e.method ?? '')}</TD>
-                  <TD>{String(e.result ?? '')}</TD>
-                  <TD className="max-w-xs truncate font-mono text-xs">{String(e.path ?? '')}</TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-        </div>
+        <DataTable
+          data-testid="audit-table"
+          columns={columns}
+          data={q.data?.data ?? []}
+          getRowId={(e) => String(e.id)}
+        />
       </QueryState>
     </div>
   )

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, RefreshCw, Trash2 } from 'lucide-react'
+import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import {
   useCreateVolume,
   useDeleteVolume,
@@ -13,6 +14,7 @@ import { useAuth } from '@/auth/AuthContext'
 import { formatBytes, hasAction, parseSizeToBytes, type Volume } from '@/api/longhorn'
 import { ColumnPicker } from '@/components/data/ColumnPicker'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
+import { DataTable } from '@/components/data/DataTable'
 import { DensityToggle } from '@/components/data/DensityToggle'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
@@ -22,9 +24,7 @@ import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
-import { cn } from '@/lib/utils'
 import { resolveColumns, usePreferences } from '@/store/preferences'
 import { ActionFormDialog } from './ActionFormDialog'
 import {
@@ -56,7 +56,6 @@ export function VolumesPage() {
   const createMut = useCreateVolume()
   const deleteMut = useDeleteVolume()
   const actionMut = useVolumeAction()
-  const density = usePreferences((s) => s.density)
   const columnPrefs = usePreferences((s) => s.columnPrefs)
 
   const volumeColumns = useMemo(
@@ -81,7 +80,7 @@ export function VolumesPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Volume | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const [selected, setSelected] = useState<RowSelectionState>({})
   const [bulkKey, setBulkKey] = useState<string | null>(null)
   const [bulkValue, setBulkValue] = useState('')
   const [bulkHost, setBulkHost] = useState('')
@@ -91,27 +90,142 @@ export function VolumesPage() {
   const hosts = (nodesQ.data ?? []).map((n) => n.name)
   const images = (imagesQ.data ?? []).map((i) => i.image ?? i.name).filter(Boolean) as string[]
 
-  const visibleCols = useMemo(
-    () => new Set(resolveColumns(columnPrefs, VOLUMES_TABLE_ID, [...VOLUME_COLUMN_IDS])),
-    [columnPrefs],
+  // Map the ColumnPicker/preferences visible-column set into TanStack VisibilityState.
+  const columnVisibility = useMemo(() => {
+    const visible = new Set(resolveColumns(columnPrefs, VOLUMES_TABLE_ID, [...VOLUME_COLUMN_IDS]))
+    return Object.fromEntries(VOLUME_COLUMN_IDS.map((id) => [id, visible.has(id)])) as Record<
+      string,
+      boolean
+    >
+  }, [columnPrefs])
+
+  const data = q.data ?? []
+  const selectedVols = data.filter((v) => selected[v.name])
+
+  const columns = useMemo<ColumnDef<Volume, any>[]>(
+    () => [
+      {
+        id: 'name',
+        accessorFn: (v) => v.name ?? '',
+        header: t('volumes.columns.name'),
+        cell: ({ row }) => {
+          const v = row.original
+          return (
+            <>
+              <Link
+                to={`/volumes/${encodeURIComponent(v.name)}`}
+                className="font-medium text-[var(--color-primary)] hover:underline"
+              >
+                {v.name}
+              </Link>
+              {v.standby ? (
+                <Badge tone="warning" className="ml-1">
+                  DR
+                </Badge>
+              ) : null}
+            </>
+          )
+        },
+      },
+      {
+        id: 'state',
+        accessorFn: (v) => v.state ?? '',
+        header: t('volumes.columns.state'),
+        cell: ({ row }) => <Badge tone={stateTone(row.original.state)}>{row.original.state ?? '—'}</Badge>,
+      },
+      {
+        id: 'robustness',
+        accessorFn: (v) => v.robustness ?? '',
+        header: t('volumes.columns.robustness'),
+        cell: ({ row }) => (
+          <Badge tone={stateTone(row.original.robustness)}>{row.original.robustness ?? '—'}</Badge>
+        ),
+      },
+      {
+        id: 'size',
+        accessorFn: (v) => Number(v.size ?? 0),
+        header: t('volumes.columns.size'),
+        meta: { className: 'tabular-nums' },
+        cell: ({ row }) => formatBytes(row.original.size),
+      },
+      {
+        id: 'replicas',
+        accessorFn: (v) => v.numberOfReplicas ?? 0,
+        header: t('volumes.columns.replicas'),
+        meta: { className: 'tabular-nums' },
+        cell: ({ row }) => row.original.numberOfReplicas ?? '—',
+      },
+      {
+        id: 'pvc',
+        accessorFn: (v) =>
+          v.kubernetesStatus?.pvcName
+            ? `${v.kubernetesStatus.namespace}/${v.kubernetesStatus.pvcName}`
+            : '',
+        header: t('volumes.columns.pvc'),
+        meta: { className: 'max-w-[8rem] truncate text-xs' },
+        cell: ({ getValue }) => (getValue() as string) || '—',
+      },
+      {
+        id: 'engine',
+        accessorFn: (v) => v.dataEngine ?? 'v1',
+        header: t('volumes.columns.engine'),
+      },
+      {
+        id: 'actions',
+        header: t('volumes.columns.actions'),
+        enableSorting: false,
+        meta: { headerClassName: 'text-right' },
+        cell: ({ row }) => {
+          const v = row.original
+          return (
+            <div className="flex flex-wrap justify-end gap-1">
+              {VOLUME_ACTION_DEFS.filter(
+                (d) =>
+                  (d.priority === 'P0' || d.priority === 'P1') &&
+                  hasAction(v, d.key) &&
+                  d.key !== 'snapshotCreate',
+              )
+                .slice(0, 4)
+                .map((d) => (
+                  <Button
+                    key={d.key}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!canMutate}
+                    onClick={() => {
+                      setActionVol(v)
+                      setActionDef(d as VolumeActionDef)
+                    }}
+                  >
+                    {volumeActionLabel(t, d.key, d.label)}
+                  </Button>
+                ))}
+              <Link
+                to={`/volumes/${encodeURIComponent(v.name)}`}
+                className="inline-flex h-8 items-center rounded-md border border-[var(--color-border)] px-2 text-xs"
+              >
+                {t('common.detail')}
+              </Link>
+              {canMutate ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={t('volumes.deleteAria', { name: v.name })}
+                  title={t('volumes.deleteTitle', { name: v.name })}
+                  onClick={() => setDeleteTarget(v)}
+                >
+                  <Trash2 size={14} aria-hidden />
+                </Button>
+              ) : null}
+            </div>
+          )
+        },
+      },
+    ],
+    [t, canMutate],
   )
-  const show = (id: (typeof VOLUME_COLUMN_IDS)[number]) => visibleCols.has(id)
-  const cellPad = density === 'compact' ? 'py-1' : 'py-2.5'
-
-  const rows = useMemo(() => {
-    const data = q.data ?? []
-    const f = filter.trim().toLowerCase()
-    if (!f) return data
-    return data.filter(
-      (v) =>
-        v.name?.toLowerCase().includes(f) ||
-        v.state?.toLowerCase().includes(f) ||
-        v.robustness?.toLowerCase().includes(f) ||
-        v.kubernetesStatus?.pvcName?.toLowerCase().includes(f),
-    )
-  }, [q.data, filter])
-
-  const selectedVols = rows.filter((v) => selected[v.name])
 
   async function onCreate() {
     setFormError(null)
@@ -247,126 +361,21 @@ export function VolumesPage() {
       <QueryState
         isLoading={q.isLoading}
         error={q.error as Error | null}
-        isEmpty={!rows.length}
+        isEmpty={!data.length}
         emptyTitle={t('volumes.empty')}
         onRetry={() => void q.refetch()}
       >
-        <Table data-density={density}>
-          <THead>
-            <TR>
-              <TH className="w-8" />
-              {show('name') ? <TH>{t('volumes.columns.name')}</TH> : null}
-              {show('state') ? <TH>{t('volumes.columns.state')}</TH> : null}
-              {show('robustness') ? <TH>{t('volumes.columns.robustness')}</TH> : null}
-              {show('size') ? <TH>{t('volumes.columns.size')}</TH> : null}
-              {show('replicas') ? <TH>{t('volumes.columns.replicas')}</TH> : null}
-              {show('pvc') ? <TH>{t('volumes.columns.pvc')}</TH> : null}
-              {show('engine') ? <TH>{t('volumes.columns.engine')}</TH> : null}
-              {show('actions') ? <TH className="text-right">{t('volumes.columns.actions')}</TH> : null}
-            </TR>
-          </THead>
-          <TBody>
-            {rows.map((v) => (
-              <TR key={v.id ?? v.name}>
-                <TD className={cn(cellPad)}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(selected[v.name])}
-                    onChange={(e) => setSelected((s) => ({ ...s, [v.name]: e.target.checked }))}
-                    aria-label={t('common.selectItem', { name: v.name })}
-                  />
-                </TD>
-                {show('name') ? (
-                  <TD className={cn(cellPad)}>
-                    <Link
-                      to={`/volumes/${encodeURIComponent(v.name)}`}
-                      className="font-medium text-[var(--color-primary)] hover:underline"
-                    >
-                      {v.name}
-                    </Link>
-                    {v.standby ? (
-                      <Badge tone="warning" className="ml-1">
-                        DR
-                      </Badge>
-                    ) : null}
-                  </TD>
-                ) : null}
-                {show('state') ? (
-                  <TD className={cn(cellPad)}>
-                    <Badge tone={stateTone(v.state)}>{v.state ?? '—'}</Badge>
-                  </TD>
-                ) : null}
-                {show('robustness') ? (
-                  <TD className={cn(cellPad)}>
-                    <Badge tone={stateTone(v.robustness)}>{v.robustness ?? '—'}</Badge>
-                  </TD>
-                ) : null}
-                {show('size') ? (
-                  <TD className={cn(cellPad, 'tabular-nums')}>{formatBytes(v.size)}</TD>
-                ) : null}
-                {show('replicas') ? (
-                  <TD className={cn(cellPad, 'tabular-nums')}>{v.numberOfReplicas ?? '—'}</TD>
-                ) : null}
-                {show('pvc') ? (
-                  <TD className={cn(cellPad, 'max-w-[8rem] truncate text-xs')}>
-                    {v.kubernetesStatus?.pvcName
-                      ? `${v.kubernetesStatus.namespace}/${v.kubernetesStatus.pvcName}`
-                      : '—'}
-                  </TD>
-                ) : null}
-                {show('engine') ? (
-                  <TD className={cn(cellPad)}>{v.dataEngine ?? 'v1'}</TD>
-                ) : null}
-                {show('actions') ? (
-                  <TD className={cn(cellPad)}>
-                    <div className="flex flex-wrap justify-end gap-1">
-                      {VOLUME_ACTION_DEFS.filter(
-                        (d) =>
-                          (d.priority === 'P0' || d.priority === 'P1') &&
-                          hasAction(v, d.key) &&
-                          d.key !== 'snapshotCreate',
-                      )
-                        .slice(0, 4)
-                        .map((d) => (
-                          <Button
-                            key={d.key}
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={!canMutate}
-                            onClick={() => {
-                              setActionVol(v)
-                              setActionDef(d as VolumeActionDef)
-                            }}
-                          >
-                            {volumeActionLabel(t, d.key, d.label)}
-                          </Button>
-                        ))}
-                      <Link
-                        to={`/volumes/${encodeURIComponent(v.name)}`}
-                        className="inline-flex h-8 items-center rounded-md border border-[var(--color-border)] px-2 text-xs"
-                      >
-                        {t('common.detail')}
-                      </Link>
-                      {canMutate ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          aria-label={t('volumes.deleteAria', { name: v.name })}
-                          title={t('volumes.deleteTitle', { name: v.name })}
-                          onClick={() => setDeleteTarget(v)}
-                        >
-                          <Trash2 size={14} aria-hidden />
-                        </Button>
-                      ) : null}
-                    </div>
-                  </TD>
-                ) : null}
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+        <DataTable
+          data-testid="volumes-table"
+          columns={columns}
+          data={data}
+          getRowId={(v) => v.name}
+          columnVisibility={columnVisibility}
+          globalFilter={filter}
+          enableSelection
+          rowSelection={selected}
+          onRowSelectionChange={setSelected}
+        />
       </QueryState>
 
       <Dialog

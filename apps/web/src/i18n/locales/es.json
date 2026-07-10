@@ -132,6 +132,16 @@
     "applyView": "Aplicar vista “{{name}}”",
     "deleteView": "Eliminar vista {{name}}"
   },
+  "table": {
+    "searchPlaceholder": "Buscar…",
+    "rowsPerPage": "Filas por página",
+    "of": "de",
+    "noResults": "Sin resultados",
+    "page": "Página {{page}} de {{total}}",
+    "previous": "Anterior",
+    "next": "Siguiente",
+    "selectedCount": "{{count}} seleccionados"
+  },
   "compat": {
     "title": "Longhorn {{lh}} · Highland {{hVer}}"
   },
@@ -158,7 +168,12 @@
     "continueSso": "Continuar con SSO",
     "ssoMock": "SSO simulado (dev)",
     "credentialsHint": "Las credenciales provienen del Secret del clúster / administrador de arranque.",
-    "devAccounts": "Dev: admin/highland · operator/operator · viewer/viewer"
+    "devAccounts": "Dev: admin/highland · operator/operator · viewer/viewer",
+    "brandHeadline": "El rancho que gestiona tu Longhorn.",
+    "brandBody": "Una consola moderna, autenticación nativa y BFF para Longhorn, sin bifurcar el plano de datos.",
+    "feature1": "Visión de volúmenes, nodos y discos en vivo",
+    "feature2": "Benchmarks fio y métricas de E/S en tiempo real",
+    "feature3": "SSO, RBAC y auditoría integrados"
   },
   "volumes": {
     "title": "Volúmenes",

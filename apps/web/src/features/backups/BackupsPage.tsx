@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { RefreshCw, Trash2 } from 'lucide-react'
+import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import { useBackupVolumes, useCreateVolume, useDeleteBackupVolume } from '@/api/hooks'
 import { useAuth } from '@/auth/AuthContext'
 import { backupVolumesApi, formatBytes, hasAction, lhPut, type BackupVolume } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
+import { DataTable } from '@/components/data/DataTable'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Alert } from '@/components/ui/alert'
@@ -27,7 +29,7 @@ export function BackupsPage() {
   const [standby, setStandby] = useState(false)
   const [backupList, setBackupList] = useState<Array<Record<string, unknown>>>([])
   const [backupListFor, setBackupListFor] = useState<string | null>(null)
-  const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const [selected, setSelected] = useState<RowSelectionState>({})
 
   async function listBackups(bv: BackupVolume) {
     setError(null)
@@ -145,6 +147,100 @@ export function BackupsPage() {
     setSelected({})
   }
 
+  const columns: ColumnDef<BackupVolume, any>[] = [
+    {
+      id: 'volume',
+      accessorFn: (bv) => bv.name ?? '',
+      header: t('backups.volume'),
+      meta: { className: 'font-medium' },
+      cell: ({ row }) => row.original.name,
+    },
+    {
+      id: 'size',
+      accessorFn: (bv) => Number(bv.size ?? 0),
+      header: t('common.size'),
+      meta: { className: 'tabular-nums' },
+      cell: ({ row }) => formatBytes(row.original.size),
+    },
+    {
+      id: 'lastBackup',
+      accessorFn: (bv) => bv.lastBackupName ?? '',
+      header: t('backups.lastBackup'),
+      cell: ({ row }) => row.original.lastBackupName ?? '—',
+    },
+    {
+      id: 'lastBackupAt',
+      accessorFn: (bv) => bv.lastBackupAt ?? '',
+      header: t('backups.lastBackupAt'),
+      meta: { className: 'whitespace-nowrap text-xs' },
+      cell: ({ row }) => row.original.lastBackupAt ?? '—',
+    },
+    {
+      id: 'target',
+      accessorFn: (bv) => bv.backupTargetName ?? '',
+      header: t('backups.target'),
+      cell: ({ row }) => row.original.backupTargetName ?? '—',
+    },
+    {
+      id: 'labels',
+      accessorFn: (bv) => (bv.messages ? Object.keys(bv.messages).join(',') : ''),
+      header: t('common.labels'),
+      meta: { className: 'max-w-[8rem] truncate text-xs' },
+      cell: ({ row }) =>
+        row.original.messages ? Object.keys(row.original.messages).join(',') : '—',
+    },
+    {
+      id: 'actions',
+      header: t('common.actions'),
+      enableSorting: false,
+      meta: { headerClassName: 'text-right' },
+      cell: ({ row }) => {
+        const bv = row.original
+        return (
+          <div className="flex flex-wrap justify-end gap-1">
+            <Button type="button" size="sm" variant="outline" onClick={() => void listBackups(bv)}>
+              {t('common.list')}
+            </Button>
+            {canMutate ? (
+              <>
+                <Button type="button" size="sm" variant="outline" onClick={() => void syncOne(bv)}>
+                  {t('common.sync')}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setRestoreTarget(bv)
+                    setRestoreName(`${bv.name}-restore`)
+                    setStandby(false)
+                  }}
+                >
+                  {t('backups.restore')}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setRestoreTarget(bv)
+                    setRestoreName(`${bv.name}-dr`)
+                    setStandby(true)
+                  }}
+                >
+                  {t('backups.drStandby')}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(bv)}>
+                  <Trash2 size={14} />
+                </Button>
+              </>
+            ) : null}
+          </div>
+        )
+      },
+    },
+  ]
+
   return (
     <div data-testid="backups-page">
       <PageHeader
@@ -183,82 +279,15 @@ export function BackupsPage() {
         emptyTitle={t('backups.emptyVolumes')}
         onRetry={() => void q.refetch()}
       >
-        <Table>
-          <THead>
-            <TR>
-              <TH className="w-8" />
-              <TH>{t('backups.volume')}</TH>
-              <TH>{t('common.size')}</TH>
-              <TH>{t('backups.lastBackup')}</TH>
-              <TH>{t('backups.lastBackupAt')}</TH>
-              <TH>{t('backups.target')}</TH>
-              <TH>{t('common.labels')}</TH>
-              <TH className="text-right">{t('common.actions')}</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {(q.data ?? []).map((bv) => (
-              <TR key={bv.id ?? bv.name}>
-                <TD>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(selected[bv.name])}
-                    onChange={(e) => setSelected((s) => ({ ...s, [bv.name]: e.target.checked }))}
-                  />
-                </TD>
-                <TD className="font-medium">{bv.name}</TD>
-                <TD className="tabular-nums">{formatBytes(bv.size)}</TD>
-                <TD>{bv.lastBackupName ?? '—'}</TD>
-                <TD className="whitespace-nowrap text-xs">{bv.lastBackupAt ?? '—'}</TD>
-                <TD>{bv.backupTargetName ?? '—'}</TD>
-                <TD className="max-w-[8rem] truncate text-xs">
-                  {bv.messages ? Object.keys(bv.messages).join(',') : '—'}
-                </TD>
-                <TD>
-                  <div className="flex flex-wrap justify-end gap-1">
-                    <Button type="button" size="sm" variant="outline" onClick={() => void listBackups(bv)}>
-                      {t('common.list')}
-                    </Button>
-                    {canMutate ? (
-                      <>
-                        <Button type="button" size="sm" variant="outline" onClick={() => void syncOne(bv)}>
-                          {t('common.sync')}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setRestoreTarget(bv)
-                            setRestoreName(`${bv.name}-restore`)
-                            setStandby(false)
-                          }}
-                        >
-                          {t('backups.restore')}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setRestoreTarget(bv)
-                            setRestoreName(`${bv.name}-dr`)
-                            setStandby(true)
-                          }}
-                        >
-                          {t('backups.drStandby')}
-                        </Button>
-                        <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(bv)}>
-                          <Trash2 size={14} />
-                        </Button>
-                      </>
-                    ) : null}
-                  </div>
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+        <DataTable
+          data-testid="backups-table"
+          columns={columns}
+          data={q.data ?? []}
+          getRowId={(bv) => bv.name}
+          enableSelection
+          rowSelection={selected}
+          onRowSelectionChange={setSelected}
+        />
       </QueryState>
 
       {backupListFor ? (

@@ -1,13 +1,14 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { RefreshCw, Trash2 } from 'lucide-react'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useDeleteOrphan, useOrphans } from '@/api/hooks'
 import type { Orphan } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
+import { DataTable } from '@/components/data/DataTable'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 export function OrphansPage() {
@@ -15,6 +16,57 @@ export function OrphansPage() {
   const q = useOrphans()
   const delMut = useDeleteOrphan()
   const [deleteTarget, setDeleteTarget] = useState<Orphan | null>(null)
+
+  const columns = useMemo<ColumnDef<Orphan, any>[]>(
+    () => [
+      {
+        id: 'name',
+        accessorFn: (o) => o.name ?? '',
+        header: t('common.name'),
+        meta: { className: 'font-medium' },
+        cell: ({ row }) => row.original.name,
+      },
+      {
+        id: 'type',
+        accessorFn: (o) => o.orphanType ?? '',
+        header: t('common.type'),
+        cell: ({ row }) => <Badge>{row.original.orphanType ?? '—'}</Badge>,
+      },
+      {
+        id: 'node',
+        accessorFn: (o) => o.nodeID ?? '',
+        header: t('common.node'),
+        cell: ({ row }) => row.original.nodeID ?? '—',
+      },
+      {
+        id: 'parameters',
+        accessorFn: (o) => (o.parameters ? JSON.stringify(o.parameters) : ''),
+        header: t('common.parameters'),
+        meta: { className: 'max-w-sm truncate font-mono text-xs' },
+        cell: ({ row }) =>
+          row.original.parameters ? JSON.stringify(row.original.parameters) : '—',
+      },
+      {
+        id: 'actions',
+        header: '',
+        enableSorting: false,
+        meta: { className: 'text-right' },
+        cell: ({ row }) => (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => setDeleteTarget(row.original)}
+          >
+            <Trash2 size={14} />
+          </Button>
+        ),
+      },
+    ],
+    [t],
+  )
+
+  const data = q.data ?? []
 
   return (
     <div data-testid="orphans-page">
@@ -30,41 +82,16 @@ export function OrphansPage() {
       <QueryState
         isLoading={q.isLoading}
         error={q.error as Error | null}
-        isEmpty={!q.data?.length}
+        isEmpty={!data.length}
         emptyTitle={t('orphans.empty')}
         emptyDescription={t('orphans.emptyDescription')}
         onRetry={() => void q.refetch()}
       >
-        <Table>
-          <THead>
-            <TR>
-              <TH>{t('common.name')}</TH>
-              <TH>{t('common.type')}</TH>
-              <TH>{t('common.node')}</TH>
-              <TH>{t('common.parameters')}</TH>
-              <TH />
-            </TR>
-          </THead>
-          <TBody>
-            {(q.data ?? []).map((o) => (
-              <TR key={o.id ?? o.name}>
-                <TD className="font-medium">{o.name}</TD>
-                <TD>
-                  <Badge>{o.orphanType ?? '—'}</Badge>
-                </TD>
-                <TD>{o.nodeID ?? '—'}</TD>
-                <TD className="max-w-sm truncate font-mono text-xs">
-                  {o.parameters ? JSON.stringify(o.parameters) : '—'}
-                </TD>
-                <TD className="text-right">
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(o)}>
-                    <Trash2 size={14} />
-                  </Button>
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+        <DataTable
+          columns={columns}
+          data={data}
+          getRowId={(o) => o.id ?? o.name}
+        />
       </QueryState>
 
       <ConfirmDialog

@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Plus, RefreshCw, Trash2 } from 'lucide-react'
+import type { ColumnDef } from '@tanstack/react-table'
 import {
   useBackingImages,
   useCreateBackingImage,
@@ -7,13 +8,13 @@ import {
 } from '@/api/hooks'
 import { formatBytes, type BackingImage } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
+import { DataTable } from '@/components/data/DataTable'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 export function BackingImagesPage() {
@@ -29,6 +30,56 @@ export function BackingImagesPage() {
   const [error, setError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BackingImage | null>(null)
   const [uploading, setUploading] = useState(false)
+
+  const columns = useMemo<ColumnDef<BackingImage, any>[]>(
+    () => [
+      {
+        id: 'name',
+        accessorFn: (img) => img.name ?? '',
+        header: t('common.name'),
+        meta: { className: 'font-medium' },
+        cell: ({ row }) => row.original.name,
+      },
+      {
+        id: 'uuid',
+        accessorFn: (img) => img.uuid ?? '',
+        header: t('backingImages.uuid'),
+        meta: { className: 'max-w-[10rem] truncate font-mono text-xs' },
+        cell: ({ row }) => row.original.uuid ?? '—',
+      },
+      {
+        id: 'size',
+        accessorFn: (img) => Number(img.size ?? 0),
+        header: t('common.size'),
+        meta: { className: 'tabular-nums' },
+        cell: ({ row }) => formatBytes(row.original.size),
+      },
+      {
+        id: 'checksum',
+        accessorFn: (img) => img.currentChecksum ?? '',
+        header: t('backingImages.checksum'),
+        meta: { className: 'max-w-[12rem] truncate font-mono text-xs' },
+        cell: ({ row }) => row.original.currentChecksum ?? '—',
+      },
+      {
+        id: 'actions',
+        header: '',
+        enableSorting: false,
+        meta: { headerClassName: 'text-right', className: 'text-right' },
+        cell: ({ row }) => (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => setDeleteTarget(row.original)}
+          >
+            <Trash2 size={14} />
+          </Button>
+        ),
+      },
+    ],
+    [t],
+  )
 
   async function createOrUpload() {
     setError(null)
@@ -97,34 +148,12 @@ export function BackingImagesPage() {
         emptyTitle={t('backingImages.empty')}
         onRetry={() => void q.refetch()}
       >
-        <Table>
-          <THead>
-            <TR>
-              <TH>{t('common.name')}</TH>
-              <TH>{t('backingImages.uuid')}</TH>
-              <TH>{t('common.size')}</TH>
-              <TH>{t('backingImages.checksum')}</TH>
-              <TH />
-            </TR>
-          </THead>
-          <TBody>
-            {(q.data ?? []).map((img) => (
-              <TR key={img.id ?? img.name}>
-                <TD className="font-medium">{img.name}</TD>
-                <TD className="max-w-[10rem] truncate font-mono text-xs">{img.uuid ?? '—'}</TD>
-                <TD className="tabular-nums">{formatBytes(img.size)}</TD>
-                <TD className="max-w-[12rem] truncate font-mono text-xs">
-                  {img.currentChecksum ?? '—'}
-                </TD>
-                <TD className="text-right">
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(img)}>
-                    <Trash2 size={14} />
-                  </Button>
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+        <DataTable
+          data-testid="backing-images-table"
+          columns={columns}
+          data={q.data ?? []}
+          getRowId={(img) => img.id ?? img.name}
+        />
       </QueryState>
 
       <Dialog

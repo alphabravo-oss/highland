@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Plus, RefreshCw, Trash2 } from 'lucide-react'
+import type { ColumnDef } from '@tanstack/react-table'
 import {
   useCreateSystemBackup,
   useDeleteSystemBackup,
@@ -8,6 +9,7 @@ import {
 } from '@/api/hooks'
 import { systemRestoresApi, type SystemBackup } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
+import { DataTable } from '@/components/data/DataTable'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Alert } from '@/components/ui/alert'
@@ -29,6 +31,68 @@ export function SystemBackupsPage() {
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<SystemBackup | null>(null)
+
+  const backupColumns: ColumnDef<SystemBackup, any>[] = [
+    {
+      id: 'name',
+      accessorFn: (b) => b.name ?? '',
+      header: t('common.name'),
+      meta: { className: 'font-medium' },
+      cell: ({ row }) => row.original.name,
+    },
+    {
+      id: 'version',
+      accessorFn: (b) => b.version ?? '',
+      header: t('common.version'),
+      cell: ({ row }) => row.original.version ?? '—',
+    },
+    {
+      id: 'state',
+      accessorFn: (b) => b.state ?? '',
+      header: t('common.state'),
+      cell: ({ row }) => <Badge tone={stateTone(row.original.state)}>{row.original.state ?? '—'}</Badge>,
+    },
+    {
+      id: 'created',
+      accessorFn: (b) => b.created ?? '',
+      header: t('common.created'),
+      meta: { className: 'text-xs' },
+      cell: ({ row }) => row.original.created ?? '—',
+    },
+    {
+      id: 'actions',
+      header: () => null,
+      enableSorting: false,
+      meta: { headerClassName: 'text-right' },
+      cell: ({ row }) => {
+        const b = row.original
+        return (
+          <div className="flex justify-end gap-1">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setError(null)
+                void systemRestoresApi
+                  .create({
+                    name: `restore-${b.name}-${Date.now()}`,
+                    systemBackup: b.name,
+                  })
+                  .then(() => restores.refetch())
+                  .catch((e: Error) => setError(e.message))
+              }}
+            >
+              {t('common.restore')}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(b)}>
+              <Trash2 size={14} />
+            </Button>
+          </div>
+        )
+      },
+    },
+  ]
 
   return (
     <div data-testid="system-backups-page">
@@ -64,53 +128,12 @@ export function SystemBackupsPage() {
           emptyTitle={t('systemBackups.empty')}
           onRetry={() => void backups.refetch()}
         >
-          <Table>
-            <THead>
-              <TR>
-                <TH>{t('common.name')}</TH>
-                <TH>{t('common.version')}</TH>
-                <TH>{t('common.state')}</TH>
-                <TH>{t('common.created')}</TH>
-                <TH />
-              </TR>
-            </THead>
-            <TBody>
-              {(backups.data ?? []).map((b) => (
-                <TR key={b.id ?? b.name}>
-                  <TD className="font-medium">{b.name}</TD>
-                  <TD>{b.version ?? '—'}</TD>
-                  <TD>
-                    <Badge tone={stateTone(b.state)}>{b.state ?? '—'}</Badge>
-                  </TD>
-                  <TD className="text-xs">{b.created ?? '—'}</TD>
-                  <TD className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setError(null)
-                          void systemRestoresApi
-                            .create({
-                              name: `restore-${b.name}-${Date.now()}`,
-                              systemBackup: b.name,
-                            })
-                            .then(() => restores.refetch())
-                            .catch((e: Error) => setError(e.message))
-                        }}
-                      >
-                        {t('common.restore')}
-                      </Button>
-                      <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(b)}>
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  </TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
+          <DataTable
+            data-testid="system-backups-table"
+            columns={backupColumns}
+            data={backups.data ?? []}
+            getRowId={(b) => b.id ?? b.name}
+          />
         </QueryState>
 
         <Card>

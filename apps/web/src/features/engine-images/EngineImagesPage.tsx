@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Plus, RefreshCw, Trash2 } from 'lucide-react'
+import type { ColumnDef } from '@tanstack/react-table'
 import {
   useCreateEngineImage,
   useDeleteEngineImage,
@@ -7,6 +8,7 @@ import {
 } from '@/api/hooks'
 import type { EngineImage } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
+import { DataTable } from '@/components/data/DataTable'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Alert } from '@/components/ui/alert'
@@ -14,7 +16,6 @@ import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 export function EngineImagesPage() {
@@ -26,6 +27,64 @@ export function EngineImagesPage() {
   const [image, setImage] = useState('longhornio/longhorn-engine:v1.12.0')
   const [error, setError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<EngineImage | null>(null)
+
+  const columns = useMemo<ColumnDef<EngineImage, any>[]>(
+    () => [
+      {
+        id: 'name',
+        accessorFn: (img) => img.name ?? '',
+        header: t('common.name'),
+        meta: { className: 'font-medium' },
+        cell: ({ row }) => row.original.name,
+      },
+      {
+        id: 'image',
+        accessorFn: (img) => img.image ?? '',
+        header: t('common.image'),
+        meta: { className: 'max-w-xs truncate font-mono text-xs' },
+        cell: ({ row }) => row.original.image,
+      },
+      {
+        id: 'state',
+        accessorFn: (img) => img.state ?? '',
+        header: t('common.state'),
+        cell: ({ row }) => (
+          <Badge tone={stateTone(row.original.state)}>{row.original.state ?? '—'}</Badge>
+        ),
+      },
+      {
+        id: 'default',
+        accessorFn: (img) => (img.default ? 1 : 0),
+        header: t('common.default'),
+        cell: ({ row }) => (row.original.default ? t('common.yes') : t('common.no')),
+      },
+      {
+        id: 'refs',
+        accessorFn: (img) => img.refCount ?? 0,
+        header: t('common.refs'),
+        meta: { className: 'tabular-nums' },
+        cell: ({ row }) => row.original.refCount ?? '—',
+      },
+      {
+        id: 'actions',
+        header: '',
+        enableSorting: false,
+        meta: { headerClassName: 'text-right', className: 'text-right' },
+        cell: ({ row }) =>
+          !row.original.default ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setDeleteTarget(row.original)}
+            >
+              <Trash2 size={14} />
+            </Button>
+          ) : null,
+      },
+    ],
+    [t],
+  )
 
   return (
     <div data-testid="engine-images-page">
@@ -51,38 +110,12 @@ export function EngineImagesPage() {
         emptyTitle={t('engineImages.empty')}
         onRetry={() => void q.refetch()}
       >
-        <Table>
-          <THead>
-            <TR>
-              <TH>{t('common.name')}</TH>
-              <TH>{t('common.image')}</TH>
-              <TH>{t('common.state')}</TH>
-              <TH>{t('common.default')}</TH>
-              <TH>{t('common.refs')}</TH>
-              <TH />
-            </TR>
-          </THead>
-          <TBody>
-            {(q.data ?? []).map((img) => (
-              <TR key={img.id ?? img.name}>
-                <TD className="font-medium">{img.name}</TD>
-                <TD className="max-w-xs truncate font-mono text-xs">{img.image}</TD>
-                <TD>
-                  <Badge tone={stateTone(img.state)}>{img.state ?? '—'}</Badge>
-                </TD>
-                <TD>{img.default ? t('common.yes') : t('common.no')}</TD>
-                <TD className="tabular-nums">{img.refCount ?? '—'}</TD>
-                <TD className="text-right">
-                  {!img.default ? (
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(img)}>
-                      <Trash2 size={14} />
-                    </Button>
-                  ) : null}
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+        <DataTable
+          data-testid="engine-images-table"
+          columns={columns}
+          data={q.data ?? []}
+          getRowId={(img) => img.id ?? img.name}
+        />
       </QueryState>
 
       <Dialog

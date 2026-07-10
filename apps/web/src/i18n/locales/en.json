@@ -132,6 +132,16 @@
     "applyView": "Apply view “{{name}}”",
     "deleteView": "Delete view {{name}}"
   },
+  "table": {
+    "searchPlaceholder": "Search…",
+    "rowsPerPage": "Rows per page",
+    "of": "of",
+    "noResults": "No results",
+    "page": "Page {{page}} of {{total}}",
+    "previous": "Previous",
+    "next": "Next",
+    "selectedCount": "{{count}} selected"
+  },
   "compat": {
     "title": "Longhorn {{lh}} · Highland {{hVer}}"
   },
@@ -158,7 +168,12 @@
     "continueSso": "Continue with SSO",
     "ssoMock": "SSO mock (dev)",
     "credentialsHint": "Credentials come from the cluster Secret / bootstrap admin.",
-    "devAccounts": "Dev: admin/highland · operator/operator · viewer/viewer"
+    "devAccounts": "Dev: admin/highland · operator/operator · viewer/viewer",
+    "brandHeadline": "The ranch that manages your Longhorn.",
+    "brandBody": "A modern console, native auth, and BFF for Longhorn — without forking the data plane.",
+    "feature1": "Live volume, node & disk insight",
+    "feature2": "fio benchmarks & real-time I/O metrics",
+    "feature3": "SSO, RBAC & audit built in"
   },
   "volumes": {
     "title": "Volumes",

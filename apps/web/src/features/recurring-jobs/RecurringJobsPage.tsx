@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Plus, RefreshCw, Trash2 } from 'lucide-react'
+import type { ColumnDef } from '@tanstack/react-table'
 import {
   useCreateRecurringJob,
   useDeleteRecurringJob,
@@ -7,6 +8,7 @@ import {
 } from '@/api/hooks'
 import type { RecurringJob } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
+import { DataTable } from '@/components/data/DataTable'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Alert } from '@/components/ui/alert'
@@ -14,7 +16,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 export function RecurringJobsPage() {
@@ -49,6 +50,58 @@ export function RecurringJobsPage() {
     }
   }
 
+  const columns = useMemo<ColumnDef<RecurringJob, any>[]>(
+    () => [
+      {
+        id: 'name',
+        accessorFn: (job) => job.name ?? '',
+        header: t('common.name'),
+        meta: { className: 'font-medium' },
+        cell: ({ row }) => row.original.name,
+      },
+      {
+        id: 'task',
+        accessorFn: (job) => job.task ?? '',
+        header: t('common.task'),
+        cell: ({ row }) => <Badge>{row.original.task ?? '—'}</Badge>,
+      },
+      {
+        id: 'cron',
+        accessorFn: (job) => job.cron ?? '',
+        header: t('common.cron'),
+        meta: { className: 'font-mono text-xs' },
+        cell: ({ row }) => row.original.cron,
+      },
+      {
+        id: 'retain',
+        accessorFn: (job) => job.retain ?? 0,
+        header: t('common.retain'),
+        meta: { className: 'tabular-nums' },
+        cell: ({ row }) => row.original.retain ?? '—',
+      },
+      {
+        id: 'groups',
+        accessorFn: (job) => (job.groups ?? []).join(', '),
+        header: t('common.groups'),
+        cell: ({ row }) => (row.original.groups ?? []).join(', ') || '—',
+      },
+      {
+        id: 'actions',
+        header: t('common.actions'),
+        enableSorting: false,
+        meta: { headerClassName: 'text-right', className: 'text-right' },
+        cell: ({ row }) => (
+          <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(row.original)}>
+            <Trash2 size={14} />
+          </Button>
+        ),
+      },
+    ],
+    [t],
+  )
+
+  const data = q.data ?? []
+
   return (
     <div data-testid="recurring-jobs-page">
       <PageHeader
@@ -78,36 +131,12 @@ export function RecurringJobsPage() {
         emptyTitle={t('recurringJobs.empty')}
         onRetry={() => void q.refetch()}
       >
-        <Table>
-          <THead>
-            <TR>
-              <TH>{t('common.name')}</TH>
-              <TH>{t('common.task')}</TH>
-              <TH>{t('common.cron')}</TH>
-              <TH>{t('common.retain')}</TH>
-              <TH>{t('common.groups')}</TH>
-              <TH className="text-right">{t('common.actions')}</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {(q.data ?? []).map((job) => (
-              <TR key={job.id ?? job.name}>
-                <TD className="font-medium">{job.name}</TD>
-                <TD>
-                  <Badge>{job.task ?? '—'}</Badge>
-                </TD>
-                <TD className="font-mono text-xs">{job.cron}</TD>
-                <TD className="tabular-nums">{job.retain ?? '—'}</TD>
-                <TD>{(job.groups ?? []).join(', ') || '—'}</TD>
-                <TD className="text-right">
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(job)}>
-                    <Trash2 size={14} />
-                  </Button>
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+        <DataTable
+          data-testid="recurring-jobs-table"
+          columns={columns}
+          data={data}
+          getRowId={(job) => job.id ?? job.name}
+        />
       </QueryState>
 
       <Dialog

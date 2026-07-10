@@ -1,4 +1,5 @@
-import { Mountain, PanelLeft, PanelLeftClose } from 'lucide-react'
+import { PanelLeft, PanelLeftClose } from 'lucide-react'
+import { HighlandLogo } from '@/components/layout/HighlandLogo'
 import { NavLink } from 'react-router-dom'
 import { CompatibilityBadge } from '@/components/layout/CompatibilityBadge'
 import { Button } from '@/components/ui/button'
@@ -38,13 +39,11 @@ export function Sidebar({ className }: SidebarProps) {
       >
         {!collapsed && (
           <div className="flex items-center gap-2 font-semibold tracking-tight">
-            <Mountain size={20} strokeWidth={1.75} className="text-[var(--color-primary)]" />
+            <HighlandLogo size={22} className="text-[var(--color-primary)]" />
             <span>{t('app.name')}</span>
           </div>
         )}
-        {collapsed && (
-          <Mountain size={20} strokeWidth={1.75} className="text-[var(--color-primary)]" />
-        )}
+        {collapsed && <HighlandLogo size={22} className="text-[var(--color-primary)]" />}
         <Button
           type="button"
           variant="ghost"

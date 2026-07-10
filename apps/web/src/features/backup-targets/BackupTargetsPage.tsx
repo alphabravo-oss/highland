@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Plus, RefreshCw, Trash2 } from 'lucide-react'
+import type { ColumnDef } from '@tanstack/react-table'
 import {
   useBackupTargets,
   useCreateBackupTarget,
@@ -7,6 +8,7 @@ import {
 } from '@/api/hooks'
 import { hasAction, type BackupTarget } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
+import { DataTable } from '@/components/data/DataTable'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Alert } from '@/components/ui/alert'
@@ -14,7 +16,6 @@ import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { backupTargetsApi } from '@/api/longhorn'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
@@ -66,6 +67,71 @@ export function BackupTargetsPage() {
     }
   }
 
+  const columns = useMemo<ColumnDef<BackupTarget, any>[]>(
+    () => [
+      {
+        id: 'name',
+        accessorFn: (bt) => bt.name ?? '',
+        header: t('common.name'),
+        meta: { className: 'font-medium' },
+        cell: ({ row }) => row.original.name,
+      },
+      {
+        id: 'url',
+        accessorFn: (bt) => bt.backupTargetURL ?? '',
+        header: t('common.url'),
+        meta: { className: 'max-w-xs truncate font-mono text-xs' },
+        cell: ({ row }) => row.original.backupTargetURL,
+      },
+      {
+        id: 'available',
+        accessorFn: (bt) => (bt.available ? 1 : 0),
+        header: t('common.available'),
+        cell: ({ row }) => (
+          <Badge tone={stateTone(row.original.available ? 'available' : 'faulted')}>
+            {row.original.available ? t('common.yes') : t('common.no')}
+          </Badge>
+        ),
+      },
+      {
+        id: 'poll',
+        accessorFn: (bt) => bt.pollInterval ?? '',
+        header: t('common.poll'),
+        cell: ({ row }) => row.original.pollInterval ?? '—',
+      },
+      {
+        id: 'message',
+        accessorFn: (bt) => bt.message ?? '',
+        header: t('common.message'),
+        meta: { className: 'max-w-xs truncate text-xs' },
+        cell: ({ row }) => row.original.message ?? '—',
+      },
+      {
+        id: 'actions',
+        header: t('common.actions'),
+        enableSorting: false,
+        meta: { headerClassName: 'text-right' },
+        cell: ({ row }) => {
+          const bt = row.original
+          return (
+            <div className="flex justify-end gap-1">
+              <Button type="button" size="sm" variant="outline" onClick={() => void syncTarget(bt)}>
+                {t('common.sync')}
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(bt)}>
+                <Trash2 size={14} />
+              </Button>
+            </div>
+          )
+        },
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t],
+  )
+
+  const data = q.data ?? []
+
   return (
     <div data-testid="backup-targets-page">
       <PageHeader
@@ -96,43 +162,12 @@ export function BackupTargetsPage() {
         emptyDescription={t('backupTargets.emptyDescription')}
         onRetry={() => void q.refetch()}
       >
-        <Table>
-          <THead>
-            <TR>
-              <TH>{t('common.name')}</TH>
-              <TH>{t('common.url')}</TH>
-              <TH>{t('common.available')}</TH>
-              <TH>{t('common.poll')}</TH>
-              <TH>{t('common.message')}</TH>
-              <TH className="text-right">{t('common.actions')}</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {(q.data ?? []).map((bt) => (
-              <TR key={bt.id ?? bt.name}>
-                <TD className="font-medium">{bt.name}</TD>
-                <TD className="max-w-xs truncate font-mono text-xs">{bt.backupTargetURL}</TD>
-                <TD>
-                  <Badge tone={stateTone(bt.available ? 'available' : 'faulted')}>
-                    {bt.available ? t('common.yes') : t('common.no')}
-                  </Badge>
-                </TD>
-                <TD>{bt.pollInterval ?? '—'}</TD>
-                <TD className="max-w-xs truncate text-xs">{bt.message ?? '—'}</TD>
-                <TD>
-                  <div className="flex justify-end gap-1">
-                    <Button type="button" size="sm" variant="outline" onClick={() => void syncTarget(bt)}>
-                      {t('common.sync')}
-                    </Button>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(bt)}>
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+        <DataTable
+          data-testid="backup-targets-table"
+          columns={columns}
+          data={data}
+          getRowId={(bt) => bt.id ?? bt.name}
+        />
       </QueryState>
 
       <Dialog
