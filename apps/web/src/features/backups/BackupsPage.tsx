@@ -19,14 +19,17 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { TableSkeleton } from '@/components/ui/skeleton'
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { Badge, stateTone } from '@/components/ui/badge'
 import { UsageBar } from '@/components/data/dashcharts'
+import { useToast } from '@/components/ui/toast'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 export function BackupsPage() {
   const { t } = useAppTranslation()
   const { canMutate } = useAuth()
+  const toast = useToast()
   const q = useBackupVolumes()
   const delMut = useDeleteBackupVolume()
   const createVol = useCreateVolume()
@@ -47,6 +50,7 @@ export function BackupsPage() {
     try {
       if (!hasAction(bv, 'backupList')) {
         setError(t('volumeActions.actionFailed'))
+        toast.error(t('volumeActions.actionFailed'))
         return
       }
       const res = (await backupVolumesApi.action(bv, 'backupList', {})) as {
@@ -56,7 +60,9 @@ export function BackupsPage() {
       setBackupList(data as Array<Record<string, unknown>>)
       setBackupListFor(bv.name)
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
+      const msg = e instanceof Error ? e.message : t('volumeActions.actionFailed')
+      setError(msg)
+      toast.error(t('volumeActions.actionFailed'), msg)
     }
   }
 
@@ -70,12 +76,16 @@ export function BackupsPage() {
           : null
       if (!action) {
         setError(t('volumeActions.actionFailed'))
+        toast.error(t('volumeActions.actionFailed'))
         return
       }
       await backupVolumesApi.action(bv, action, {})
       await q.refetch()
+      toast.success(t('backups.syncedToast', { name: bv.name }))
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
+      const msg = e instanceof Error ? e.message : t('volumeActions.actionFailed')
+      setError(msg)
+      toast.error(t('volumeActions.actionFailed'), msg)
     }
   }
 
@@ -84,6 +94,7 @@ export function BackupsPage() {
     try {
       await lhPut('/backupvolumes', {})
       await q.refetch()
+      toast.success(t('backups.syncAllToast'))
     } catch (e) {
       // try collection action
       try {
@@ -93,8 +104,11 @@ export function BackupsPage() {
           }
         }
         await q.refetch()
+        toast.success(t('backups.syncAllToast'))
       } catch (e2) {
-        setError(e2 instanceof Error ? e2.message : t('volumeActions.actionFailed'))
+        const msg = e2 instanceof Error ? e2.message : t('volumeActions.actionFailed')
+        setError(msg)
+        toast.error(t('volumeActions.actionFailed'), msg)
       }
     }
   }
@@ -114,12 +128,15 @@ export function BackupsPage() {
         standby,
         fromBackup,
       })
+      toast.success(t('backups.restoredToast', { name: restoreName }))
       setRestoreTarget(null)
       setRestoreName('')
       setStandby(false)
       setRestoreOverride(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
+      const msg = e instanceof Error ? e.message : t('volumeActions.actionFailed')
+      setError(msg)
+      toast.error(t('volumeActions.actionFailed'), msg)
     }
   }
 
@@ -132,8 +149,11 @@ export function BackupsPage() {
       await navigator.clipboard.writeText(url)
       setCopiedKey(key)
       window.setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 1500)
+      toast.success(t('backups.urlCopiedToast'))
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
+      const msg = e instanceof Error ? e.message : t('volumeActions.actionFailed')
+      setError(msg)
+      toast.error(t('volumeActions.actionFailed'), msg)
     }
   }
 
@@ -144,15 +164,20 @@ export function BackupsPage() {
         await backupVolumesApi.action(bv, 'backupDelete', { name: backupName })
       } else {
         setError(t('volumeActions.actionFailed'))
+        toast.error(t('volumeActions.actionFailed'))
         return
       }
       await listBackups(bv)
+      toast.success(t('backups.entryDeletedToast', { name: backupName }))
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
+      const msg = e instanceof Error ? e.message : t('volumeActions.actionFailed')
+      setError(msg)
+      toast.error(t('volumeActions.actionFailed'), msg)
     }
   }
 
   async function bulkRestore(targets: BackupVolume[]) {
+    let ok = 0
     for (const bv of targets) {
       setRestoreTarget(bv)
       setRestoreName(`${bv.name}-restore`)
@@ -166,12 +191,17 @@ export function BackupsPage() {
           frontend: 'blockdev',
           fromBackup: last ? `backup://${bv.name}/${last}` : undefined,
         })
+        ok++
       } catch (e) {
-        setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
+        const msg = e instanceof Error ? e.message : t('volumeActions.actionFailed')
+        setError(msg)
+        toast.error(t('volumeActions.actionFailed'), msg)
         break
       }
     }
     setSelected({})
+    setRestoreTarget(null)
+    if (ok) toast.success(t('backups.bulkRestoredToast', { count: ok }))
   }
 
   const columns: ColumnDef<BackupVolume, any>[] = [
@@ -301,6 +331,7 @@ export function BackupsPage() {
         error={q.error as Error | null}
         isEmpty={!q.data?.length}
         emptyTitle={t('backups.emptyVolumes')}
+        skeleton={<TableSkeleton rows={8} cols={7} />}
         onRetry={() => void q.refetch()}
       >
         <DataTable
@@ -477,7 +508,13 @@ export function BackupsPage() {
         loading={delMut.isPending}
         onConfirm={async () => {
           if (!deleteTarget) return
-          await delMut.mutateAsync(deleteTarget)
+          const name = deleteTarget.name
+          try {
+            await delMut.mutateAsync(deleteTarget)
+            toast.success(t('backups.deletedToast', { name }))
+          } catch (e) {
+            toast.error(t('backups.deleteBackupVolume'), e instanceof Error ? e.message : undefined)
+          }
           setDeleteTarget(null)
         }}
       />
@@ -494,9 +531,26 @@ export function BackupsPage() {
         loading={delMut.isPending}
         onConfirm={async () => {
           const targets = (q.data ?? []).filter((b) => selected[b.name])
-          for (const item of targets) await delMut.mutateAsync(item)
+          let ok = 0
+          const failed: string[] = []
+          for (const item of targets) {
+            try {
+              await delMut.mutateAsync(item)
+              ok++
+            } catch {
+              failed.push(item.name)
+            }
+          }
           setSelected({})
           setBulkDeleteOpen(false)
+          if (failed.length) {
+            toast.error(
+              t('backups.deleteBackupVolume'),
+              t('table.bulkFailed', { count: failed.length, names: failed.slice(0, 3).join(', ') }),
+            )
+          } else if (ok) {
+            toast.success(t('backups.bulkDeletedToast', { count: ok }))
+          }
         }}
       />
     </div>

@@ -34,6 +34,8 @@ import {
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { TableSkeleton } from '@/components/ui/skeleton'
+import { useToast } from '@/components/ui/toast'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 /** True when at least one disk holds a ready copy — required before backing up / setting min copies. */
@@ -46,6 +48,7 @@ function hasReadyDisk(img: BackingImage): boolean {
 export function BackingImagesPage() {
   const { t } = useAppTranslation()
   const { canMutate } = useAuth()
+  const toast = useToast()
   const q = useBackingImages()
   const bbiQ = useBackupBackingImages()
   const createMut = useCreateBackingImage()
@@ -269,6 +272,7 @@ export function BackingImagesPage() {
         }
         setOpen(false)
         await q.refetch()
+        toast.success(t('backingImages.createdToast', { name }))
         return
       }
       await createMut.mutateAsync({
@@ -277,8 +281,11 @@ export function BackingImagesPage() {
         parameters: sourceType === 'download' ? { url } : {},
       })
       setOpen(false)
+      toast.success(t('backingImages.createdToast', { name }))
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('admin.createFailed'))
+      const message = e instanceof Error ? e.message : t('admin.createFailed')
+      setError(message)
+      toast.error(t('backingImages.create'), message)
     } finally {
       setUploading(false)
     }
@@ -308,6 +315,14 @@ export function BackingImagesPage() {
         error={q.error as Error | null}
         isEmpty={!q.data?.length}
         emptyTitle={t('backingImages.empty')}
+        emptyAction={
+          canMutate ? (
+            <Button type="button" size="sm" onClick={() => setOpen(true)}>
+              <Plus size={14} /> {t('backingImages.create')}
+            </Button>
+          ) : undefined
+        }
+        skeleton={<TableSkeleton rows={6} cols={6} />}
         onRetry={() => void q.refetch()}
       >
         <DataTable
@@ -413,12 +428,22 @@ export function BackingImagesPage() {
               disabled={minCopiesMut.isPending || !minCopies}
               onClick={async () => {
                 if (!minCopiesTarget) return
-                await minCopiesMut.mutateAsync({
-                  img: minCopiesTarget,
-                  action: 'updateMinNumberOfCopies',
-                  params: { minNumberOfCopies: Number(minCopies) },
-                })
-                setMinCopiesTarget(null)
+                try {
+                  await minCopiesMut.mutateAsync({
+                    img: minCopiesTarget,
+                    action: 'updateMinNumberOfCopies',
+                    params: { minNumberOfCopies: Number(minCopies) },
+                  })
+                  toast.success(
+                    t('backingImages.minCopiesUpdatedToast', { name: minCopiesTarget.name }),
+                  )
+                  setMinCopiesTarget(null)
+                } catch (e) {
+                  toast.error(
+                    t('backingImages.minCopiesTitle'),
+                    e instanceof Error ? e.message : undefined,
+                  )
+                }
               }}
             >
               {t('common.save')}
@@ -453,15 +478,21 @@ export function BackingImagesPage() {
               disabled={restoreMut.isPending}
               onClick={async () => {
                 if (!restoreTarget) return
-                await restoreMut.mutateAsync({
-                  bbi: restoreTarget,
-                  params: {
-                    secret: restoreTarget.secret ?? '',
-                    secretNamespace: restoreTarget.secretNamespace ?? '',
-                    dataEngine: restoreEngine,
-                  },
-                })
-                setRestoreTarget(null)
+                const name = restoreTarget.backingImageName ?? restoreTarget.name ?? ''
+                try {
+                  await restoreMut.mutateAsync({
+                    bbi: restoreTarget,
+                    params: {
+                      secret: restoreTarget.secret ?? '',
+                      secretNamespace: restoreTarget.secretNamespace ?? '',
+                      dataEngine: restoreEngine,
+                    },
+                  })
+                  toast.success(t('backingImages.restoredToast', { name }))
+                  setRestoreTarget(null)
+                } catch (e) {
+                  toast.error(t('backingImages.restoreTitle'), e instanceof Error ? e.message : undefined)
+                }
               }}
             >
               {t('common.restore')}
@@ -495,8 +526,13 @@ export function BackingImagesPage() {
         loading={backupMut.isPending}
         onConfirm={async () => {
           if (!backupTarget) return
-          await backupMut.mutateAsync(backupTarget)
-          setBackupTarget(null)
+          try {
+            await backupMut.mutateAsync(backupTarget)
+            toast.success(t('backingImages.backedUpToast', { name: backupTarget.name }))
+            setBackupTarget(null)
+          } catch (e) {
+            toast.error(t('backingImages.backUpTitle'), e instanceof Error ? e.message : undefined)
+          }
         }}
       />
 
@@ -510,7 +546,12 @@ export function BackingImagesPage() {
         loading={delBbiMut.isPending}
         onConfirm={async () => {
           if (!deleteBbiTarget) return
-          await delBbiMut.mutateAsync(deleteBbiTarget)
+          try {
+            await delBbiMut.mutateAsync(deleteBbiTarget)
+            toast.success(t('backingImages.backupDeletedToast'))
+          } catch (e) {
+            toast.error(t('backingImages.deleteBackup'), e instanceof Error ? e.message : undefined)
+          }
           setDeleteBbiTarget(null)
         }}
       />
@@ -525,7 +566,13 @@ export function BackingImagesPage() {
         loading={delMut.isPending}
         onConfirm={async () => {
           if (!deleteTarget) return
-          await delMut.mutateAsync(deleteTarget)
+          const name = deleteTarget.name
+          try {
+            await delMut.mutateAsync(deleteTarget)
+            toast.success(t('backingImages.deletedToast', { name }))
+          } catch (e) {
+            toast.error(t('backingImages.delete'), e instanceof Error ? e.message : undefined)
+          }
           setDeleteTarget(null)
         }}
       />
@@ -538,11 +585,30 @@ export function BackingImagesPage() {
         confirmLabel={t('common.delete')}
         loading={delMut.isPending}
         onConfirm={async () => {
+          let ok = 0
+          const failed: string[] = []
           for (const img of bulkRows) {
-            await delMut.mutateAsync(img)
+            try {
+              await delMut.mutateAsync(img)
+              ok++
+            } catch {
+              failed.push(img.name)
+            }
           }
           setBulkDeleteOpen(false)
           setBulkRows([])
+          const label = t('common.delete')
+          if (failed.length) {
+            toast.error(
+              t('table.bulkResult', { action: label }),
+              [
+                t('table.bulkOk', { count: ok }),
+                t('table.bulkFailed', { count: failed.length, names: failed.slice(0, 3).join(', ') }),
+              ].join(' · '),
+            )
+          } else {
+            toast.success(t('table.bulkResult', { action: label }), t('table.bulkOk', { count: ok }))
+          }
         }}
       />
     </div>

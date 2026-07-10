@@ -18,12 +18,15 @@ import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { TableSkeleton } from '@/components/ui/skeleton'
+import { useToast } from '@/components/ui/toast'
 import { backupTargetsApi } from '@/api/longhorn'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 export function BackupTargetsPage() {
   const { t } = useAppTranslation()
   const { canMutate } = useAuth()
+  const toast = useToast()
   const q = useBackupTargets()
   const createMut = useCreateBackupTarget()
   const delMut = useDeleteBackupTarget()
@@ -48,8 +51,11 @@ export function BackupTargetsPage() {
         pollInterval: `${poll}s`,
       })
       setOpen(false)
+      toast.success(t('backupTargets.createdToast', { name }))
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('admin.createFailed'))
+      const msg = e instanceof Error ? e.message : t('admin.createFailed')
+      setError(msg)
+      toast.error(t('admin.createFailed'), msg)
     }
   }
 
@@ -66,10 +72,15 @@ export function BackupTargetsPage() {
         })
       } else {
         setError(t('volumeActions.actionFailed'))
+        toast.error(t('volumeActions.actionFailed'))
+        return
       }
       await q.refetch()
+      toast.success(t('backupTargets.syncedToast', { name: bt.name }))
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
+      const msg = e instanceof Error ? e.message : t('volumeActions.actionFailed')
+      setError(msg)
+      toast.error(t('volumeActions.actionFailed'), msg)
     }
   }
 
@@ -181,6 +192,14 @@ export function BackupTargetsPage() {
         isEmpty={!q.data?.length}
         emptyTitle={t('backupTargets.empty')}
         emptyDescription={t('backupTargets.emptyDescription')}
+        emptyAction={
+          canMutate ? (
+            <Button type="button" size="sm" onClick={() => setWizardOpen(true)}>
+              <Sparkles size={14} /> {t('backupWizard.setUp')}
+            </Button>
+          ) : undefined
+        }
+        skeleton={<TableSkeleton rows={8} cols={6} />}
         onRetry={() => void q.refetch()}
       >
         <DataTable
@@ -256,7 +275,13 @@ export function BackupTargetsPage() {
         loading={delMut.isPending}
         onConfirm={async () => {
           if (!deleteTarget) return
-          await delMut.mutateAsync(deleteTarget)
+          const name = deleteTarget.name
+          try {
+            await delMut.mutateAsync(deleteTarget)
+            toast.success(t('backupTargets.deletedToast', { name }))
+          } catch (e) {
+            toast.error(t('backupTargets.delete'), e instanceof Error ? e.message : undefined)
+          }
           setDeleteTarget(null)
         }}
       />
@@ -273,9 +298,26 @@ export function BackupTargetsPage() {
         loading={delMut.isPending}
         onConfirm={async () => {
           const targets = data.filter((bt) => selected[bt.id ?? bt.name])
-          for (const item of targets) await delMut.mutateAsync(item)
+          let ok = 0
+          const failed: string[] = []
+          for (const item of targets) {
+            try {
+              await delMut.mutateAsync(item)
+              ok++
+            } catch {
+              failed.push(item.name)
+            }
+          }
           setSelected({})
           setBulkDeleteOpen(false)
+          if (failed.length) {
+            toast.error(
+              t('backupTargets.delete'),
+              t('table.bulkFailed', { count: failed.length, names: failed.slice(0, 3).join(', ') }),
+            )
+          } else if (ok) {
+            toast.success(t('backupTargets.bulkDeletedToast', { count: ok }))
+          }
         }}
       />
     </div>

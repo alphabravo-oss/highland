@@ -10,6 +10,8 @@ import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { TableSkeleton } from '@/components/ui/skeleton'
+import { useToast } from '@/components/ui/toast'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 import { cn } from '@/lib/utils'
 
@@ -27,6 +29,7 @@ type OrphanTab = 'replicaData' | 'instances'
 export function OrphansPage() {
   const { t } = useAppTranslation()
   const { canMutate } = useAuth()
+  const toast = useToast()
   const q = useOrphans()
   const delMut = useDeleteOrphan()
   const [deleteTarget, setDeleteTarget] = useState<Orphan | null>(null)
@@ -121,6 +124,7 @@ export function OrphansPage() {
         isEmpty={!data.length}
         emptyTitle={t('orphans.empty')}
         emptyDescription={t('orphans.emptyDescription')}
+        skeleton={<TableSkeleton rows={6} cols={5} />}
         onRetry={() => void q.refetch()}
       >
         <div
@@ -191,7 +195,13 @@ export function OrphansPage() {
         loading={delMut.isPending}
         onConfirm={async () => {
           if (!deleteTarget) return
-          await delMut.mutateAsync(deleteTarget)
+          const name = deleteTarget.name
+          try {
+            await delMut.mutateAsync(deleteTarget)
+            toast.success(t('orphans.deletedToast', { name }))
+          } catch (e) {
+            toast.error(t('orphans.delete'), e instanceof Error ? e.message : undefined)
+          }
           setDeleteTarget(null)
         }}
       />
@@ -205,10 +215,29 @@ export function OrphansPage() {
         confirmLabel={t('common.delete')}
         loading={delMut.isPending}
         onConfirm={async () => {
+          let ok = 0
+          const failed: string[] = []
           for (const orphan of selectedOrphans) {
-            await delMut.mutateAsync(orphan)
+            try {
+              await delMut.mutateAsync(orphan)
+              ok++
+            } catch {
+              failed.push(orphan.name)
+            }
           }
           setBulkDeleteOpen(false)
+          const label = t('common.delete')
+          if (failed.length) {
+            toast.error(
+              t('table.bulkResult', { action: label }),
+              [
+                t('table.bulkOk', { count: ok }),
+                t('table.bulkFailed', { count: failed.length, names: failed.slice(0, 3).join(', ') }),
+              ].join(' · '),
+            )
+          } else {
+            toast.success(t('table.bulkResult', { action: label }), t('table.bulkOk', { count: ok }))
+          }
         }}
       />
     </div>

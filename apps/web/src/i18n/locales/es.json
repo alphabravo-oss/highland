@@ -150,7 +150,11 @@
     "next": "Siguiente",
     "selectedCount": "{{count}} seleccionados",
     "columns": "Columnas",
-    "export": "Exportar CSV"
+    "export": "Exportar CSV",
+    "bulkResult": "{{action}} en lote",
+    "bulkOk": "{{count}} con éxito",
+    "bulkSkipped": "{{count}} omitidos (acción no disponible)",
+    "bulkFailed": "{{count}} fallaron: {{names}}"
   },
   "compat": {
     "title": "Longhorn {{lh}} · Highland {{hVer}}"
@@ -272,7 +276,10 @@
     "pvcName": "Nombre del PVC",
     "namespace": "Namespace",
     "rowActions": "Acciones para {{name}}",
-    "noActions": "No hay acciones disponibles"
+    "noActions": "No hay acciones disponibles",
+    "createdToast": "Volumen \"{{name}}\" creado",
+    "deletedToast": "Volumen \"{{name}}\" eliminado",
+    "emptyDescription": "Crea tu primer volumen para comenzar."
   },
   "volumeDetail": {
     "description": "Detalle de paridad: info, réplicas, instantáneas, eventos, adjuntos, E/S en vivo, todas las acciones del manager",
@@ -375,7 +382,14 @@
     "markedForRemoval": "Marcado para eliminación",
     "pathPlaceholder": "Ruta montada por el disco, p. ej. /mnt/disk1",
     "searchPlaceholder": "Buscar nodos…",
-    "existingTags": "Etiquetas existentes"
+    "existingTags": "Etiquetas existentes",
+    "schedulingUpdatedToast": "Programación actualizada para {{name}}",
+    "bulkSchedulingUpdatedToast": "Programación actualizada para {{count}} nodos",
+    "tagsUpdatedToast": "Etiquetas actualizadas para {{name}}",
+    "disksUpdatedToast": "Discos actualizados para {{name}}",
+    "nodeDeletedToast": "Nodo {{name}} eliminado",
+    "updateFailedToast": "Error al actualizar el nodo",
+    "deleteFailedToast": "Error al eliminar el nodo"
   },
   "backups": {
     "title": "Copias de seguridad",
@@ -411,7 +425,15 @@
     "recurringTitle": "Trabajos recurrentes",
     "recurringDescription": "Trabajos programados de instantáneas y copias",
     "systemTitle": "Copias del sistema",
-    "systemDescription": "Copias de seguridad a nivel de clúster"
+    "systemDescription": "Copias de seguridad a nivel de clúster",
+    "syncedToast": "Volumen de copia {{name}} sincronizado",
+    "syncAllToast": "Todos los volúmenes de copia sincronizados",
+    "restoredToast": "Restauración iniciada para {{name}}",
+    "urlCopiedToast": "URL de copia copiada",
+    "entryDeletedToast": "Copia {{name}} eliminada",
+    "bulkRestoredToast": "{{count}} volúmenes restaurados",
+    "deletedToast": "Volumen de copia {{name}} eliminado",
+    "bulkDeletedToast": "{{count}} volúmenes de copia eliminados"
   },
   "backupTargets": {
     "title": "Destinos de copia",
@@ -422,7 +444,11 @@
     "emptyDescription": "Cree un destino para habilitar copias de volúmenes.",
     "credentialSecret": "Secret de credenciales (opcional)",
     "pollInterval": "Intervalo de sondeo (segundos)",
-    "manual": "Manual"
+    "manual": "Manual",
+    "createdToast": "Destino de copia {{name}} creado",
+    "syncedToast": "Destino de copia {{name}} sincronizado",
+    "deletedToast": "Destino de copia {{name}} eliminado",
+    "bulkDeletedToast": "{{count}} destinos de copia eliminados"
   },
   "recurringJobs": {
     "title": "Trabajos recurrentes",
@@ -436,7 +462,10 @@
     "groupsHint": "Nombres de grupos separados por comas",
     "labelsHint": "Un par clave=valor por línea",
     "cronHint": "Expresión cron, p. ej. 0 0 * * *",
-    "parameterPolicy": "Política de copia de volumen"
+    "parameterPolicy": "Política de copia de volumen",
+    "createdToast": "Trabajo recurrente \"{{name}}\" creado",
+    "updatedToast": "Trabajo recurrente \"{{name}}\" actualizado",
+    "deletedToast": "Trabajo recurrente \"{{name}}\" eliminado"
   },
   "systemBackups": {
     "title": "Copias del sistema",
@@ -445,7 +474,10 @@
     "delete": "Eliminar copia del sistema",
     "empty": "Sin copias del sistema",
     "restores": "Restauraciones del sistema",
-    "noRestores": "Sin restauraciones"
+    "noRestores": "Sin restauraciones",
+    "restoreStartedToast": "Restauración iniciada desde \"{{name}}\"",
+    "createdToast": "Copia de seguridad del sistema \"{{name}}\" creada",
+    "deletedToast": "Copia de seguridad del sistema \"{{name}}\" eliminada"
   },
   "backingImages": {
     "title": "Imágenes base",
@@ -469,14 +501,22 @@
     "onlyCompletedRestore": "Solo se puede restaurar un respaldo completado",
     "restoreTitle": "Restaurar imagen base",
     "dataEngine": "Motor de datos",
-    "deleteBackup": "Eliminar respaldo de imagen base"
+    "deleteBackup": "Eliminar respaldo de imagen base",
+    "createdToast": "Imagen base \"{{name}}\" creada",
+    "minCopiesUpdatedToast": "Copias mínimas actualizadas para \"{{name}}\"",
+    "restoredToast": "Restauración iniciada para \"{{name}}\"",
+    "backedUpToast": "Copia de seguridad iniciada para \"{{name}}\"",
+    "backupDeletedToast": "Copia de seguridad de imagen base eliminada",
+    "deletedToast": "Imagen base \"{{name}}\" eliminada"
   },
   "engineImages": {
     "title": "Imágenes de motor",
     "description": "Imágenes de contenedor del motor Longhorn",
     "deploy": "Desplegar imagen de motor",
     "delete": "Eliminar imagen de motor",
-    "empty": "Sin imágenes de motor"
+    "empty": "Sin imágenes de motor",
+    "deployedToast": "Imagen de motor \"{{image}}\" desplegada",
+    "deletedToast": "Imagen de motor \"{{name}}\" eliminada"
   },
   "instanceManagers": {
     "title": "Gestores de instancia",
@@ -498,7 +538,8 @@
     "tabs": {
       "replicaData": "Datos de réplica",
       "instances": "Instancias"
-    }
+    },
+    "deletedToast": "Huérfano \"{{name}}\" eliminado"
   },
   "supportBundle": {
     "title": "Paquete de soporte",
@@ -744,7 +785,8 @@
       "access": "Acceso y respaldo",
       "kubernetes": "Kubernetes",
       "advanced": "Avanzado"
-    }
+    },
+    "actionDone": "{{action}} · {{name}}"
   },
   "nodeDetail": {
     "address": "Dirección",

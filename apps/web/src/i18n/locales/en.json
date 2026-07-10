@@ -150,7 +150,11 @@
     "next": "Next",
     "selectedCount": "{{count}} selected",
     "columns": "Columns",
-    "export": "Export CSV"
+    "export": "Export CSV",
+    "bulkResult": "Bulk {{action}}",
+    "bulkOk": "{{count}} succeeded",
+    "bulkSkipped": "{{count}} skipped (action unavailable)",
+    "bulkFailed": "{{count}} failed: {{names}}"
   },
   "compat": {
     "title": "Longhorn {{lh}} · Highland {{hVer}}"
@@ -272,7 +276,10 @@
     "pvcName": "PVC name",
     "namespace": "Namespace",
     "rowActions": "Actions for {{name}}",
-    "noActions": "No actions available"
+    "noActions": "No actions available",
+    "createdToast": "Volume \"{{name}}\" created",
+    "deletedToast": "Volume \"{{name}}\" deleted",
+    "emptyDescription": "Create your first volume to get started."
   },
   "volumeDetail": {
     "description": "Parity detail: info, replicas, snapshots, events, attachments, live I/O, all manager actions",
@@ -375,7 +382,14 @@
     "markedForRemoval": "Marked for removal",
     "pathPlaceholder": "Path mounted by the disk, e.g. /mnt/disk1",
     "searchPlaceholder": "Search nodes…",
-    "existingTags": "Existing tags"
+    "existingTags": "Existing tags",
+    "schedulingUpdatedToast": "Scheduling updated for {{name}}",
+    "bulkSchedulingUpdatedToast": "Scheduling updated for {{count}} nodes",
+    "tagsUpdatedToast": "Tags updated for {{name}}",
+    "disksUpdatedToast": "Disks updated for {{name}}",
+    "nodeDeletedToast": "Node {{name}} deleted",
+    "updateFailedToast": "Failed to update node",
+    "deleteFailedToast": "Failed to delete node"
   },
   "backups": {
     "title": "Backups",
@@ -411,7 +425,15 @@
     "recurringTitle": "Recurring Jobs",
     "recurringDescription": "Scheduled snapshot and backup jobs",
     "systemTitle": "System Backups",
-    "systemDescription": "Cluster-level system backups"
+    "systemDescription": "Cluster-level system backups",
+    "syncedToast": "Backup volume {{name}} synced",
+    "syncAllToast": "All backup volumes synced",
+    "restoredToast": "Restore started for {{name}}",
+    "urlCopiedToast": "Backup URL copied",
+    "entryDeletedToast": "Backup {{name}} deleted",
+    "bulkRestoredToast": "{{count}} volumes restored",
+    "deletedToast": "Backup volume {{name}} deleted",
+    "bulkDeletedToast": "{{count}} backup volumes deleted"
   },
   "backupTargets": {
     "title": "Backup Targets",
@@ -422,7 +444,11 @@
     "emptyDescription": "Create a target to enable volume backups.",
     "credentialSecret": "Credential secret (optional)",
     "pollInterval": "Poll interval (seconds)",
-    "manual": "Manual"
+    "manual": "Manual",
+    "createdToast": "Backup target {{name}} created",
+    "syncedToast": "Backup target {{name}} synced",
+    "deletedToast": "Backup target {{name}} deleted",
+    "bulkDeletedToast": "{{count}} backup targets deleted"
   },
   "recurringJobs": {
     "title": "Recurring Jobs",
@@ -436,7 +462,10 @@
     "groupsHint": "Comma-separated group names",
     "labelsHint": "One key=value per line",
     "cronHint": "Cron expression, e.g. 0 0 * * *",
-    "parameterPolicy": "Volume backup policy"
+    "parameterPolicy": "Volume backup policy",
+    "createdToast": "Recurring job \"{{name}}\" created",
+    "updatedToast": "Recurring job \"{{name}}\" updated",
+    "deletedToast": "Recurring job \"{{name}}\" deleted"
   },
   "systemBackups": {
     "title": "System Backups",
@@ -445,7 +474,10 @@
     "delete": "Delete system backup",
     "empty": "No system backups",
     "restores": "System restores",
-    "noRestores": "No restores"
+    "noRestores": "No restores",
+    "restoreStartedToast": "Restore started from \"{{name}}\"",
+    "createdToast": "System backup \"{{name}}\" created",
+    "deletedToast": "System backup \"{{name}}\" deleted"
   },
   "backingImages": {
     "title": "Backing Images",
@@ -469,14 +501,22 @@
     "onlyCompletedRestore": "Only a completed backup can be restored",
     "restoreTitle": "Restore backing image",
     "dataEngine": "Data engine",
-    "deleteBackup": "Delete backing image backup"
+    "deleteBackup": "Delete backing image backup",
+    "createdToast": "Backing image \"{{name}}\" created",
+    "minCopiesUpdatedToast": "Minimum copies updated for \"{{name}}\"",
+    "restoredToast": "Restore started for \"{{name}}\"",
+    "backedUpToast": "Backup started for \"{{name}}\"",
+    "backupDeletedToast": "Backing image backup deleted",
+    "deletedToast": "Backing image \"{{name}}\" deleted"
   },
   "engineImages": {
     "title": "Engine Images",
     "description": "Longhorn engine container images",
     "deploy": "Deploy engine image",
     "delete": "Delete engine image",
-    "empty": "No engine images"
+    "empty": "No engine images",
+    "deployedToast": "Engine image \"{{image}}\" deployed",
+    "deletedToast": "Engine image \"{{name}}\" deleted"
   },
   "instanceManagers": {
     "title": "Instance Managers",
@@ -498,7 +538,8 @@
     "tabs": {
       "replicaData": "Replica data",
       "instances": "Instances"
-    }
+    },
+    "deletedToast": "Orphan \"{{name}}\" deleted"
   },
   "supportBundle": {
     "title": "Support Bundle",
@@ -744,7 +785,8 @@
       "access": "Access & backup",
       "kubernetes": "Kubernetes",
       "advanced": "Advanced"
-    }
+    },
+    "actionDone": "{{action}} · {{name}}"
   },
   "nodeDetail": {
     "address": "Address",

@@ -20,11 +20,14 @@ import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { TableSkeleton } from '@/components/ui/skeleton'
+import { useToast } from '@/components/ui/toast'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 export function SystemBackupsPage() {
   const { t } = useAppTranslation()
   const { canMutate } = useAuth()
+  const toast = useToast()
   const backups = useSystemBackups()
   const restores = useSystemRestores()
   const createMut = useCreateSystemBackup()
@@ -84,8 +87,14 @@ export function SystemBackupsPage() {
                     name: `restore-${b.name}-${Date.now()}`,
                     systemBackup: b.name,
                   })
-                  .then(() => restores.refetch())
-                  .catch((e: Error) => setError(e.message))
+                  .then(() => {
+                    restores.refetch()
+                    toast.success(t('systemBackups.restoreStartedToast', { name: b.name }))
+                  })
+                  .catch((e: Error) => {
+                    setError(e.message)
+                    toast.error(t('common.restore'), e.message)
+                  })
               }}
             >
               {t('common.restore')}
@@ -139,6 +148,14 @@ export function SystemBackupsPage() {
           error={backups.error as Error | null}
           isEmpty={!backups.data?.length}
           emptyTitle={t('systemBackups.empty')}
+          emptyAction={
+            canMutate ? (
+              <Button type="button" size="sm" onClick={() => setOpen(true)}>
+                <Plus size={14} /> {t('systemBackups.create')}
+              </Button>
+            ) : undefined
+          }
+          skeleton={<TableSkeleton rows={6} cols={5} />}
           onRetry={() => void backups.refetch()}
         >
           <DataTable
@@ -225,8 +242,14 @@ export function SystemBackupsPage() {
                 setError(null)
                 void createMut
                   .mutateAsync({ name })
-                  .then(() => setOpen(false))
-                  .catch((e: Error) => setError(e.message))
+                  .then(() => {
+                    setOpen(false)
+                    toast.success(t('systemBackups.createdToast', { name }))
+                  })
+                  .catch((e: Error) => {
+                    setError(e.message)
+                    toast.error(t('systemBackups.create'), e.message)
+                  })
               }}
             >
               {t('common.create')}
@@ -247,7 +270,13 @@ export function SystemBackupsPage() {
         loading={delMut.isPending}
         onConfirm={async () => {
           if (!deleteTarget) return
-          await delMut.mutateAsync(deleteTarget)
+          const name = deleteTarget.name
+          try {
+            await delMut.mutateAsync(deleteTarget)
+            toast.success(t('systemBackups.deletedToast', { name }))
+          } catch (e) {
+            toast.error(t('systemBackups.delete'), e instanceof Error ? e.message : undefined)
+          }
           setDeleteTarget(null)
         }}
       />
@@ -264,9 +293,30 @@ export function SystemBackupsPage() {
         loading={delMut.isPending}
         onConfirm={async () => {
           const targets = (backups.data ?? []).filter((b) => selected[b.id ?? b.name])
-          for (const item of targets) await delMut.mutateAsync(item)
+          let ok = 0
+          const failed: string[] = []
+          for (const item of targets) {
+            try {
+              await delMut.mutateAsync(item)
+              ok++
+            } catch {
+              failed.push(item.name)
+            }
+          }
           setSelected({})
           setBulkDeleteOpen(false)
+          const label = t('common.delete')
+          if (failed.length) {
+            toast.error(
+              t('table.bulkResult', { action: label }),
+              [
+                t('table.bulkOk', { count: ok }),
+                t('table.bulkFailed', { count: failed.length, names: failed.slice(0, 3).join(', ') }),
+              ].join(' · '),
+            )
+          } else {
+            toast.success(t('table.bulkResult', { action: label }), t('table.bulkOk', { count: ok }))
+          }
         }}
       />
     </div>

@@ -23,6 +23,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
+import { TableSkeleton } from '@/components/ui/skeleton'
+import { useToast } from '@/components/ui/toast'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 const GIB = 1024 ** 3
@@ -80,6 +82,7 @@ let newDiskCounter = 0
 export function NodesPage() {
   const { t } = useAppTranslation()
   const { canMutate, isAdmin } = useAuth()
+  const toast = useToast()
   const q = useNodes()
   const nodeTagsQ = useNodeTags()
   const diskTagsQ = useDiskTags()
@@ -103,8 +106,11 @@ export function NodesPage() {
         node,
         body: { ...node, allowScheduling: !node.allowScheduling },
       })
+      toast.success(t('nodes.schedulingUpdatedToast', { name: node.name }))
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('admin.updateFailed'))
+      const message = e instanceof Error ? e.message : t('admin.updateFailed')
+      setError(message)
+      toast.error(t('nodes.updateFailedToast'), message)
     }
   }
 
@@ -115,8 +121,11 @@ export function NodesPage() {
         if (Boolean(node.allowScheduling) === allow) continue
         await updateMut.mutateAsync({ node, body: { ...node, allowScheduling: allow } })
       }
+      toast.success(t('nodes.bulkSchedulingUpdatedToast', { count: nodes.length }))
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('admin.updateFailed'))
+      const message = e instanceof Error ? e.message : t('admin.updateFailed')
+      setError(message)
+      toast.error(t('nodes.updateFailedToast'), message)
     }
   }
 
@@ -129,9 +138,12 @@ export function NodesPage() {
         .map((t) => t.trim())
         .filter(Boolean)
       await updateMut.mutateAsync({ node: tagNode, body: { ...tagNode, tags: list } })
+      toast.success(t('nodes.tagsUpdatedToast', { name: tagNode.name }))
       setTagNode(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('admin.updateFailed'))
+      const message = e instanceof Error ? e.message : t('admin.updateFailed')
+      setError(message)
+      toast.error(t('nodes.updateFailedToast'), message)
     }
   }
 
@@ -209,9 +221,12 @@ export function NodesPage() {
       } else {
         await updateMut.mutateAsync({ node: diskNode, body: { ...diskNode, disks } })
       }
+      toast.success(t('nodes.disksUpdatedToast', { name: diskNode.name }))
       setDiskNode(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('admin.updateFailed'))
+      const message = e instanceof Error ? e.message : t('admin.updateFailed')
+      setError(message)
+      toast.error(t('nodes.updateFailedToast'), message)
     }
   }
 
@@ -365,6 +380,7 @@ export function NodesPage() {
         error={q.error as Error | null}
         isEmpty={!rows.length}
         emptyTitle={t('nodes.empty')}
+        skeleton={<TableSkeleton rows={8} cols={8} />}
         onRetry={() => void q.refetch()}
       >
         <DataTable
@@ -599,10 +615,16 @@ export function NodesPage() {
         confirmLabel={t('common.delete')}
         onConfirm={async () => {
           if (!deleteNode) return
-          const self = deleteNode.links?.self
-          if (self) {
-            const { lhRequest } = await import('@/api/longhorn')
-            await lhRequest(self, 'DELETE')
+          const name = deleteNode.name
+          try {
+            const self = deleteNode.links?.self
+            if (self) {
+              const { lhRequest } = await import('@/api/longhorn')
+              await lhRequest(self, 'DELETE')
+            }
+            toast.success(t('nodes.nodeDeletedToast', { name }))
+          } catch (e) {
+            toast.error(t('nodes.deleteFailedToast'), e instanceof Error ? e.message : undefined)
           }
           setDeleteNode(null)
           await q.refetch()

@@ -20,6 +20,8 @@ import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { TableSkeleton } from '@/components/ui/skeleton'
+import { useToast } from '@/components/ui/toast'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 const TASKS = [
@@ -118,6 +120,7 @@ function buildBody(f: FormState): Record<string, unknown> {
 export function RecurringJobsPage() {
   const { t } = useAppTranslation()
   const { canMutate } = useAuth()
+  const toast = useToast()
   const q = useRecurringJobs()
   const createMut = useCreateRecurringJob()
   const updateMut = useUpdateRecurringJob()
@@ -158,14 +161,18 @@ export function RecurringJobsPage() {
       const body = buildBody(form)
       if (editTarget) {
         await updateMut.mutateAsync({ job: editTarget, body })
+        toast.success(t('recurringJobs.updatedToast', { name: editTarget.name }))
       } else {
         await createMut.mutateAsync(body)
+        toast.success(t('recurringJobs.createdToast', { name: form.name.trim() }))
       }
       setOpen(false)
       setEditTarget(null)
       setForm(emptyForm())
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('admin.createFailed'))
+      const message = e instanceof Error ? e.message : t('admin.createFailed')
+      setError(message)
+      toast.error(isEdit ? t('recurringJobs.edit') : t('recurringJobs.create'), message)
     }
   }
 
@@ -270,6 +277,14 @@ export function RecurringJobsPage() {
         error={q.error as Error | null}
         isEmpty={!q.data?.length}
         emptyTitle={t('recurringJobs.empty')}
+        emptyAction={
+          canMutate ? (
+            <Button type="button" size="sm" onClick={openCreate}>
+              <Plus size={14} /> {t('recurringJobs.create')}
+            </Button>
+          ) : undefined
+        }
+        skeleton={<TableSkeleton rows={6} cols={5} />}
         onRetry={() => void q.refetch()}
       >
         <DataTable
@@ -437,7 +452,13 @@ export function RecurringJobsPage() {
         loading={delMut.isPending}
         onConfirm={async () => {
           if (!deleteTarget) return
-          await delMut.mutateAsync(deleteTarget)
+          const name = deleteTarget.name
+          try {
+            await delMut.mutateAsync(deleteTarget)
+            toast.success(t('recurringJobs.deletedToast', { name }))
+          } catch (e) {
+            toast.error(t('recurringJobs.delete'), e instanceof Error ? e.message : undefined)
+          }
           setDeleteTarget(null)
         }}
       />
@@ -450,11 +471,30 @@ export function RecurringJobsPage() {
         confirmLabel={t('common.delete')}
         loading={delMut.isPending}
         onConfirm={async () => {
+          let ok = 0
+          const failed: string[] = []
           for (const job of bulkRows) {
-            await delMut.mutateAsync(job)
+            try {
+              await delMut.mutateAsync(job)
+              ok++
+            } catch {
+              failed.push(job.name)
+            }
           }
           setBulkDeleteOpen(false)
           setBulkRows([])
+          const label = t('common.delete')
+          if (failed.length) {
+            toast.error(
+              t('table.bulkResult', { action: label }),
+              [
+                t('table.bulkOk', { count: ok }),
+                t('table.bulkFailed', { count: failed.length, names: failed.slice(0, 3).join(', ') }),
+              ].join(' · '),
+            )
+          } else {
+            toast.success(t('table.bulkResult', { action: label }), t('table.bulkOk', { count: ok }))
+          }
         }}
       />
     </div>

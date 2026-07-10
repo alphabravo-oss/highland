@@ -35,6 +35,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { TableSkeleton } from '@/components/ui/skeleton'
+import { useToast } from '@/components/ui/toast'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 import { resolveColumns, usePreferences } from '@/store/preferences'
 import { ActionFormDialog } from './ActionFormDialog'
@@ -114,6 +116,7 @@ function parseTags(input: string): string[] {
 export function VolumesPage() {
   const { t } = useAppTranslation()
   const { canMutate } = useAuth()
+  const toast = useToast()
   const q = useVolumes()
   const nodesQ = useNodes()
   const imagesQ = useEngineImages()
@@ -481,6 +484,7 @@ export function VolumesPage() {
       await createMut.mutateAsync(body)
       setCreateOpen(false)
       resetCreateForm()
+      toast.success(t('volumes.createdToast', { name }))
     } catch (e) {
       setFormError(e instanceof Error ? e.message : t('admin.createFailed'))
     }
@@ -489,13 +493,25 @@ export function VolumesPage() {
   async function runBulk() {
     if (!bulkKey) return
     setActionError(null)
-    try {
-      for (const vol of selectedVols) {
+    // Run every selected volume independently and collect per-item outcomes so
+    // one failure doesn't abort the rest — then report a single summary toast.
+    const label = t(`volumeActions.${bulkKey === 'delete' ? 'bulkDelete' : bulkKey}`, {
+      defaultValue: bulkKey,
+    })
+    let ok = 0
+    const failed: string[] = []
+    let skipped = 0
+    for (const vol of selectedVols) {
+      try {
         if (bulkKey === 'delete') {
           await deleteMut.mutateAsync(vol)
+          ok++
           continue
         }
-        if (!hasAction(vol, bulkKey) && bulkKey !== 'attach') continue
+        if (!hasAction(vol, bulkKey) && bulkKey !== 'attach') {
+          skipped++
+          continue
+        }
         const params: Record<string, unknown> = {}
         if (bulkKey === 'attach') {
           params.hostId = bulkHost || hosts[0]
@@ -527,12 +543,25 @@ export function VolumesPage() {
           params.name = ''
         }
         await actionMut.mutateAsync({ vol, action: bulkKey, params })
+        ok++
+      } catch {
+        failed.push(vol.name)
       }
-      setSelected({})
-      setBulkKey(null)
-      await q.refetch()
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : t('volumeActions.bulkFailed'))
+    }
+    setSelected({})
+    setBulkKey(null)
+    await q.refetch()
+
+    const parts: string[] = []
+    if (ok) parts.push(t('table.bulkOk', { count: ok }))
+    if (skipped) parts.push(t('table.bulkSkipped', { count: skipped }))
+    if (failed.length) {
+      toast.error(
+        t('table.bulkResult', { action: label }),
+        [...parts, t('table.bulkFailed', { count: failed.length, names: failed.slice(0, 3).join(', ') })].join(' · '),
+      )
+    } else {
+      toast.success(t('table.bulkResult', { action: label }), parts.join(' · '))
     }
   }
 
@@ -690,6 +719,15 @@ export function VolumesPage() {
         error={q.error as Error | null}
         isEmpty={!data.length}
         emptyTitle={t('volumes.empty')}
+        emptyDescription={canMutate ? t('volumes.emptyDescription') : undefined}
+        emptyAction={
+          canMutate ? (
+            <Button type="button" size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus size={14} /> {t('volumes.createVolume')}
+            </Button>
+          ) : undefined
+        }
+        skeleton={<TableSkeleton rows={8} cols={6} />}
         onRetry={() => void q.refetch()}
       >
         <DataTable
@@ -1138,11 +1176,14 @@ export function VolumesPage() {
         onSubmit={async (params) => {
           if (!actionVol || !actionDef) return
           setActionError(null)
+          const actName = volumeActionLabel(t, actionDef.key, actionDef.label)
           try {
             await actionMut.mutateAsync({ vol: actionVol, action: actionDef.key, params })
             await q.refetch()
+            toast.success(t('volumeActions.actionDone', { action: actName, name: actionVol.name }))
           } catch (e) {
             setActionError(e instanceof Error ? e.message : t('volumeActions.actionFailed'))
+            toast.error(t('volumeActions.actionFailed'), e instanceof Error ? e.message : undefined)
           }
         }}
       />
@@ -1158,7 +1199,13 @@ export function VolumesPage() {
         loading={deleteMut.isPending}
         onConfirm={async () => {
           if (!deleteTarget) return
-          await deleteMut.mutateAsync(deleteTarget)
+          const name = deleteTarget.name
+          try {
+            await deleteMut.mutateAsync(deleteTarget)
+            toast.success(t('volumes.deletedToast', { name }))
+          } catch (e) {
+            toast.error(t('volumes.deleteVolume'), e instanceof Error ? e.message : undefined)
+          }
           setDeleteTarget(null)
         }}
       />

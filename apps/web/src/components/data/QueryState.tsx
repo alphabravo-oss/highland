@@ -9,7 +9,9 @@ export function QueryState({
   isEmpty,
   emptyTitle,
   emptyDescription,
+  emptyAction,
   onRetry,
+  skeleton,
   children,
 }: {
   isLoading: boolean
@@ -17,13 +19,18 @@ export function QueryState({
   isEmpty?: boolean
   emptyTitle?: string
   emptyDescription?: string
+  emptyAction?: ReactNode
   onRetry?: () => void
+  skeleton?: ReactNode
   children: ReactNode
 }) {
   const { t } = useAppTranslation()
   const resolvedEmptyTitle = emptyTitle ?? t('common.noData')
 
   if (isLoading) {
+    if (skeleton) {
+      return <div data-testid="loading">{skeleton}</div>
+    }
     return (
       <div className="flex items-center justify-center py-16 text-sm text-[var(--color-muted-foreground)]" data-testid="loading">
         {t('common.loading')}
@@ -54,6 +61,7 @@ export function QueryState({
         {emptyDescription ? (
           <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">{emptyDescription}</p>
         ) : null}
+        {emptyAction ? <div className="mt-4 flex justify-center">{emptyAction}</div> : null}
       </div>
     )
   }

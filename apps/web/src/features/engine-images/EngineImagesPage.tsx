@@ -17,11 +17,14 @@ import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { TableSkeleton } from '@/components/ui/skeleton'
+import { useToast } from '@/components/ui/toast'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 export function EngineImagesPage() {
   const { t } = useAppTranslation()
   const { canMutate } = useAuth()
+  const toast = useToast()
   const q = useEngineImages()
   const createMut = useCreateEngineImage()
   const delMut = useDeleteEngineImage()
@@ -115,6 +118,14 @@ export function EngineImagesPage() {
         error={q.error as Error | null}
         isEmpty={!q.data?.length}
         emptyTitle={t('engineImages.empty')}
+        emptyAction={
+          canMutate ? (
+            <Button type="button" size="sm" onClick={() => setOpen(true)}>
+              <Plus size={14} /> {t('engineImages.deploy')}
+            </Button>
+          ) : undefined
+        }
+        skeleton={<TableSkeleton rows={6} cols={5} />}
         onRetry={() => void q.refetch()}
       >
         <DataTable
@@ -163,8 +174,14 @@ export function EngineImagesPage() {
                 setError(null)
                 void createMut
                   .mutateAsync({ image })
-                  .then(() => setOpen(false))
-                  .catch((e: Error) => setError(e.message))
+                  .then(() => {
+                    setOpen(false)
+                    toast.success(t('engineImages.deployedToast', { image }))
+                  })
+                  .catch((e: Error) => {
+                    setError(e.message)
+                    toast.error(t('engineImages.deploy'), e.message)
+                  })
               }}
             >
               {t('common.deploy')}
@@ -185,7 +202,13 @@ export function EngineImagesPage() {
         loading={delMut.isPending}
         onConfirm={async () => {
           if (!deleteTarget) return
-          await delMut.mutateAsync(deleteTarget)
+          const name = deleteTarget.name
+          try {
+            await delMut.mutateAsync(deleteTarget)
+            toast.success(t('engineImages.deletedToast', { name }))
+          } catch (e) {
+            toast.error(t('engineImages.delete'), e instanceof Error ? e.message : undefined)
+          }
           setDeleteTarget(null)
         }}
       />
@@ -198,12 +221,31 @@ export function EngineImagesPage() {
         confirmLabel={t('common.delete')}
         loading={delMut.isPending}
         onConfirm={async () => {
+          let ok = 0
+          const failed: string[] = []
           for (const img of bulkRows) {
             if (img.default) continue
-            await delMut.mutateAsync(img)
+            try {
+              await delMut.mutateAsync(img)
+              ok++
+            } catch {
+              failed.push(img.name)
+            }
           }
           setBulkDeleteOpen(false)
           setBulkRows([])
+          const label = t('common.delete')
+          if (failed.length) {
+            toast.error(
+              t('table.bulkResult', { action: label }),
+              [
+                t('table.bulkOk', { count: ok }),
+                t('table.bulkFailed', { count: failed.length, names: failed.slice(0, 3).join(', ') }),
+              ].join(' · '),
+            )
+          } else {
+            toast.success(t('table.bulkResult', { action: label }), t('table.bulkOk', { count: ok }))
+          }
         }}
       />
     </div>

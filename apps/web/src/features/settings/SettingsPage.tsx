@@ -6,12 +6,13 @@ import type { Setting } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
-import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { useToast } from '@/components/ui/toast'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 const DANGER_CATEGORIES = new Set(['danger zone', 'danger-zone', 'dangerous'])
@@ -52,12 +53,11 @@ function engineMapOf(s: Setting): EngineMap | null {
 export function SettingsPage() {
   const { t } = useAppTranslation()
   const { canMutate } = useAuth()
+  const toast = useToast()
   const q = useSettings()
   const updateMut = useUpdateSetting()
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [filter, setFilter] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState<string | null>(null)
   const [dangerTarget, setDangerTarget] = useState<{ setting: Setting; value: string } | null>(null)
 
   const grouped = useMemo(() => {
@@ -109,11 +109,9 @@ export function SettingsPage() {
   }
 
   async function applySave(s: Setting, value: string, em: EngineMap | null) {
-    setError(null)
-    setSaved(null)
     try {
       await updateMut.mutateAsync({ setting: s, value })
-      setSaved(s.name)
+      toast.success(t('settings.saved', { name: s.definition?.displayName || s.name }))
       setDrafts((d) => {
         const next = { ...d }
         delete next[s.name]
@@ -124,7 +122,7 @@ export function SettingsPage() {
       })
       setDangerTarget(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('admin.updateFailed'))
+      toast.error(t('admin.updateFailed'), e instanceof Error ? e.message : undefined)
     }
   }
 
@@ -155,22 +153,18 @@ export function SettingsPage() {
         onChange={(e) => setFilter(e.target.value)}
       />
 
-      {error ? (
-        <Alert tone="danger" className="mb-3">
-          {error}
-        </Alert>
-      ) : null}
-      {saved ? (
-        <Alert tone="success" className="mb-3">
-          {t('settings.saved', { name: saved })}
-        </Alert>
-      ) : null}
-
       <QueryState
         isLoading={q.isLoading}
         error={q.error as Error | null}
         isEmpty={!grouped.length}
         emptyTitle={t('settings.noSettings')}
+        skeleton={
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 w-full" />
+            ))}
+          </div>
+        }
         onRetry={() => void q.refetch()}
       >
         <div className="space-y-4">
