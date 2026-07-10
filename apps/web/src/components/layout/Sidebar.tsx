@@ -38,12 +38,15 @@ export function Sidebar({ className }: SidebarProps) {
         )}
       >
         {!collapsed && (
-          <div className="flex items-center gap-2 font-semibold tracking-tight">
-            <HighlandLogo size={22} className="text-[var(--color-primary)]" />
-            <span>{t('app.name')}</span>
+          <div className="flex items-center gap-2 tracking-tight">
+            <HighlandLogo size={24} className="text-[var(--color-primary)]" />
+            <div className="flex flex-col leading-tight">
+              <span className="font-semibold">{t('app.name')}</span>
+              <span className="text-[10px] font-normal text-[var(--color-muted-foreground)]">{t('app.by')}</span>
+            </div>
           </div>
         )}
-        {collapsed && <HighlandLogo size={22} className="text-[var(--color-primary)]" />}
+        {collapsed && <HighlandLogo size={24} className="text-[var(--color-primary)]" />}
         <Button
           type="button"
           variant="ghost"
@@ -107,6 +110,19 @@ export function Sidebar({ className }: SidebarProps) {
       </nav>
 
       <CompatibilityBadge collapsed={collapsed} />
+
+      {!collapsed && (
+        <div className="border-t border-[var(--color-border)] px-3 py-2 text-[11px] text-[var(--color-muted-foreground)]">
+          <a
+            href="https://alphabravo.io"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-[var(--color-primary)] hover:underline"
+          >
+            {t('app.builtBy')}
+          </a>
+        </div>
+      )}
     </aside>
   )
 }

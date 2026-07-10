@@ -2,7 +2,9 @@
   "app": {
     "name": "Highland",
     "tagline": "Plano de gestión seguro para Longhorn",
-    "description": "Consola de operaciones para clústeres de almacenamiento Longhorn"
+    "description": "Consola de operaciones para clústeres de almacenamiento Longhorn",
+    "by": "por AlphaBravo",
+    "builtBy": "Desarrollado por AlphaBravo"
   },
   "nav": {
     "main": "Principal",

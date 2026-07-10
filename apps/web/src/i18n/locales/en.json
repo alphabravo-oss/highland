@@ -2,7 +2,9 @@
   "app": {
     "name": "Highland",
     "tagline": "Secure management plane for Longhorn",
-    "description": "Operations console for Longhorn storage clusters"
+    "description": "Operations console for Longhorn storage clusters",
+    "by": "by AlphaBravo",
+    "builtBy": "Built by AlphaBravo"
   },
   "nav": {
     "main": "Main",
