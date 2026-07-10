@@ -214,9 +214,10 @@ export function NodesPage() {
         header: t('common.status'),
         cell: ({ row }) => {
           const ready = toConditionArray(row.original.conditions).find((c) => c.type === 'Ready')
+          const isReady = ready?.status === 'True'
           return (
-            <Badge tone={stateTone(ready?.status === 'True' ? 'ready' : 'faulted')}>
-              {t('nodes.ready', { status: ready?.status ?? '—' })}
+            <Badge tone={stateTone(isReady ? 'ready' : 'faulted')}>
+              {isReady ? t('nodeDetail.ready') : t('nodeDetail.notReady')}
             </Badge>
           )
         },

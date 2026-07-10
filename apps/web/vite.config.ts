@@ -14,6 +14,22 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    // Split heavy libraries into their own cacheable chunks so the main app
+    // bundle stays small and vendor code is fetched in parallel / cached across
+    // deploys.
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('recharts') || id.includes('d3-')) return 'recharts'
+          if (id.includes('@tanstack')) return 'tanstack'
+          if (id.includes('react-router') || id.includes('react-dom') || /node_modules\/react\//.test(id))
+            return 'react-vendor'
+        },
+      },
+    },
+  },
   server: {
     port: Number(process.env.HIGHLAND_WEB_PORT || 5173),
     strictPort: true,

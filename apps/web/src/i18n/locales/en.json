@@ -423,7 +423,13 @@
     "waitingScrape": "Waiting for metrics scrape…",
     "scrape": "Scrape: {{error}}",
     "runQuick": "Run quick",
-    "empty": "No benchmarks yet"
+    "empty": "No benchmarks yet",
+    "profile": "Profile",
+    "profileQuick": "Quick (~10s)",
+    "profileStandard": "Standard (~20s)",
+    "profileThorough": "Thorough (~45s)",
+    "anyNode": "Any node",
+    "runBenchmark": "Run benchmark"
   },
   "settings": {
     "title": "Settings",

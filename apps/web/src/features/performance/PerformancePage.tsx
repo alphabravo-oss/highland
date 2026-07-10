@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Activity, Gauge } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
@@ -5,6 +6,7 @@ import {
   useClusterMetrics,
   useCreateBenchmark,
   useDeleteBenchmark,
+  useNodes,
   useVolumes,
 } from '@/api/hooks'
 import { useAuth } from '@/auth/AuthContext'
@@ -13,6 +15,7 @@ import { QueryState } from '@/components/data/QueryState'
 import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select } from '@/components/ui/select'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
 function Sparkline({ points, emptyLabel }: { points: Array<{ v: number }>; emptyLabel: string }) {
@@ -140,6 +143,11 @@ export function BenchmarksPage() {
   const q = useBenchmarks()
   const create = useCreateBenchmark()
   const del = useDeleteBenchmark()
+  const nodesQ = useNodes()
+  const [profile, setProfile] = useState('quick')
+  const [nodeName, setNodeName] = useState('')
+
+  const nodeNames = (nodesQ.data ?? []).map((n) => n.name).filter(Boolean)
 
   return (
     <div data-testid="benchmarks-page">
@@ -148,21 +156,50 @@ export function BenchmarksPage() {
         description={t('performance.benchmarksDescription')}
         actions={
           canMutate ? (
-            <Button
-              type="button"
-              size="sm"
-              data-testid="run-benchmark"
-              disabled={create.isPending}
-              onClick={() =>
-                void create.mutateAsync({
-                  profile: 'quick',
-                  type: 'Disk',
-                  nodeName: 'node-1',
-                })
-              }
-            >
-              <Gauge size={14} /> {t('performance.runQuick')}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={profile}
+                onChange={(e) => setProfile(e.target.value)}
+                className="h-8 w-auto"
+                aria-label={t('performance.profile')}
+                disabled={create.isPending}
+              >
+                <option value="quick">{t('performance.profileQuick')}</option>
+                <option value="standard">{t('performance.profileStandard')}</option>
+                <option value="thorough">{t('performance.profileThorough')}</option>
+              </Select>
+              <Select
+                value={nodeName}
+                onChange={(e) => setNodeName(e.target.value)}
+                className="h-8 w-auto"
+                aria-label={t('common.node')}
+                disabled={create.isPending}
+              >
+                <option value="">{t('performance.anyNode')}</option>
+                {nodeNames.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                type="button"
+                size="sm"
+                data-testid="run-benchmark"
+                disabled={create.isPending}
+                onClick={() =>
+                  void create.mutateAsync({
+                    profile,
+                    type: 'Disk',
+                    // Omit nodeName for "any node" so the scheduler places it;
+                    // otherwise target the chosen node.
+                    ...(nodeName ? { nodeName } : {}),
+                  })
+                }
+              >
+                <Gauge size={14} /> {t('performance.runBenchmark')}
+              </Button>
+            </div>
           ) : null
         }
       />
