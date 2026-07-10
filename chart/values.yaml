@@ -38,6 +38,8 @@ service:
 
 # Non-secret API settings → ConfigMap (mounted + env)
 config:
+  # Optional fixed session signing key; blank = chart auto-generates a stable one
+  sessionSecret: ""
   authMode: local # local | oidc | local+oidc
   localAlways: true
   cookieName: highland_session

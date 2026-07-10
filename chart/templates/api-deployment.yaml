@@ -56,6 +56,12 @@ spec:
                 secretKeyRef:
                   name: {{ $adminSecret }}
                   key: password
+            # Stateless signed-cookie session key (stable across restarts/replicas)
+            - name: HIGHLAND_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "highland.fullname" . }}-session
+                  key: sessionSecret
             {{- if or .Values.auth.oidc.existingSecret .Values.auth.oidc.createSecret }}
             - name: HIGHLAND_OIDC_CLIENT_SECRET
               valueFrom:

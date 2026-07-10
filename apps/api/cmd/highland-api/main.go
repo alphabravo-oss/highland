@@ -33,19 +33,22 @@ func main() {
 	// them based on running outside Kubernetes.
 	users := auth.NewUserStoreFromEnv(cfg.BootstrapUsername, cfg.BootstrapPassword)
 
-	var backend auth.SessionBackend = auth.NewMemoryBackend()
-	if cfg.RedisAddr != "" {
-		rb, err := auth.NewRedisBackend(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+	// Sessions are stateless HMAC-signed cookies (no server store) — they survive
+	// restarts and work across replicas. A stable secret keeps tokens valid across
+	// restarts; without one we generate an ephemeral secret (logins drop on restart).
+	secret := []byte(cfg.SessionSecret)
+	if len(secret) == 0 {
+		gen, err := auth.RandomSecret(32)
 		if err != nil {
-			slog.Error("redis session backend failed", "err", err)
+			slog.Error("session secret generation failed", "err", err)
 			os.Exit(1)
 		}
-		backend = rb
-		slog.Info("session backend", "type", "redis", "addr", cfg.RedisAddr)
+		secret = gen
+		slog.Warn("session backend", "type", "stateless", "secret", "ephemeral (set HIGHLAND_SESSION_SECRET to persist logins across restarts)")
 	} else {
-		slog.Info("session backend", "type", "memory")
+		slog.Info("session backend", "type", "stateless")
 	}
-	store := auth.NewStoreFromBackend(backend, cfg.SessionTTL)
+	store := auth.NewStoreFromBackend(auth.NewTokenBackend(secret), cfg.SessionTTL)
 	authenticator := auth.NewAuthenticator(users, store)
 
 	oidcPath := os.Getenv("HIGHLAND_OIDC_CONFIG_FILE")

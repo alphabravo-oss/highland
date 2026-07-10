@@ -81,3 +81,12 @@ func randomID(nBytes int) (string, error) {
 	}
 	return hex.EncodeToString(b), nil
 }
+
+// RandomSecret returns nBytes of cryptographically-random data (session signing key).
+func RandomSecret(nBytes int) ([]byte, error) {
+	b := make([]byte, nBytes)
+	if _, err := rand.Read(b); err != nil {
+		return nil, err
+	}
+	return b, nil
+}

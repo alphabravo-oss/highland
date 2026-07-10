@@ -27,6 +27,7 @@ type Config struct {
 	BootstrapUsername string
 	BootstrapPassword string
 	SessionTTL        time.Duration
+	SessionSecret     string
 	CookieName        string
 	CookieSecure      bool
 	AllowedOrigins    []string
@@ -85,6 +86,7 @@ func LoadFromEnv() (*Config, error) {
 		CookieName:        envOr("HIGHLAND_COOKIE_NAME", "highland_session"),
 		CookieSecure:      envBool("HIGHLAND_COOKIE_SECURE", false),
 		SessionTTL:        envDuration("HIGHLAND_SESSION_TTL", 24*time.Hour),
+		SessionSecret:     os.Getenv("HIGHLAND_SESSION_SECRET"),
 		AuditFile:         os.Getenv("HIGHLAND_AUDIT_FILE"),
 		MetricsInterval:   envDuration("HIGHLAND_METRICS_INTERVAL", 10*time.Second),
 		AuthMode:          mode,
