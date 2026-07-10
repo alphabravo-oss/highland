@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronRight, RefreshCw } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useDiskTags, useNodeAction, useNodes, useNodeTags, useUpdateNode } from '@/api/hooks'
@@ -11,6 +11,13 @@ import { QueryState } from '@/components/data/QueryState'
 import { Alert } from '@/components/ui/alert'
 import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -295,29 +302,38 @@ export function NodesPage() {
           const node = row.original
           if (!canMutate) return null
           return (
-            <div className="flex flex-wrap justify-end gap-1">
-              <Button type="button" size="sm" variant="outline" onClick={() => void toggleScheduling(node)}>
-                {node.allowScheduling ? t('nodes.disableScheduling') : t('nodes.enableScheduling')}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setTagNode(node)
-                  setTags((node.tags ?? []).join(', '))
-                }}
-              >
-                {t('nodes.editTags')}
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => openDiskEditor(node)}>
-                {t('nodes.editDisks')}
-              </Button>
-              {isAdmin ? (
-                <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteNode(node)}>
-                  {t('nodes.deleteNode')}
-                </Button>
-              ) : null}
+            <div className="flex justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" size="sm" variant="ghost" aria-label={t('common.rowActions')}>
+                    <MoreHorizontal size={16} aria-hidden />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => void toggleScheduling(node)}>
+                    {node.allowScheduling ? t('nodes.disableScheduling') : t('nodes.enableScheduling')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setTagNode(node)
+                      setTags((node.tags ?? []).join(', '))
+                    }}
+                  >
+                    {t('nodes.editTags')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => openDiskEditor(node)}>
+                    {t('nodes.editDisks')}
+                  </DropdownMenuItem>
+                  {isAdmin ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant="destructive" onSelect={() => setDeleteNode(node)}>
+                        {t('nodes.deleteNode')}
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           )
         },

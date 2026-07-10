@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Archive, Layers, Plus, RefreshCw, Trash2, Undo2 } from 'lucide-react'
+import { Archive, Layers, MoreHorizontal, Plus, RefreshCw, Trash2, Undo2 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import {
   useBackingImageAction,
@@ -24,6 +24,13 @@ import { QueryState } from '@/components/data/QueryState'
 import { Alert } from '@/components/ui/alert'
 import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -113,41 +120,37 @@ export function BackingImagesPage() {
           const img = row.original
           const ready = hasReadyDisk(img)
           return (
-            <div className="flex justify-end gap-1">
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                disabled={!ready}
-                title={ready ? undefined : t('backingImages.needsReadyDisk')}
-                aria-label={t('backingImages.backUp')}
-                onClick={() => setBackupTarget(img)}
-              >
-                <Archive size={14} aria-hidden />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                disabled={!ready}
-                title={ready ? undefined : t('backingImages.needsReadyDisk')}
-                aria-label={t('backingImages.minCopies')}
-                onClick={() => {
-                  setMinCopiesTarget(img)
-                  setMinCopies(String(img.minNumberOfCopies ?? 1))
-                }}
-              >
-                <Layers size={14} aria-hidden />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                aria-label={t('common.delete')}
-                onClick={() => setDeleteTarget(img)}
-              >
-                <Trash2 size={14} aria-hidden />
-              </Button>
+            <div className="flex justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" size="sm" variant="ghost" aria-label={t('common.rowActions')}>
+                    <MoreHorizontal size={16} aria-hidden />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    disabled={!ready}
+                    title={ready ? undefined : t('backingImages.needsReadyDisk')}
+                    onSelect={() => setBackupTarget(img)}
+                  >
+                    <Archive size={14} aria-hidden /> {t('backingImages.backUp')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!ready}
+                    title={ready ? undefined : t('backingImages.needsReadyDisk')}
+                    onSelect={() => {
+                      setMinCopiesTarget(img)
+                      setMinCopies(String(img.minNumberOfCopies ?? 1))
+                    }}
+                  >
+                    <Layers size={14} aria-hidden /> {t('backingImages.minCopies')}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onSelect={() => setDeleteTarget(img)}>
+                    <Trash2 size={14} aria-hidden /> {t('common.delete')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           )
         },

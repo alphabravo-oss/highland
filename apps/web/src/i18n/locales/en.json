@@ -120,7 +120,9 @@
     "selectItem": "Select {{name}}",
     "clear": "Clear",
     "peak": "Peak",
-    "robustness": "Robustness"
+    "robustness": "Robustness",
+    "rowActions": "Actions",
+    "noActions": "No actions available"
   },
   "confirm": {
     "typeToConfirmBefore": "Type",
@@ -268,7 +270,9 @@
     "snapshotOptional": "Snapshot (optional)",
     "pvName": "PV name",
     "pvcName": "PVC name",
-    "namespace": "Namespace"
+    "namespace": "Namespace",
+    "rowActions": "Actions for {{name}}",
+    "noActions": "No actions available"
   },
   "volumeDetail": {
     "description": "Parity detail: info, replicas, snapshots, events, attachments, live I/O, all manager actions",
@@ -326,7 +330,8 @@
     "full": "Full",
     "incremental": "Incremental",
     "deleteSnapshot": "Delete snapshot",
-    "deleteSnapshotConfirm": "Delete snapshot \"{{name}}\"? This cannot be undone."
+    "deleteSnapshotConfirm": "Delete snapshot \"{{name}}\"? This cannot be undone.",
+    "actions": "Actions"
   },
   "nodes": {
     "title": "Nodes & Disks",

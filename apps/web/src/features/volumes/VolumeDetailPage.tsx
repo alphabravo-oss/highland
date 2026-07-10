@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Camera, RefreshCw, Trash2 } from 'lucide-react'
+import { ArrowLeft, Camera, ChevronDown, RefreshCw, Trash2 } from 'lucide-react'
 import {
   useBackupTargets,
   useEngineImages,
@@ -31,6 +31,13 @@ import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
@@ -187,6 +194,20 @@ export function VolumeDetailPage() {
   }
 
   const availableActions = VOLUME_ACTION_DEFS.filter((d) => vol && hasAction(vol, d.key))
+  // Longhorn 1.12 exposes CR-backed snapshot actions (snapshotCRDelete/…) while
+  // older managers use the legacy names. Prefer the CR variant when present so
+  // per-snapshot delete/revert work across versions.
+  const snapPref = (verb: string): string | null => {
+    if (!vol) return null
+    const cr = `snapshotCR${verb}`
+    if (hasAction(vol, cr)) return cr
+    const legacy = `snapshot${verb}`
+    if (hasAction(vol, legacy)) return legacy
+    return null
+  }
+  const extraActions = Object.keys(vol?.actions ?? {}).filter(
+    (k) => !VOLUME_ACTION_DEFS.some((d) => d.key === k) && !k.startsWith('snapshot'),
+  )
 
   // Restore progress: average per-replica progress while a restore/DR sync is in flight.
   const restoreStatus =
@@ -240,45 +261,43 @@ export function VolumeDetailPage() {
               {vol.standby ? <Badge tone="warning">{t('volumeDetail.standbyDr')}</Badge> : null}
             </div>
 
-            <div className="flex flex-wrap gap-1" data-testid="volume-actions">
-              {availableActions.map((d) => (
-                <Button
-                  key={d.key}
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={!canMutate}
-                  onClick={() => {
-                    if (d.key === 'snapshotCreate') {
-                      setSnapCreateOpen(true)
-                      return
-                    }
-                    if (d.key === 'recurringJobAdd') {
-                      setJobAttachOpen(true)
-                      return
-                    }
-                    setActionDef(d as VolumeActionDef)
-                  }}
-                >
-                  {volumeActionLabel(t, d.key, d.label)}
-                </Button>
-              ))}
-              {/* Any extra actions not in our def list */}
-              {Object.keys(vol.actions ?? {})
-                .filter((k) => !VOLUME_ACTION_DEFS.some((d) => d.key === k) && !k.startsWith('snapshot'))
-                .map((k) => (
-                  <Button
-                    key={k}
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    disabled={!canMutate}
-                    onClick={() => void runAction(vol, k, {})}
-                  >
-                    {volumeActionLabel(t, k, k)}
-                  </Button>
-                ))}
-            </div>
+            {canMutate && (availableActions.length > 0 || extraActions.length > 0) ? (
+              <div className="flex flex-wrap gap-1" data-testid="volume-actions">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" size="sm" variant="outline">
+                      {t('volumeDetail.actions')} <ChevronDown size={14} aria-hidden />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="max-h-96 overflow-y-auto">
+                    {availableActions.map((d) => (
+                      <DropdownMenuItem
+                        key={d.key}
+                        onSelect={() => {
+                          if (d.key === 'snapshotCreate') {
+                            setSnapCreateOpen(true)
+                            return
+                          }
+                          if (d.key === 'recurringJobAdd') {
+                            setJobAttachOpen(true)
+                            return
+                          }
+                          setActionDef(d as VolumeActionDef)
+                        }}
+                      >
+                        {volumeActionLabel(t, d.key, d.label)}
+                      </DropdownMenuItem>
+                    ))}
+                    {extraActions.length > 0 ? <DropdownMenuSeparator /> : null}
+                    {extraActions.map((k) => (
+                      <DropdownMenuItem key={k} onSelect={() => void runAction(vol, k, {})}>
+                        {volumeActionLabel(t, k, k)}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ) : null}
 
             {showRestoreProgress ? (
               <Card data-testid="restore-progress">
@@ -370,24 +389,6 @@ export function VolumeDetailPage() {
               </Card>
             </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('volumeDetail.conditions')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {toConditionArray(vol.conditions).map((c, i) => (
-                  <div key={i} className="mb-2 rounded border border-[var(--color-border)] p-2 text-sm" title={c.message}>
-                    <span className="font-medium">{c.type}</span>{' '}
-                    <Badge tone={stateTone(c.status)}>{c.status}</Badge>
-                    {c.message ? <p className="mt-1 text-[var(--color-muted-foreground)]">{c.message}</p> : null}
-                  </div>
-                ))}
-                {!toConditionArray(vol.conditions).length ? (
-                  <p className="text-sm text-[var(--color-muted-foreground)]">{t('volumeDetail.noConditions')}</p>
-                ) : null}
-              </CardContent>
-            </Card>
-
             <Card data-testid="snapshots-panel">
               <CardHeader className="flex-row items-center justify-between space-y-0">
                 <CardTitle className="flex items-center gap-2">
@@ -429,8 +430,8 @@ export function VolumeDetailPage() {
                     const isSystemSnap = s.usercreated === false || s.removed === true
                     return (
                       <>
-                        {hasAction(vol, 'snapshotRevert') && !isSystemSnap ? (
-                          <Button type="button" size="sm" variant="outline" disabled={!canMutate} onClick={() => void runAction(vol, 'snapshotRevert', { name: s.name })}>
+                        {snapPref('Revert') && !isSystemSnap ? (
+                          <Button type="button" size="sm" variant="outline" disabled={!canMutate} onClick={() => void runAction(vol, snapPref('Revert')!, { name: s.name })}>
                             {t('volumeDetail.revert')}
                           </Button>
                         ) : null}
@@ -454,7 +455,7 @@ export function VolumeDetailPage() {
                             {t('volumeDetail.backup')}
                           </Button>
                         ) : null}
-                        {hasAction(vol, 'snapshotDelete') ? (
+                        {snapPref('Delete') ? (
                           <Button type="button" size="sm" variant="ghost" disabled={!canMutate} onClick={() => setDeleteSnapshot(s.name)}>
                             {t('common.delete')}
                           </Button>
@@ -564,6 +565,24 @@ export function VolumeDetailPage() {
                 ) : (
                   <pre className="max-h-40 overflow-auto text-xs">{JSON.stringify(attachments, null, 2)}</pre>
                 )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('volumeDetail.conditions')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {toConditionArray(vol.conditions).map((c, i) => (
+                  <div key={i} className="mb-2 rounded border border-[var(--color-border)] p-2 text-sm" title={c.message}>
+                    <span className="font-medium">{c.type}</span>{' '}
+                    <Badge tone={stateTone(c.status)}>{c.status}</Badge>
+                    {c.message ? <p className="mt-1 text-[var(--color-muted-foreground)]">{c.message}</p> : null}
+                  </div>
+                ))}
+                {!toConditionArray(vol.conditions).length ? (
+                  <p className="text-sm text-[var(--color-muted-foreground)]">{t('volumeDetail.noConditions')}</p>
+                ) : null}
               </CardContent>
             </Card>
 
@@ -762,7 +781,7 @@ export function VolumeDetailPage() {
         confirmLabel={t('common.delete')}
         destructive
         onConfirm={async () => {
-          if (vol && deleteSnapshot) await runAction(vol, 'snapshotDelete', { name: deleteSnapshot })
+          if (vol && deleteSnapshot) await runAction(vol, snapPref('Delete') ?? 'snapshotDelete', { name: deleteSnapshot })
           setDeleteSnapshot(null)
         }}
       />

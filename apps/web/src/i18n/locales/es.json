@@ -120,7 +120,9 @@
     "selectItem": "Seleccionar {{name}}",
     "clear": "Limpiar",
     "peak": "Pico",
-    "robustness": "Robustez"
+    "robustness": "Robustez",
+    "rowActions": "Acciones",
+    "noActions": "No hay acciones disponibles"
   },
   "confirm": {
     "typeToConfirmBefore": "Escriba",
@@ -231,7 +233,7 @@
     "filterAllStates": "Todos los estados",
     "filterAllRobustness": "Toda la robustez",
     "filterAllNodes": "Todos los nodos",
-    "bulkActions": "Acciones masivas",
+    "bulkActions": "Acciones en lote",
     "selected": "{{count}} seleccionados",
     "bulkAttach": "Adjuntar en masa",
     "bulkTitle": "Masivo: {{key}}",
@@ -268,7 +270,9 @@
     "snapshotOptional": "Instantánea (opcional)",
     "pvName": "Nombre del PV",
     "pvcName": "Nombre del PVC",
-    "namespace": "Namespace"
+    "namespace": "Namespace",
+    "rowActions": "Acciones para {{name}}",
+    "noActions": "No hay acciones disponibles"
   },
   "volumeDetail": {
     "description": "Detalle de paridad: info, réplicas, instantáneas, eventos, adjuntos, E/S en vivo, todas las acciones del manager",
@@ -326,7 +330,8 @@
     "full": "Completa",
     "incremental": "Incremental",
     "deleteSnapshot": "Eliminar snapshot",
-    "deleteSnapshotConfirm": "¿Eliminar el snapshot \"{{name}}\"? Esto no se puede deshacer."
+    "deleteSnapshotConfirm": "¿Eliminar el snapshot \"{{name}}\"? Esto no se puede deshacer.",
+    "actions": "Acciones"
   },
   "nodes": {
     "title": "Nodos y discos",

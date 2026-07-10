@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RefreshCw, Trash2 } from 'lucide-react'
+import { MoreHorizontal, RefreshCw } from 'lucide-react'
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import { useBackupVolumes, useCreateVolume, useDeleteBackupVolume } from '@/api/hooks'
 import { useAuth } from '@/auth/AuthContext'
@@ -10,6 +10,13 @@ import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
@@ -217,51 +224,47 @@ export function BackupsPage() {
       cell: ({ row }) => {
         const bv = row.original
         return (
-          <div className="flex flex-wrap justify-end gap-1">
+          <div className="flex justify-end gap-1">
             <Button type="button" size="sm" variant="outline" onClick={() => void listBackups(bv)}>
               {t('common.list')}
             </Button>
             {canMutate ? (
-              <>
-                <Button type="button" size="sm" variant="outline" onClick={() => void syncOne(bv)}>
-                  {t('common.sync')}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setRestoreTarget(bv)
-                    setRestoreName(`${bv.name}-restore`)
-                    setStandby(false)
-                    setRestoreOverride(null)
-                  }}
-                >
-                  {t('backups.restore')}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setRestoreTarget(bv)
-                    setRestoreName(`${bv.name}-dr`)
-                    setStandby(true)
-                    setRestoreOverride(null)
-                  }}
-                >
-                  {t('backups.drStandby')}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  aria-label={t('common.delete')}
-                  onClick={() => setDeleteTarget(bv)}
-                >
-                  <Trash2 size={14} aria-hidden />
-                </Button>
-              </>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" size="sm" variant="ghost" aria-label={t('common.rowActions')}>
+                    <MoreHorizontal size={16} aria-hidden />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => void syncOne(bv)}>
+                    {t('common.sync')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setRestoreTarget(bv)
+                      setRestoreName(`${bv.name}-restore`)
+                      setStandby(false)
+                      setRestoreOverride(null)
+                    }}
+                  >
+                    {t('backups.restore')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setRestoreTarget(bv)
+                      setRestoreName(`${bv.name}-dr`)
+                      setStandby(true)
+                      setRestoreOverride(null)
+                    }}
+                  >
+                    {t('backups.drStandby')}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onSelect={() => setDeleteTarget(bv)}>
+                    {t('common.delete')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : null}
           </div>
         )

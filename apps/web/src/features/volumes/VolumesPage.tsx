@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { ChevronDown, MoreHorizontal, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import {
   useBackingImages,
@@ -26,6 +26,13 @@ import { Alert } from '@/components/ui/alert'
 import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
@@ -358,30 +365,11 @@ export function VolumesPage() {
         meta: { headerClassName: 'text-right' },
         cell: ({ row }) => {
           const v = row.original
+          const acts = VOLUME_ACTION_DEFS.filter(
+            (d) => (d.priority === 'P0' || d.priority === 'P1') && hasAction(v, d.key),
+          )
           return (
-            <div className="flex flex-wrap justify-end gap-1">
-              {VOLUME_ACTION_DEFS.filter(
-                (d) =>
-                  (d.priority === 'P0' || d.priority === 'P1') &&
-                  hasAction(v, d.key) &&
-                  d.key !== 'snapshotCreate',
-              )
-                .slice(0, 4)
-                .map((d) => (
-                  <Button
-                    key={d.key}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={!canMutate}
-                    onClick={() => {
-                      setActionVol(v)
-                      setActionDef(d as VolumeActionDef)
-                    }}
-                  >
-                    {volumeActionLabel(t, d.key, d.label)}
-                  </Button>
-                ))}
+            <div className="flex justify-end gap-1">
               <Link
                 to={`/volumes/${encodeURIComponent(v.name)}`}
                 className="inline-flex h-8 items-center rounded-md border border-[var(--color-border)] px-2 text-xs"
@@ -389,16 +377,40 @@ export function VolumesPage() {
                 {t('common.detail')}
               </Link>
               {canMutate ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  aria-label={t('volumes.deleteAria', { name: v.name })}
-                  title={t('volumes.deleteTitle', { name: v.name })}
-                  onClick={() => setDeleteTarget(v)}
-                >
-                  <Trash2 size={14} aria-hidden />
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      aria-label={t('volumes.rowActions', { name: v.name })}
+                      title={t('volumes.rowActions', { name: v.name })}
+                    >
+                      <MoreHorizontal size={16} aria-hidden />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="max-h-96 overflow-y-auto">
+                    {acts.length === 0 ? (
+                      <DropdownMenuItem disabled>{t('volumes.noActions')}</DropdownMenuItem>
+                    ) : (
+                      acts.map((d) => (
+                        <DropdownMenuItem
+                          key={d.key}
+                          onSelect={() => {
+                            setActionVol(v)
+                            setActionDef(d as VolumeActionDef)
+                          }}
+                        >
+                          {volumeActionLabel(t, d.key, d.label)}
+                        </DropdownMenuItem>
+                      ))
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem variant="destructive" onSelect={() => setDeleteTarget(v)}>
+                      <Trash2 size={14} aria-hidden /> {t('common.delete')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               ) : null}
             </div>
           )
@@ -617,26 +629,52 @@ export function VolumesPage() {
           onApplyFilters={(f) => setFilter(f.q ?? '')}
         />
         {canMutate && selectedVols.length > 0 ? (
-          <div className="flex flex-wrap gap-1" data-testid="bulk-actions">
+          <div className="flex items-center gap-2" data-testid="bulk-actions">
             <Badge tone="info">{t('volumes.selected', { count: selectedVols.length })}</Badge>
-            {BULK_ACTIONS.map((a) => (
-              <Button
-                key={a.key}
-                type="button"
-                size="sm"
-                variant={'destructive' in a && a.destructive ? 'destructive' : 'outline'}
-                onClick={() => {
-                  setBulkKey(a.key)
-                  setBulkValue('')
-                  setBulkHost(hosts[0] ?? '')
-                }}
-              >
-                {t(a.labelKey, { defaultValue: a.label })}
-              </Button>
-            ))}
-            <Button type="button" size="sm" variant="outline" onClick={() => setBulkKey('attach')}>
-              {t('volumes.bulkAttach')}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" size="sm" variant="outline">
+                  {t('volumes.bulkActions')} <ChevronDown size={14} aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-96 overflow-y-auto">
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setBulkKey('attach')
+                    setBulkValue('')
+                    setBulkHost(hosts[0] ?? '')
+                  }}
+                >
+                  {t('volumes.bulkAttach')}
+                </DropdownMenuItem>
+                {BULK_ACTIONS.filter((a) => !('destructive' in a && a.destructive)).map((a) => (
+                  <DropdownMenuItem
+                    key={a.key}
+                    onSelect={() => {
+                      setBulkKey(a.key)
+                      setBulkValue('')
+                      setBulkHost(hosts[0] ?? '')
+                    }}
+                  >
+                    {t(a.labelKey, { defaultValue: a.label })}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                {BULK_ACTIONS.filter((a) => 'destructive' in a && a.destructive).map((a) => (
+                  <DropdownMenuItem
+                    key={a.key}
+                    variant="destructive"
+                    onSelect={() => {
+                      setBulkKey(a.key)
+                      setBulkValue('')
+                      setBulkHost(hosts[0] ?? '')
+                    }}
+                  >
+                    {t(a.labelKey, { defaultValue: a.label })}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         ) : null}
       </div>
