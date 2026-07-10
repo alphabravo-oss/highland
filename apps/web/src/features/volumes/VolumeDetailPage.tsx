@@ -24,6 +24,7 @@ import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { MetricLine } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
+import { SnapshotTree } from '@/components/data/SnapshotTree'
 import { Alert } from '@/components/ui/alert'
 import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -90,6 +91,7 @@ export function VolumeDetailPage() {
   const [snapshots, setSnapshots] = useState<SnapshotRow[]>([])
   const [snapLoading, setSnapLoading] = useState(false)
   const [snapCreateOpen, setSnapCreateOpen] = useState(false)
+  const [showSystemSnapshots, setShowSystemSnapshots] = useState(false)
   const [snapName, setSnapName] = useState('')
   const [actionDef, setActionDef] = useState<VolumeActionDef | null>(null)
   const [jobAttachOpen, setJobAttachOpen] = useState(false)
@@ -342,7 +344,16 @@ export function VolumeDetailPage() {
                 <CardTitle className="flex items-center gap-2">
                   <Camera size={16} /> {t('volumeDetail.snapshots')}
                 </CardTitle>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-xs text-[var(--color-muted-foreground)]">
+                    <input
+                      type="checkbox"
+                      data-testid="show-system-snapshots"
+                      checked={showSystemSnapshots}
+                      onChange={(e) => setShowSystemSnapshots(e.target.checked)}
+                    />
+                    {t('volumeDetail.showSystem')}
+                  </label>
                   <Button type="button" size="sm" variant="outline" disabled={snapLoading} onClick={() => void refreshSnapshots(vol)}>
                     {t('common.refresh')}
                   </Button>
@@ -354,48 +365,40 @@ export function VolumeDetailPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                {snapshots.length === 0 ? (
-                  <p className="text-sm text-[var(--color-muted-foreground)]">{t('volumeDetail.noSnapshots')}</p>
-                ) : (
-                  <Table>
-                    <THead>
-                      <TR>
-                        <TH>{t('common.name')}</TH>
-                        <TH>{t('common.created')}</TH>
-                        <TH>{t('common.size')}</TH>
-                        <TH className="text-right">{t('common.actions')}</TH>
-                      </TR>
-                    </THead>
-                    <TBody>
-                      {snapshots.map((s) => (
-                        <TR key={s.name}>
-                          <TD className="font-medium">{s.name}</TD>
-                          <TD className="whitespace-nowrap text-xs">{s.created ?? '—'}</TD>
-                          <TD className="tabular-nums">{formatBytes(s.size)}</TD>
-                          <TD>
-                            <div className="flex justify-end gap-1">
-                              {hasAction(vol, 'snapshotRevert') ? (
-                                <Button type="button" size="sm" variant="outline" disabled={!canMutate} onClick={() => void runAction(vol, 'snapshotRevert', { name: s.name })}>
-                                  {t('volumeDetail.revert')}
-                                </Button>
-                              ) : null}
-                              {hasAction(vol, 'snapshotBackup') ? (
-                                <Button type="button" size="sm" variant="outline" disabled={!canMutate} onClick={() => void runAction(vol, 'snapshotBackup', { name: s.name, backupTargetName: '', labels: {} })}>
-                                  {t('volumeDetail.backup')}
-                                </Button>
-                              ) : null}
-                              {hasAction(vol, 'snapshotDelete') ? (
-                                <Button type="button" size="sm" variant="ghost" disabled={!canMutate} onClick={() => void runAction(vol, 'snapshotDelete', { name: s.name })}>
-                                  {t('common.delete')}
-                                </Button>
-                              ) : null}
-                            </div>
-                          </TD>
-                        </TR>
-                      ))}
-                    </TBody>
-                  </Table>
-                )}
+                <SnapshotTree
+                  snapshots={snapshots}
+                  showSystem={showSystemSnapshots}
+                  labels={{
+                    volumeHead: t('volumeDetail.volumeHead'),
+                    start: t('volumeDetail.start'),
+                    systemTag: t('volumeDetail.systemTag'),
+                    empty: t('volumeDetail.noSnapshots'),
+                    created: t('common.created'),
+                    size: t('common.size'),
+                  }}
+                  renderActions={(s) => {
+                    const isSystemSnap = s.usercreated === false || s.removed === true
+                    return (
+                      <>
+                        {hasAction(vol, 'snapshotRevert') && !isSystemSnap ? (
+                          <Button type="button" size="sm" variant="outline" disabled={!canMutate} onClick={() => void runAction(vol, 'snapshotRevert', { name: s.name })}>
+                            {t('volumeDetail.revert')}
+                          </Button>
+                        ) : null}
+                        {hasAction(vol, 'snapshotBackup') && !isSystemSnap ? (
+                          <Button type="button" size="sm" variant="outline" disabled={!canMutate} onClick={() => void runAction(vol, 'snapshotBackup', { name: s.name, backupTargetName: '', labels: {} })}>
+                            {t('volumeDetail.backup')}
+                          </Button>
+                        ) : null}
+                        {hasAction(vol, 'snapshotDelete') ? (
+                          <Button type="button" size="sm" variant="ghost" disabled={!canMutate} onClick={() => void runAction(vol, 'snapshotDelete', { name: s.name })}>
+                            {t('common.delete')}
+                          </Button>
+                        ) : null}
+                      </>
+                    )
+                  }}
+                />
               </CardContent>
             </Card>
 

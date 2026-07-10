@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Plus, RefreshCw, Trash2 } from 'lucide-react'
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import {
+  useBackingImages,
   useCreateVolume,
   useDeleteVolume,
   useEngineImages,
@@ -24,6 +25,7 @@ import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 import { resolveColumns, usePreferences } from '@/store/preferences'
 import { ActionFormDialog } from './ActionFormDialog'
@@ -47,12 +49,30 @@ const VOLUME_COLUMN_IDS = [
   'actions',
 ] as const
 
+const REPLICA_AUTO_BALANCE_OPTS = ['ignored', 'disabled', 'least-effort', 'best-effort'] as const
+const SNAPSHOT_DATA_INTEGRITY_OPTS = ['ignored', 'disabled', 'enabled', 'fast-check'] as const
+const ANTI_AFFINITY_OPTS = ['ignored', 'enabled', 'disabled'] as const
+const UNMAP_MARK_OPTS = ['ignored', 'disabled', 'enabled'] as const
+
+/** Split a comma/space separated tag string into a trimmed, de-duplicated array. */
+function parseTags(input: string): string[] {
+  return Array.from(
+    new Set(
+      input
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  )
+}
+
 export function VolumesPage() {
   const { t } = useAppTranslation()
   const { canMutate } = useAuth()
   const q = useVolumes()
   const nodesQ = useNodes()
   const imagesQ = useEngineImages()
+  const backingImagesQ = useBackingImages()
   const createMut = useCreateVolume()
   const deleteMut = useDeleteVolume()
   const actionMut = useVolumeAction()
@@ -77,6 +97,22 @@ export function VolumesPage() {
   const [dataLocality, setDataLocality] = useState('disabled')
   const [standby, setStandby] = useState(false)
   const [fromBackup, setFromBackup] = useState('')
+  // Advanced options
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [backingImage, setBackingImage] = useState('')
+  const [dataSourceType, setDataSourceType] = useState('')
+  const [dataSourceVolume, setDataSourceVolume] = useState('')
+  const [dataSourceSnapshot, setDataSourceSnapshot] = useState('')
+  const [encrypted, setEncrypted] = useState(false)
+  const [nodeSelector, setNodeSelector] = useState('')
+  const [diskSelector, setDiskSelector] = useState('')
+  const [replicaAutoBalance, setReplicaAutoBalance] = useState('ignored')
+  const [snapshotDataIntegrity, setSnapshotDataIntegrity] = useState('ignored')
+  const [replicaSoftAntiAffinity, setReplicaSoftAntiAffinity] = useState('ignored')
+  const [replicaZoneSoftAntiAffinity, setReplicaZoneSoftAntiAffinity] = useState('ignored')
+  const [replicaDiskSoftAntiAffinity, setReplicaDiskSoftAntiAffinity] = useState('ignored')
+  const [revisionCounterDisabled, setRevisionCounterDisabled] = useState(false)
+  const [unmapMarkSnapChainRemoved, setUnmapMarkSnapChainRemoved] = useState('ignored')
   const [formError, setFormError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Volume | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -89,6 +125,7 @@ export function VolumesPage() {
 
   const hosts = (nodesQ.data ?? []).map((n) => n.name)
   const images = (imagesQ.data ?? []).map((i) => i.image ?? i.name).filter(Boolean) as string[]
+  const backingImages = (backingImagesQ.data ?? []).map((b) => b.name).filter(Boolean) as string[]
 
   // Map the ColumnPicker/preferences visible-column set into TanStack VisibilityState.
   const columnVisibility = useMemo(() => {
@@ -227,11 +264,32 @@ export function VolumesPage() {
     [t, canMutate],
   )
 
+  function resetCreateForm() {
+    setName('')
+    setFromBackup('')
+    setStandby(false)
+    setShowAdvanced(false)
+    setBackingImage('')
+    setDataSourceType('')
+    setDataSourceVolume('')
+    setDataSourceSnapshot('')
+    setEncrypted(false)
+    setNodeSelector('')
+    setDiskSelector('')
+    setReplicaAutoBalance('ignored')
+    setSnapshotDataIntegrity('ignored')
+    setReplicaSoftAntiAffinity('ignored')
+    setReplicaZoneSoftAntiAffinity('ignored')
+    setReplicaDiskSoftAntiAffinity('ignored')
+    setRevisionCounterDisabled(false)
+    setUnmapMarkSnapChainRemoved('ignored')
+  }
+
   async function onCreate() {
     setFormError(null)
     try {
       const sizeBytes = parseSizeToBytes(size)
-      await createMut.mutateAsync({
+      const body: Record<string, unknown> = {
         name,
         size: sizeBytes,
         numberOfReplicas: Number(replicas) || 3,
@@ -239,12 +297,34 @@ export function VolumesPage() {
         dataLocality,
         accessMode,
         standby,
-        fromBackup: fromBackup || undefined,
-      })
+      }
+      // Only include advanced fields the user actually set, to avoid over-constraining.
+      if (fromBackup) body.fromBackup = fromBackup
+      if (backingImage) body.backingImage = backingImage
+      // dataSource: vol://<name> or snap://<vol>/<snap>
+      if (dataSourceType === 'volume' && dataSourceVolume) {
+        body.dataSource = `vol://${dataSourceVolume}`
+      } else if (dataSourceType === 'snapshot' && dataSourceVolume && dataSourceSnapshot) {
+        body.dataSource = `snap://${dataSourceVolume}/${dataSourceSnapshot}`
+      }
+      if (encrypted) body.encrypted = true
+      const nodeTags = parseTags(nodeSelector)
+      if (nodeTags.length) body.nodeSelector = nodeTags
+      const diskTags = parseTags(diskSelector)
+      if (diskTags.length) body.diskSelector = diskTags
+      if (replicaAutoBalance !== 'ignored') body.replicaAutoBalance = replicaAutoBalance
+      if (snapshotDataIntegrity !== 'ignored') body.snapshotDataIntegrity = snapshotDataIntegrity
+      if (replicaSoftAntiAffinity !== 'ignored') body.replicaSoftAntiAffinity = replicaSoftAntiAffinity
+      if (replicaZoneSoftAntiAffinity !== 'ignored')
+        body.replicaZoneSoftAntiAffinity = replicaZoneSoftAntiAffinity
+      if (replicaDiskSoftAntiAffinity !== 'ignored')
+        body.replicaDiskSoftAntiAffinity = replicaDiskSoftAntiAffinity
+      if (revisionCounterDisabled) body.revisionCounterDisabled = true
+      if (unmapMarkSnapChainRemoved !== 'ignored')
+        body.unmapMarkSnapChainRemoved = unmapMarkSnapChainRemoved
+      await createMut.mutateAsync(body)
       setCreateOpen(false)
-      setName('')
-      setFromBackup('')
-      setStandby(false)
+      resetCreateForm()
     } catch (e) {
       setFormError(e instanceof Error ? e.message : t('admin.createFailed'))
     }
@@ -454,6 +534,182 @@ export function VolumesPage() {
             <input type="checkbox" checked={standby} onChange={(e) => setStandby(e.target.checked)} />
             {t('volumes.createStandby')}
           </label>
+
+          <div className="sm:col-span-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="px-0"
+              aria-expanded={showAdvanced}
+              onClick={() => setShowAdvanced((v) => !v)}
+              data-testid="toggle-advanced"
+            >
+              {showAdvanced ? '▾' : '▸'} {t('volumes.advancedOptions')}
+            </Button>
+          </div>
+
+          {showAdvanced ? (
+            <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2" data-testid="advanced-options">
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">{t('volumes.backingImage')}</span>
+                <Select value={backingImage} onChange={(e) => setBackingImage(e.target.value)}>
+                  <option value="">{t('volumes.backingImageNone')}</option>
+                  {backingImages.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">{t('volumes.dataSourceType')}</span>
+                <Select
+                  value={dataSourceType}
+                  onChange={(e) => {
+                    setDataSourceType(e.target.value)
+                    setDataSourceVolume('')
+                    setDataSourceSnapshot('')
+                  }}
+                >
+                  <option value="">{t('volumes.dataSourceNone')}</option>
+                  <option value="volume">{t('volumes.dataSourceVolumeOpt')}</option>
+                  <option value="snapshot">{t('volumes.dataSourceSnapshotOpt')}</option>
+                </Select>
+              </label>
+              {dataSourceType ? (
+                <label className="block space-y-1 text-sm">
+                  <span className="font-medium">{t('volumes.dataSourceVolume')}</span>
+                  <Input
+                    value={dataSourceVolume}
+                    onChange={(e) => setDataSourceVolume(e.target.value)}
+                    placeholder={t('volumes.dataSourceVolumePlaceholder')}
+                  />
+                </label>
+              ) : null}
+              {dataSourceType === 'snapshot' ? (
+                <label className="block space-y-1 text-sm">
+                  <span className="font-medium">{t('volumes.dataSourceSnapshot')}</span>
+                  <Input
+                    value={dataSourceSnapshot}
+                    onChange={(e) => setDataSourceSnapshot(e.target.value)}
+                    placeholder={t('volumes.dataSourceSnapshotPlaceholder')}
+                  />
+                </label>
+              ) : null}
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">{t('volumes.nodeTag')}</span>
+                <Input
+                  value={nodeSelector}
+                  onChange={(e) => setNodeSelector(e.target.value)}
+                  placeholder={t('volumes.tagsPlaceholder')}
+                />
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">{t('volumes.diskTag')}</span>
+                <Input
+                  value={diskSelector}
+                  onChange={(e) => setDiskSelector(e.target.value)}
+                  placeholder={t('volumes.tagsPlaceholder')}
+                />
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">{t('volumes.replicaAutoBalance')}</span>
+                <Select
+                  value={replicaAutoBalance}
+                  onChange={(e) => setReplicaAutoBalance(e.target.value)}
+                >
+                  {REPLICA_AUTO_BALANCE_OPTS.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">{t('volumes.snapshotDataIntegrity')}</span>
+                <Select
+                  value={snapshotDataIntegrity}
+                  onChange={(e) => setSnapshotDataIntegrity(e.target.value)}
+                >
+                  {SNAPSHOT_DATA_INTEGRITY_OPTS.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">{t('volumes.replicaSoftAntiAffinity')}</span>
+                <Select
+                  value={replicaSoftAntiAffinity}
+                  onChange={(e) => setReplicaSoftAntiAffinity(e.target.value)}
+                >
+                  {ANTI_AFFINITY_OPTS.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">{t('volumes.replicaZoneSoftAntiAffinity')}</span>
+                <Select
+                  value={replicaZoneSoftAntiAffinity}
+                  onChange={(e) => setReplicaZoneSoftAntiAffinity(e.target.value)}
+                >
+                  {ANTI_AFFINITY_OPTS.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">{t('volumes.replicaDiskSoftAntiAffinity')}</span>
+                <Select
+                  value={replicaDiskSoftAntiAffinity}
+                  onChange={(e) => setReplicaDiskSoftAntiAffinity(e.target.value)}
+                >
+                  {ANTI_AFFINITY_OPTS.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">{t('volumes.unmapMarkSnapChainRemoved')}</span>
+                <Select
+                  value={unmapMarkSnapChainRemoved}
+                  onChange={(e) => setUnmapMarkSnapChainRemoved(e.target.value)}
+                >
+                  {UNMAP_MARK_OPTS.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={encrypted}
+                  onChange={(e) => setEncrypted(e.target.checked)}
+                />
+                {t('volumes.encrypted')}
+              </label>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={revisionCounterDisabled}
+                  onChange={(e) => setRevisionCounterDisabled(e.target.checked)}
+                />
+                {t('volumes.revisionCounterDisabled')}
+              </label>
+            </div>
+          ) : null}
+
           {formError ? <Alert tone="danger" className="sm:col-span-2">{formError}</Alert> : null}
         </div>
       </Dialog>
