@@ -56,7 +56,7 @@ func (h *HighlandAPI) Status(w http.ResponseWriter, _ *http.Request) {
 		"vendor": map[string]any{
 			"name":    "AlphaBravo",
 			"url":     "https://alphabravo.io",
-			"tagline": "Longhorn is the cattle; Highland is the ranch that manages them.",
+			"tagline": "Highland is an alternative Longhorn Enterprise Grade UI developed by AlphaBravo.",
 		},
 	}
 	writeJSON(w, http.StatusOK, resp)

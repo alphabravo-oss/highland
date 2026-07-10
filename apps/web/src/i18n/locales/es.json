@@ -177,8 +177,8 @@
     "ssoMock": "SSO simulado (dev)",
     "credentialsHint": "Las credenciales provienen del Secret del clúster / administrador de arranque.",
     "devAccounts": "Dev: admin/highland · operator/operator · viewer/viewer",
-    "brandHeadline": "El rancho que gestiona tu Longhorn.",
-    "brandBody": "Una consola moderna, autenticación nativa y BFF para Longhorn, sin bifurcar el plano de datos.",
+    "brandHeadline": "Highland es una interfaz alternativa de nivel empresarial para Longhorn, desarrollada por AlphaBravo.",
+    "brandBody": "Una consola de gestión moderna y segura para Longhorn — inicio de sesión empresarial (SSO/RBAC), métricas en vivo y copias de seguridad — sobre tu Longhorn existente sin modificarlo.",
     "feature1": "Visión de volúmenes, nodos y discos en vivo",
     "feature2": "Benchmarks fio y métricas de E/S en tiempo real",
     "feature3": "SSO, RBAC y auditoría integrados"
@@ -790,5 +790,12 @@
     "currentUser": "Sesión iniciada como",
     "about": "Acerca de",
     "visitAlphaBravo": "Visitar AlphaBravo"
+  },
+  "warnings": {
+    "title": "{{count}} advertencia(s) del clúster",
+    "replicaExceedsNodes": "El número de réplicas por defecto es {{count}} pero solo {{nodes}} nodo(s) permiten programación — los nuevos volúmenes se crearán degradados.",
+    "minCopiesExceedsNodes": "El mínimo de copias de imagen base por defecto es {{count}} pero el clúster tiene {{nodes}} nodo(s) — las imágenes base no pueden alcanzar el mínimo.",
+    "noBackupTarget": "No hay destino de copia configurado — las copias de seguridad y los volúmenes DR no están disponibles.",
+    "dismiss": "Descartar"
   }
 }

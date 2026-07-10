@@ -177,8 +177,8 @@
     "ssoMock": "SSO mock (dev)",
     "credentialsHint": "Credentials come from the cluster Secret / bootstrap admin.",
     "devAccounts": "Dev: admin/highland · operator/operator · viewer/viewer",
-    "brandHeadline": "The ranch that manages your Longhorn.",
-    "brandBody": "A modern console, native auth, and BFF for Longhorn — without forking the data plane.",
+    "brandHeadline": "Highland is an alternative Longhorn Enterprise Grade UI developed by AlphaBravo.",
+    "brandBody": "A modern, secure management console for Longhorn — enterprise login (SSO/RBAC), live metrics, and backups — layered on top of your existing Longhorn without changing it.",
     "feature1": "Live volume, node & disk insight",
     "feature2": "fio benchmarks & real-time I/O metrics",
     "feature3": "SSO, RBAC & audit built in"
@@ -790,5 +790,12 @@
     "currentUser": "Signed in as",
     "about": "About",
     "visitAlphaBravo": "Visit AlphaBravo"
+  },
+  "warnings": {
+    "title": "{{count}} cluster warning(s)",
+    "replicaExceedsNodes": "Default Replica Count is {{count}} but only {{nodes}} node(s) allow scheduling — new volumes will be created degraded.",
+    "minCopiesExceedsNodes": "Default minimum backing-image copies is {{count}} but the cluster has {{nodes}} node(s) — backing images can't reach the minimum.",
+    "noBackupTarget": "No backup target is configured — backups and DR volumes are unavailable.",
+    "dismiss": "Dismiss"
   }
 }

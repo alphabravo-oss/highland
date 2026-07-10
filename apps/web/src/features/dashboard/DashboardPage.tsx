@@ -14,6 +14,7 @@ import {
 import { formatBytes, type Event, type Volume } from '@/api/longhorn'
 import { DataTable } from '@/components/data/DataTable'
 import { Donut, LegendRow, MetricLine, UsageBar } from '@/components/data/dashcharts'
+import { ClusterWarnings } from '@/components/data/ClusterWarnings'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Badge, stateTone } from '@/components/ui/badge'
@@ -189,6 +190,7 @@ export function DashboardPage() {
         title={t('dashboard.title')}
         description={t('dashboard.description')}
       />
+      <ClusterWarnings />
       <QueryState
         isLoading={loading}
         error={error}
