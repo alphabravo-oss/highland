@@ -92,6 +92,14 @@ func NewRouter(d Deps) http.Handler {
 			})
 		}
 
+		// Real Longhorn (unlike the bundled mock) has no /v1/dashboard endpoint.
+		// The UI treats this as an optional overlay and computes the dashboard from
+		// collections, so serve an empty 200 here instead of proxying a 404 upstream.
+		r.Get("/api/v1/lh/dashboard", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{}`))
+		})
+
 		r.Handle("/api/v1/lh/*", d.Proxy)
 		r.Handle("/api/v1/lh", d.Proxy)
 

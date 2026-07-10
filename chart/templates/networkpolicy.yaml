@@ -50,5 +50,6 @@ spec:
   ingress:
     - ports:
         - protocol: TCP
-          port: 80
+          # must match the web container port (nginx-unprivileged listens on 8080)
+          port: 8080
 {{- end }}

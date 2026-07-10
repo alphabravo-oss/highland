@@ -24,7 +24,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- toYaml .Values.podSecurityContext.web | nindent 8 }}
       containers:
         - name: highland-web
           image: "{{ .Values.image.web.repository }}:{{ .Values.image.web.tag }}"
@@ -37,7 +37,7 @@ spec:
               value: {{ printf "%s-api:%v" (include "highland.fullname" .) .Values.service.api.port | quote }}
           ports:
             - name: http
-              containerPort: 80
+              containerPort: 8080
               protocol: TCP
           livenessProbe:
             httpGet:

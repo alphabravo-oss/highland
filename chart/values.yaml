@@ -132,9 +132,21 @@ resources:
       memory: 128Mi
 
 podSecurityContext:
-  runAsNonRoot: true
-  seccompProfile:
-    type: RuntimeDefault
+  # distroless :nonroot runs as uid 65532; runAsNonRoot needs a numeric uid to verify
+  api:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  # nginx-unprivileged runs as uid 101 and listens on 8080
+  web:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
 
 securityContext:
   api:
