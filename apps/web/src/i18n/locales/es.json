@@ -37,7 +37,8 @@
     "auditLog": "Registro de auditoría",
     "expandSidebar": "Expandir barra lateral",
     "collapseSidebar": "Contraer barra lateral",
-    "openSidebar": "Abrir barra lateral"
+    "openSidebar": "Abrir barra lateral",
+    "status": "Estado"
   },
   "common": {
     "save": "Guardar",
@@ -760,5 +761,34 @@
     "components": "Componentes",
     "instanceManagers": "Gestores de instancias",
     "engineImages": "Imágenes de motor"
+  },
+  "status": {
+    "title": "Estado y acerca de",
+    "description": "Versiones de Highland, Longhorn y Kubernetes, salud de componentes y resumen del clúster",
+    "versions": "Versiones",
+    "highlandVersion": "Highland",
+    "longhornVersion": "Longhorn",
+    "kubernetesVersion": "Kubernetes",
+    "longhornSupported": "Longhorn compatible",
+    "components": "Salud de componentes",
+    "componentApi": "API de Highland",
+    "componentManager": "Gestor de Longhorn",
+    "componentScraper": "Recolector de métricas",
+    "sessionBackend": "Backend de sesión",
+    "benchmarkMode": "Modo de benchmark",
+    "ok": "OK",
+    "error": "Error",
+    "reachable": "Accesible",
+    "unreachable": "Inaccesible",
+    "cluster": "Clúster",
+    "nodes": "Nodos",
+    "nodesValue": "{{total}} ({{schedulable}} programables)",
+    "volumes": "Volúmenes (saludable/degradado/con fallos)",
+    "capacity": "Capacidad usada",
+    "longhornNamespace": "Namespace de Longhorn",
+    "managerUrl": "URL del gestor",
+    "currentUser": "Sesión iniciada como",
+    "about": "Acerca de",
+    "visitAlphaBravo": "Visitar AlphaBravo"
   }
 }

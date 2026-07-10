@@ -35,3 +35,33 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ include "highland.fullname" . }}-benchmark
+---
+# Read-only access in the Longhorn namespace to report the Longhorn version
+# (longhorn-manager DaemonSet image tag) on the Status page.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "highland.fullname" . }}-longhorn-read
+  namespace: {{ .Values.longhorn.namespace }}
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["daemonsets", "deployments"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-longhorn-read
+  namespace: {{ .Values.longhorn.namespace }}
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "highland.fullname" . }}-longhorn-read

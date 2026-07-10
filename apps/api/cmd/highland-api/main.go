@@ -16,6 +16,7 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/handlers"
 	"github.com/highland-io/highland/apps/api/internal/longhorn"
 	"github.com/highland-io/highland/apps/api/internal/metrics"
+	"k8s.io/client-go/kubernetes"
 )
 
 func main() {
@@ -90,10 +91,14 @@ func main() {
 	auditStore := audit.NewStore(2000, cfg.AuditFile)
 	k8sRunner := benchmark.NewK8sRunnerFromEnv()
 	benchStore := benchmark.NewStore(k8sRunner)
+	benchmarkMode := "synthetic"
+	var k8sClient kubernetes.Interface
 	if k8sRunner != nil && k8sRunner.Available() {
 		// Persist benchmark records as ConfigMaps (etcd) so they survive restarts.
 		benchStore.SetPersister(benchmark.NewConfigMapPersister(k8sRunner.Clientset(), k8sRunner.Namespace()))
 		benchStore.Load()
+		benchmarkMode = "kubernetes-job"
+		k8sClient = k8sRunner.Clientset()
 		slog.Info("benchmark mode", "mode", "kubernetes-job", "persistence", "configmap")
 	} else {
 		slog.Info("benchmark mode", "mode", "synthetic", "persistence", "memory")
@@ -112,6 +117,10 @@ func main() {
 		Audit:       auditStore,
 		Metrics:     scraper,
 		Benchmarks:  benchStore,
+		K8s:               k8sClient,
+		LonghornNamespace: os.Getenv("HIGHLAND_LONGHORN_NAMESPACE"),
+		SessionBackend:    "stateless",
+		BenchmarkMode:     benchmarkMode,
 	})
 
 	srv := &http.Server{

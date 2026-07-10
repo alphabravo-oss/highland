@@ -88,6 +88,22 @@ export function useNodes() {
   })
 }
 
+export type StatusResponse = {
+  highland: { version: string; sessionBackend: string; benchmarkMode: string }
+  longhorn: { version: string; namespace: string; managerUrl: string; reachable: boolean; supported: string[] }
+  kubernetes: { version: string }
+  components: { api: string; managerProxy: string; metricsScraper: string; scrapeError: string }
+  vendor: { name: string; url: string; tagline: string }
+}
+
+export function useStatus() {
+  return useQuery({
+    queryKey: ['status'],
+    queryFn: () => highlandGet<StatusResponse>('/status'),
+    refetchInterval: 30_000,
+  })
+}
+
 export function useNodeTags() {
   return useQuery({ queryKey: ['nodetags'], queryFn: () => tagsApi.node(), refetchInterval: 60_000 })
 }

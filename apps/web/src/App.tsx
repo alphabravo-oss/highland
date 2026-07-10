@@ -24,6 +24,7 @@ import { OrphansPage } from '@/features/orphans/OrphansPage'
 import { PerformancePage, BenchmarksPage } from '@/features/performance/PerformancePage'
 import { AdminPage, AuditPage, PreflightPage } from '@/features/admin/AdminPage'
 import { SSOConfigPage } from '@/features/admin/SSOConfigPage'
+import { StatusPage } from '@/features/status/StatusPage'
 import { NotFoundPage } from '@/routes/NotFoundPage'
 
 const queryClient = new QueryClient({
@@ -68,6 +69,7 @@ export default function App() {
                     <Route path="admin/sso" element={<SSOConfigPage />} />
                     <Route path="admin/audit" element={<AuditPage />} />
                     <Route path="preflight" element={<PreflightPage />} />
+                    <Route path="status" element={<StatusPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Route>
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />

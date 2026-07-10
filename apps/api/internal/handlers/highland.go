@@ -14,17 +14,22 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/benchmark"
 	"github.com/highland-io/highland/apps/api/internal/metrics"
 	"github.com/highland-io/highland/apps/api/internal/middleware"
+	"k8s.io/client-go/kubernetes"
 )
 
 
 // HighlandAPI serves native Highland endpoints (not Longhorn proxy).
 type HighlandAPI struct {
-	Audit      *audit.Store
-	Metrics    *metrics.Scraper
-	Benchmarks *benchmark.Store
-	Users      *auth.UserStore
-	Version    string
-	ManagerURL string
+	Audit             *audit.Store
+	Metrics           *metrics.Scraper
+	Benchmarks        *benchmark.Store
+	Users             *auth.UserStore
+	Version           string
+	ManagerURL        string
+	K8s               kubernetes.Interface
+	LonghornNamespace string
+	SessionBackend    string
+	BenchmarkMode     string
 }
 
 // ListAudit GET /api/v1/audit

@@ -15,6 +15,7 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/longhorn"
 	"github.com/highland-io/highland/apps/api/internal/metrics"
 	mw "github.com/highland-io/highland/apps/api/internal/middleware"
+	"k8s.io/client-go/kubernetes"
 )
 
 // Deps bundles runtime dependencies for the router.
@@ -28,6 +29,11 @@ type Deps struct {
 	Audit       *audit.Store
 	Metrics     *metrics.Scraper
 	Benchmarks  *benchmark.Store
+	// Optional cluster/runtime facts for the status page.
+	K8s               kubernetes.Interface
+	LonghornNamespace string
+	SessionBackend    string
+	BenchmarkMode     string
 }
 
 // NewRouter builds the Highland API HTTP router.
@@ -49,9 +55,13 @@ func NewRouter(d Deps) http.Handler {
 		Audit:      d.Audit,
 		Metrics:    d.Metrics,
 		Benchmarks: d.Benchmarks,
-		Users:      d.Auth.Users(),
-		Version:    d.Cfg.Version,
-		ManagerURL: d.Cfg.ManagerURL,
+		Users:             d.Auth.Users(),
+		Version:           d.Cfg.Version,
+		ManagerURL:        d.Cfg.ManagerURL,
+		K8s:               d.K8s,
+		LonghornNamespace: d.LonghornNamespace,
+		SessionBackend:    d.SessionBackend,
+		BenchmarkMode:     d.BenchmarkMode,
 	}
 
 	r := chi.NewRouter()
@@ -111,6 +121,7 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/api/v1/auth/oidc-config", api.GetOIDCConfig)
 		r.Put("/api/v1/auth/oidc-config", api.PutOIDCConfig)
 		r.Get("/api/v1/compatibility", hapi.Compatibility)
+		r.Get("/api/v1/status", hapi.Status)
 		r.Get("/api/v1/health", hapi.HealthNarrative)
 		r.Get("/api/v1/preflight", hapi.Preflight)
 		r.Get("/api/v1/dashboard", hapi.DashboardAggregate)
