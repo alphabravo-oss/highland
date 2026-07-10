@@ -249,7 +249,12 @@
     "optionalName": "nombre opcional",
     "attachRecurringJob": "Adjuntar trabajo recurrente",
     "selectJob": "Seleccionar trabajo…",
-    "actionOk": "Acción {{action}} correcta"
+    "actionOk": "Acción {{action}} correcta",
+    "readThroughput": "Rendimiento de lectura",
+    "writeThroughput": "Rendimiento de escritura",
+    "readIops": "IOPS de lectura",
+    "writeIops": "IOPS de escritura",
+    "noIo": "Sin E/S en vivo aún"
   },
   "nodes": {
     "title": "Nodos y discos",

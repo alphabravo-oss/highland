@@ -20,6 +20,7 @@ import {
   type Volume,
   volumeAttachmentsApi,
 } from '@/api/longhorn'
+import { AreaSparkline } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Alert } from '@/components/ui/alert'
@@ -34,6 +35,30 @@ import { ActionFormDialog } from './ActionFormDialog'
 import { VOLUME_ACTION_DEFS, volumeActionLabel, type VolumeActionDef } from './volumeActions'
 
 type SnapshotRow = { name: string; created?: string; size?: string | number; [k: string]: unknown }
+
+function IoChart({
+  label,
+  value,
+  points,
+  empty,
+  format,
+}: {
+  label: string
+  value: string
+  points: number[]
+  empty: string
+  format: (v: number) => string
+}) {
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-xs text-[var(--color-muted-foreground)]">
+        <span>{label}</span>
+        <span className="tabular-nums font-medium text-[var(--color-foreground)]">{value}</span>
+      </div>
+      <AreaSparkline points={points} emptyLabel={empty} height={48} format={format} />
+    </div>
+  )
+}
 
 function InfoRow({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -167,6 +192,10 @@ export function VolumeDetailPage() {
 
   const readSeries = metrics.data?.series?.find((s) => s.name.includes('read_throughput'))
   const writeSeries = metrics.data?.series?.find((s) => s.name.includes('write_throughput'))
+  const readIops = metrics.data?.series?.find((s) => s.name.includes('read_iops'))
+  const writeIops = metrics.data?.series?.find((s) => s.name.includes('write_iops'))
+  const pts = (s?: { points?: Array<{ v: number }> }) => (s?.points ?? []).map((p) => p.v)
+  const lastV = (s?: { points?: Array<{ v: number }> }) => s?.points?.at(-1)?.v ?? 0
 
   return (
     <div data-testid="volume-detail-page">
@@ -269,23 +298,39 @@ export function VolumeDetailPage() {
                 <CardHeader>
                   <CardTitle>{t('volumeDetail.liveIo')}</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2 text-xs text-[var(--color-muted-foreground)]">
-                  <div>
-                    {t('volumeDetail.readThr', {
-                      value: readSeries?.points?.length
-                        ? `${(readSeries.points[readSeries.points.length - 1]!.v / 1e6).toFixed(2)} MB/s`
-                        : '—',
-                    })}
-                  </div>
-                  <div>
-                    {t('volumeDetail.writeThr', {
-                      value: writeSeries?.points?.length
-                        ? `${(writeSeries.points[writeSeries.points.length - 1]!.v / 1e6).toFixed(2)} MB/s`
-                        : '—',
-                    })}
-                  </div>
+                <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  <IoChart
+                    label={t('volumeDetail.readThroughput')}
+                    points={pts(readSeries)}
+                    value={`${formatBytes(lastV(readSeries))}/s`}
+                    empty={t('volumeDetail.noIo')}
+                    format={(v) => `${formatBytes(v)}/s`}
+                  />
+                  <IoChart
+                    label={t('volumeDetail.writeThroughput')}
+                    points={pts(writeSeries)}
+                    value={`${formatBytes(lastV(writeSeries))}/s`}
+                    empty={t('volumeDetail.noIo')}
+                    format={(v) => `${formatBytes(v)}/s`}
+                  />
+                  <IoChart
+                    label={t('volumeDetail.readIops')}
+                    points={pts(readIops)}
+                    value={Math.round(lastV(readIops)).toLocaleString()}
+                    empty={t('volumeDetail.noIo')}
+                    format={(v) => `${Math.round(v).toLocaleString()} IOPS`}
+                  />
+                  <IoChart
+                    label={t('volumeDetail.writeIops')}
+                    points={pts(writeIops)}
+                    value={Math.round(lastV(writeIops)).toLocaleString()}
+                    empty={t('volumeDetail.noIo')}
+                    format={(v) => `${Math.round(v).toLocaleString()} IOPS`}
+                  />
                   {metrics.data?.scrapeError ? (
-                    <p>{t('volumeDetail.scrape', { error: metrics.data.scrapeError })}</p>
+                    <p className="col-span-2 text-xs text-amber-600 dark:text-amber-300">
+                      {t('volumeDetail.scrape', { error: metrics.data.scrapeError })}
+                    </p>
                   ) : null}
                 </CardContent>
               </Card>
@@ -390,7 +435,15 @@ export function VolumeDetailPage() {
                     {(vol.replicas ?? []).map((r, i) => (
                       <TR key={r.name ?? i}>
                         <TD>{r.name ?? '—'}</TD>
-                        <TD>{r.hostId ?? '—'}</TD>
+                        <TD>
+                          {r.hostId ? (
+                            <Link to={`/nodes/${encodeURIComponent(r.hostId)}`} className="text-[var(--color-primary)] hover:underline">
+                              {r.hostId}
+                            </Link>
+                          ) : (
+                            '—'
+                          )}
+                        </TD>
                         <TD className="max-w-[12rem] truncate">{r.diskID ?? '—'}</TD>
                         <TD>{r.mode ?? '—'}</TD>
                         <TD>

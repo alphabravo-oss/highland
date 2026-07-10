@@ -249,7 +249,12 @@
     "optionalName": "optional name",
     "attachRecurringJob": "Attach recurring job",
     "selectJob": "Select job…",
-    "actionOk": "Action {{action}} ok"
+    "actionOk": "Action {{action}} ok",
+    "readThroughput": "Read throughput",
+    "writeThroughput": "Write throughput",
+    "readIops": "Read IOPS",
+    "writeIops": "Write IOPS",
+    "noIo": "No live I/O yet"
   },
   "nodes": {
     "title": "Nodes & Disks",

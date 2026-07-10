@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { ChevronRight, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   useInstanceManagers,
@@ -241,8 +241,12 @@ export function NodesPage() {
                 <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
                   <div>
                     <CardTitle className="text-base">
-                      <Link to={`/nodes/${encodeURIComponent(node.name)}`} className="hover:text-[var(--color-primary)] hover:underline">
+                      <Link
+                        to={`/nodes/${encodeURIComponent(node.name)}`}
+                        className="inline-flex items-center gap-1 text-[var(--color-primary)] hover:underline"
+                      >
                         {node.name}
+                        <ChevronRight size={15} />
                       </Link>
                     </CardTitle>
                     <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
