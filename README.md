@@ -1,221 +1,151 @@
+<div align="center">
+
+<img src="apps/web/public/favicon.svg" alt="Highland" width="88" height="88" />
+
 # Highland
 
-**Highland** is a bolt-on management plane for [Longhorn](https://longhorn.io/): a modern console, native auth, and BFF — without forking Longhorn’s data plane.
+### An enterprise-grade alternative UI & management plane for [Longhorn](https://longhorn.io/)
 
-> Longhorn is the cattle; Highland is the ranch that manages them.
+Highland is a modern, secure console for Longhorn distributed storage — enterprise login (SSO/RBAC),
+live I/O metrics, guided backups, and fio benchmarks — layered on top of your existing Longhorn
+**without changing the data plane**.
 
-## Install (Kubernetes — like Longhorn)
+[![CI](https://github.com/alphabravo-oss/highland/actions/workflows/ci.yaml/badge.svg)](https://github.com/alphabravo-oss/highland/actions/workflows/ci.yaml)
+[![Publish images](https://github.com/alphabravo-oss/highland/actions/workflows/release.yaml/badge.svg)](https://github.com/alphabravo-oss/highland/actions/workflows/release.yaml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![GHCR](https://img.shields.io/badge/images-ghcr.io-2496ED?logo=github)](https://github.com/orgs/alphabravo-oss/packages?repo_name=highland)
 
-Production is **Helm + images + Secrets**, not shell exports.
+**Built by [AlphaBravo](https://alphabravo.io)**
+
+</div>
+
+---
+
+## Why Highland
+
+Longhorn ships a capable UI — Highland is what you reach for when you need to run it like a **product**:
+a hardened access model, an operator-grade console, and workflows that make day-2 storage administration
+boringly easy.
+
+- 🔐 **Enterprise access, built in** — local admin, OIDC/SSO, RBAC (admin vs. viewer), and an audit log.
+  The browser **never** talks to the Longhorn manager directly; everything flows through an authenticated
+  backend-for-frontend (BFF).
+- 📊 **Live insight** — real-time volume/node/disk dashboards, per-volume I/O throughput & IOPS charts,
+  and on-demand **fio benchmarks** you can run from the UI.
+- 🧭 **Operator-grade console** — enterprise data tables everywhere (sort, search, pagination, CSV export,
+  bulk actions), consolidated kebab/action menus, guided wizards, and confirmation modals on every
+  destructive action. Light / dark / system themes. English & Spanish.
+- 💾 **Guided backups** — a step-by-step wizard for S3 / NFS / Azure backup targets and credentials, plus
+  full snapshot, backup, restore, DR-standby, and recurring-job management.
+- 🧩 **Full Longhorn parity — and beyond** — volumes, nodes & disks, backing images, engine images,
+  instance managers, orphans, system backups, support bundles, and every manager setting (grouped, with
+  a danger zone and inline docs).
+- ☸️ **Kubernetes-native** — Helm chart, stateless signed-cookie sessions (no Redis), Kubernetes Secrets
+  for credentials, and ConfigMap-persisted benchmark history. Nothing to babysit.
+
+---
+
+## Quick start
+
+> **Prerequisites:** a Kubernetes cluster with **Longhorn already installed** (its own UI can be disabled),
+> plus `helm` and `kubectl`. Highland connects to the in-cluster `longhorn-backend` service.
+
+Install straight from GitHub Container Registry — no cloning, no image builds:
 
 ```bash
-# Build images, then:
-helm upgrade --install highland ./chart \
-  -n highland-system --create-namespace \
-  --set image.api.repository=YOUR_REG/highland-api \
-  --set image.web.repository=YOUR_REG/highland-web \
-  --set image.api.tag=0.1.0 --set image.web.tag=0.1.0 \
+helm install highland oci://ghcr.io/alphabravo-oss/charts/highland \
+  --version 0.1.0 \
+  --namespace highland-system --create-namespace \
   --set auth.local.createSecret=true \
   --set auth.local.password='change-me' \
   --set longhorn.namespace=longhorn-system
 ```
 
-Full guide: **[docs/INSTALL.md](docs/INSTALL.md)** · k3s notes: **[docs/K3S.md](docs/K3S.md)**
+Then open the UI:
 
-```text
-Browser → highland-web (nginx) → highland-api → longhorn-backend:9500
-         ↑ Ingress / Service      ↑ Secret (admin) + ConfigMap
+```bash
+kubectl -n highland-system port-forward svc/highland-web 8080:80
+# → http://127.0.0.1:8080     log in with  admin / change-me
 ```
 
-Local Docker (same topology):
+That's it. To expose it beyond your laptop, enable the Ingress (`--set ingress.enabled=true`) or a
+NodePort/LoadBalancer service — see **[docs/INSTALL.md](docs/INSTALL.md)** (and **[docs/K3S.md](docs/K3S.md)**
+for k3s notes).
+
+### Container images
+
+Prebuilt images are published to GHCR on every release:
+
+| Image | Pull |
+|-------|------|
+| API (BFF) | `ghcr.io/alphabravo-oss/highland-api` |
+| Web (console) | `ghcr.io/alphabravo-oss/highland-web` |
+
+Tags: `latest`, `edge` (main), `<version>` (e.g. `0.1.0`), and `sha-<commit>`.
+
+### Try it locally (Docker Compose)
+
+Spin up the whole topology — including a mock Longhorn manager — on your machine:
 
 ```bash
 docker compose -f deploy/docker-compose.yaml up --build
-# http://127.0.0.1:8088  admin / highland
+# → http://127.0.0.1:8088     admin / highland
 ```
 
-## Status
+---
 
-**Phase 0** foundations + **Phase 1 parity core** wired through the authenticated BFF proxy.
+## Architecture
 
-| Area | Status |
-|------|--------|
-| Auth (local login, session cookie, `/auth/me`) | Done |
-| Transparent proxy `/api/v1/lh/*` → manager `/v1/*` + link rewrite | Done |
-| AppShell, theme light/dark/system, Lucide nav | Done |
-| Dashboard (collections + optional `/dashboard`) | Done |
-| Volumes list/create/delete/detail + manager actions map | Done |
-| Nodes & disks (scheduling toggle, disk capacity) | Done |
-| Backups, backup targets, recurring jobs | Done |
-| Settings (grouped, danger zone) | Done |
-| Support bundles | Done |
-| Engine images, backing images, instance managers, orphans, system backups | Done (list/CRUD as applicable) |
-| Live I/O metrics / fio benchmarks | Phase 3 (shell pages only) |
-| OIDC, multi-user audit productization | Phase 2 |
+```text
+Browser ──▶ highland-web (nginx)  ──▶ highland-api (BFF)  ──▶ longhorn-backend:9500
+            static console            authn/z · RBAC · audit    (Longhorn manager REST)
+                                       stateless signed cookie
+```
 
-The browser **never** talks to the Longhorn manager directly — only Highland API.
-
-## Layout
+Highland never proxies the Longhorn manager to the browser. The **BFF** terminates auth, enforces RBAC,
+rewrites manager links, negotiates content types, and audits every mutation — so the manager API is never
+directly exposed.
 
 ```text
 highland/
-├── README.md
 ├── apps/
-│   ├── api/          # Go BFF (chi): /auth, /healthz, /api/v1/lh/*
-│   └── web/          # React 19 + Vite + TS + Tailwind 4 SPA
-├── chart/            # Helm chart (api + web + NetworkPolicy)
-└── docs/
+│   ├── api/    # Go BFF (chi): /auth, /healthz, /api/v1/lh/*, status, benchmarks
+│   └── web/    # React 19 + Vite + TypeScript + Tailwind 4 console
+├── chart/      # Helm chart (api + web + RBAC + NetworkPolicy)
+└── docs/       # install, k3s, UX, parity matrix
 ```
 
-Upstream Longhorn lives in the sibling `../longhorn/` tree and is **not** modified.
+---
 
-## Prerequisites
+## Configuration highlights
 
-- Go 1.22+
-- Node 20+ / npm
-- Optional: Helm 3, kind/k3d, a running Longhorn manager
+| Area | How |
+|------|-----|
+| **Local admin** | `auth.local.createSecret=true` + `auth.local.password`, or point at an existing Secret with `auth.local.existingSecret`. |
+| **SSO / OIDC** | Configure `auth.oidc.*`; users map to admin/viewer roles. |
+| **Backups** | Use the in-app **backup setup wizard** (S3 / NFS / Azure) — it provisions the credential Secret and backup target for you. |
+| **Sessions** | Stateless HMAC-signed cookies — no Redis, no external session store. |
+| **Longhorn namespace** | `longhorn.namespace` (default `longhorn-system`). |
 
-## Tests & CI
+Full reference: **[docs/INSTALL.md](docs/INSTALL.md)**.
+
+---
+
+## Development
 
 ```bash
-# Full local CI parity (parity matrix + unit + e2e + helm)
-./hack/run-ci-local.sh
-
-# Pieces
-./hack/check-parity.sh            # P0 gate on docs/parity-matrix.yaml
-cd apps/api && go test ./...
-cd apps/web && npm test && npm run typecheck && npm run build
-cd apps/web && npm run test:e2e   # starts mock manager + API + Vite via hack/e2e-stack.sh
+# API (Go)                      # Web (React + Vite + TS)
+cd apps/api && go test ./...    cd apps/web && npm ci && npm run dev
 ```
 
-Plan / status: see `../HIGHLAND_PLAN.md` (v0.2) and `docs/parity-matrix.yaml`.
+CI runs Go build/test, web typecheck/unit/build/Storybook, a Playwright smoke + a11y suite, Helm lint,
+and a parity gate on every push. Images and the Helm chart publish to GHCR on tagged releases. See
+`.github/workflows/`.
 
-**k3s later:** `docs/K3S.md` — offline mock remains the default; point `HIGHLAND_MANAGER_URL` at `longhorn-backend` when ready.
+---
 
-## Auth: local admin (primary)
+## License
 
-**Local username/password login is the default and does not need OIDC.**
+[Apache 2.0](LICENSE) © [AlphaBravo](https://alphabravo.io)
 
-```bash
-export HIGHLAND_AUTH_MODE=local          # default
-export HIGHLAND_LOCAL_ALWAYS=true        # default — break-glass local even if OIDC added later
-export HIGHLAND_ADMIN_USER=admin
-export HIGHLAND_ADMIN_PASSWORD='change-me'
-# Optional multi-user JSON:
-# export HIGHLAND_USERS='[{"username":"admin","password":"...","role":"admin"}]'
-```
-
-| Env | Default | Meaning |
-|-----|---------|---------|
-| `HIGHLAND_AUTH_MODE` | `local` | `local` \| `oidc` \| `local+oidc` |
-| `HIGHLAND_LOCAL_ALWAYS` | `true` | Keep `POST /auth/login` for admin even in OIDC-heavy setups |
-| `HIGHLAND_OIDC_*` | empty | Optional IdP; not required |
-| `HIGHLAND_OIDC_MOCK` | `false` | Dev-only mock IdP |
-
-Public discovery: `GET /auth/providers` → `{ "local": true, "oidc": false, ... }`.
-
-**Dev roles** (enabled by default via `HIGHLAND_DEV_ROLES=1`):
-
-| User | Password | Role |
-|------|----------|------|
-| admin | highland | admin |
-| operator | operator | operator (no settings writes) |
-| viewer | viewer | viewer (GET only) |
-
-**E2E (T1.12):** Playwright `e2e/parity.spec.ts` — login → create volume → snapshot against
-`cmd/mock-longhorn-manager` (not a reimplementation of Longhorn; fixture for CI).
-
-**kind (best-effort real cluster):**
-
-```bash
-./hack/kind-up.sh
-# then port-forward longhorn-backend and run API/web, or:
-USE_MOCK=0 HIGHLAND_MANAGER_URL=http://127.0.0.1:9500 ./hack/install-dev.sh
-```
-
-GitHub Actions: `.github/workflows/ci.yaml` (api, web, e2e, helm).
-
-## Run API (local)
-
-```bash
-cd apps/api
-
-export HIGHLAND_MANAGER_URL=http://127.0.0.1:9500   # longhorn-backend
-export HIGHLAND_ADMIN_USER=admin
-export HIGHLAND_ADMIN_PASSWORD=highland
-export HIGHLAND_LISTEN_ADDR=:8080
-
-go run ./cmd/highland-api
-```
-
-Smoke:
-
-```bash
-curl -s http://127.0.0.1:8080/healthz
-curl -s -c /tmp/hc.jar -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"highland"}' \
-  http://127.0.0.1:8080/auth/login
-curl -s -b /tmp/hc.jar http://127.0.0.1:8080/auth/me
-curl -s -b /tmp/hc.jar http://127.0.0.1:8080/api/v1/lh/volumes
-curl -s -b /tmp/hc.jar http://127.0.0.1:8080/api/v1/lh/nodes
-curl -s -b /tmp/hc.jar http://127.0.0.1:8080/api/v1/lh/settings
-```
-
-Tests:
-
-```bash
-cd apps/api && go test ./...
-```
-
-## Run web (local)
-
-```bash
-cd apps/web
-npm install
-npm run dev
-```
-
-Vite proxies `/auth` and `/api` to `http://127.0.0.1:8080` (override with `VITE_API_PROXY`). Open http://localhost:5173.
-
-**One-shot dev stack (mock manager + API + web):**
-
-```bash
-./hack/install-dev.sh
-```
-
-```bash
-npm run typecheck
-npm run build
-npm test
-npm run test:e2e
-```
-
-## How UI actions work
-
-1. UI loads collections via `GET /api/v1/lh/<type>` (TanStack Query).
-2. Destructive/mutating ops use **manager-provided `actions` / `links`** (stock Longhorn UI pattern), posted through the same proxy.
-3. Create uses `POST /api/v1/lh/<collection>` with Rancher-style JSON bodies.
-
-## Helm
-
-```bash
-helm lint ./chart
-helm template highland ./chart --namespace highland-system
-```
-
-```bash
-kubectl create secret generic highland-admin \
-  --from-literal=username=admin \
-  --from-literal=password='change-me'
-```
-
-## Design system
-
-- React 19 + TypeScript strict + Vite
-- Tailwind CSS v4 + Lucide icons
-- Light / Dark / System theme (`highland-theme`, FOUC-safe)
-- AppShell: collapsible sidebar + top menu bar
-
-## Spec
-
-See `../HIGHLAND_PLAN.md` for the full parity matrix and later phases.
+<div align="center"><sub>Built with care by <a href="https://alphabravo.io">AlphaBravo</a> — enterprise Kubernetes, security, and platform engineering.</sub></div>

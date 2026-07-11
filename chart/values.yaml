@@ -14,12 +14,12 @@ replicaCount:
 
 image:
   api:
-    repository: ghcr.io/example/highland-api
-    tag: "0.1.0"
+    repository: ghcr.io/alphabravo-oss/highland-api
+    tag: ""  # defaults to .Chart.AppVersion
     pullPolicy: IfNotPresent
   web:
-    repository: ghcr.io/example/highland-web
-    tag: "0.1.0"
+    repository: ghcr.io/alphabravo-oss/highland-web
+    tag: ""  # defaults to .Chart.AppVersion
     pullPolicy: IfNotPresent
   pullSecrets: []
 

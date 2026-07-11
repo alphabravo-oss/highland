@@ -34,7 +34,7 @@ spec:
         {{- toYaml .Values.podSecurityContext.api | nindent 8 }}
       containers:
         - name: highland-api
-          image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
+          image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.api.pullPolicy }}
           securityContext:
             {{- toYaml .Values.securityContext.api | nindent 12 }}

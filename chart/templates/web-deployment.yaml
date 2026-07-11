@@ -27,7 +27,7 @@ spec:
         {{- toYaml .Values.podSecurityContext.web | nindent 8 }}
       containers:
         - name: highland-web
-          image: "{{ .Values.image.web.repository }}:{{ .Values.image.web.tag }}"
+          image: "{{ .Values.image.web.repository }}:{{ .Values.image.web.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.web.pullPolicy }}
           securityContext:
             {{- toYaml .Values.securityContext.web | nindent 12 }}
