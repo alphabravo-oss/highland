@@ -24,6 +24,11 @@ spec:
         app.kubernetes.io/component: api
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if and .Values.metrics.enabled .Values.metrics.podAnnotations }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: {{ .Values.metrics.path | quote }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "highland.serviceAccountName" . }}
       {{- with .Values.image.pullSecrets }}

@@ -82,6 +82,8 @@ export type Node = LHResource & {
       storageScheduled?: number
       storageReserved?: number
       diskType?: string
+      // Block-device engine driver: "" (auto), "aio", "nvme". v2 data-engine only.
+      diskDriver?: string
       tags?: string[]
       conditions?: Condition[] | Record<string, Condition>
     }
@@ -172,6 +174,7 @@ export type InstanceManager = LHResource & {
   image?: string
   currentState?: string
   instanceManagerType?: string
+  dataEngine?: string
 }
 
 export type Orphan = LHResource & {

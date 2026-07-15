@@ -92,6 +92,10 @@ type sseClient struct {
 // broker can send to it without racing a close (send-on-closed panic).
 func (c *sseClient) stop() { c.once.Do(func() { close(c.done) }) }
 
+// ErrObserver counts informer watch/handler errors (implemented by
+// observability.Metrics; a local interface keeps this package dependency-free).
+type ErrObserver interface{ IncWatchError() }
+
 // Hub is the change broker. Safe for concurrent use.
 type Hub struct {
 	dyn dynamic.Interface
@@ -103,7 +107,22 @@ type Hub struct {
 	lastName string
 	stopped  bool
 
+	errObs  ErrObserver
 	factory dynamicinformer.DynamicSharedInformerFactory
+}
+
+// SetMetrics attaches a watch-error observer (nil disables it).
+func (h *Hub) SetMetrics(o ErrObserver) { h.errObs = o }
+
+// ClientCount returns the number of connected SSE clients (for a Prometheus
+// GaugeFunc). Race-free: every mutation of clients holds h.mu.
+func (h *Hub) ClientCount() int {
+	if h == nil {
+		return 0
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.clients)
 }
 
 // NewHub builds a hub bound to the Longhorn namespace (default longhorn-system).
@@ -127,12 +146,21 @@ func (h *Hub) Start(ctx context.Context) {
 	for _, e := range watchedEntries() {
 		keys := e.keys
 		inf := h.factory.ForResource(e.gvr).Informer()
+		// Count runtime watch/list failures (e.g. RBAC or connection loss).
+		_ = inf.SetWatchErrorHandler(func(_ *cache.Reflector, _ error) {
+			if h.errObs != nil {
+				h.errObs.IncWatchError()
+			}
+		})
 		handler := func(obj any) { h.mark(keys, nameOf(obj)) }
 		if _, err := inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    func(obj any) { handler(obj) },
 			UpdateFunc: func(_, obj any) { handler(obj) },
 			DeleteFunc: func(obj any) { handler(obj) },
 		}); err != nil {
+			if h.errObs != nil {
+				h.errObs.IncWatchError()
+			}
 			slog.Warn("watch: add handler failed", "gvr", e.gvr.String(), "err", err)
 		}
 	}

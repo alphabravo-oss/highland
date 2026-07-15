@@ -73,6 +73,16 @@ export function InstanceManagersPage() {
         cell: ({ row }) => row.original.instanceManagerType ?? '—',
       },
       {
+        id: 'engine',
+        accessorFn: (im) => im.dataEngine ?? '',
+        header: t('instanceManagers.engine'),
+        cell: ({ row }) => {
+          const engine = row.original.dataEngine
+          if (!engine) return '—'
+          return <Badge tone={engine === 'v2' ? 'info' : 'default'}>{engine}</Badge>
+        },
+      },
+      {
         id: 'state',
         accessorFn: (im) => im.currentState ?? '',
         header: t('common.state'),

@@ -11,7 +11,7 @@ var csrfSecret = []byte("test-secret-key-please-ignore")
 
 func csrfHandler() http.Handler {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	return CSRF(csrfSecret, "highland_csrf", false, time.Hour)(next)
+	return CSRF(csrfSecret, "highland_csrf", false, time.Hour, nil)(next)
 }
 
 func TestCSRFGetIssuesCookie(t *testing.T) {

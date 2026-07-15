@@ -58,4 +58,38 @@ spec:
         - protocol: TCP
           # must match the web container port (nginx-unprivileged listens on 8080)
           port: 8080
+{{- if and .Values.metrics.enabled .Values.metrics.networkPolicy.enabled }}
+---
+# Ingress policy for the API pods. Until now the api pods had NO ingress policy,
+# so all ingress was default-allowed. Adding one lets us keep scraping/probes
+# working while making the allowed sources explicit.
+#
+# The API port is opened with NO `from` filter (matching the web-ingress policy
+# above). This is deliberate: kubelet liveness/readiness probes originate from
+# the node IP, which cannot be expressed as a pod/namespace selector — a
+# `from`-scoped rule would silently break health checks on enforcing CNIs
+# (e.g. Calico). An unfiltered port rule still confines ingress to :8080 and to
+# the api pod selector, and admits Prometheus, the web sidecar, and probes alike.
+# Narrow *which* Prometheus may scrape at the ServiceMonitor/Prometheus selector
+# layer instead.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "highland.fullname" . }}-api-ingress
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "highland.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: api
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          # API + /metrics scrape port (matches containerPort http).
+          port: 8080
+{{- end }}
 {{- end }}

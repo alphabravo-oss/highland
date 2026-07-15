@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"github.com/highland-io/highland/apps/api/internal/observability"
 	"net/http"
 	"strings"
 	"time"
@@ -27,7 +28,7 @@ import (
 //
 // `secret` MUST be the same key used to sign session tokens; pass it explicitly
 // (the config string is empty on the ephemeral-secret path).
-func CSRF(secret []byte, cookieName string, secure bool, ttl time.Duration) func(http.Handler) http.Handler {
+func CSRF(secret []byte, cookieName string, secure bool, ttl time.Duration, m *observability.Metrics) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookieVal := ""
@@ -57,6 +58,7 @@ func CSRF(secret []byte, cookieName string, secure bool, ttl time.Duration) func
 			if header == "" ||
 				subtle.ConstantTimeCompare([]byte(header), []byte(cookieVal)) != 1 ||
 				!validCSRFToken(secret, header) {
+				m.IncCSRFRejection()
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
 				_, _ = w.Write([]byte(`{"error":"csrf token invalid"}`))

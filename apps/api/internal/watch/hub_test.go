@@ -206,3 +206,28 @@ func TestWatchedEntriesMappingIsSane(t *testing.T) {
 		}
 	}
 }
+
+func TestClientCountTracksSubscriptions(t *testing.T) {
+	var nilHub *Hub
+	if nilHub.ClientCount() != 0 {
+		t.Fatal("nil hub must report 0 clients")
+	}
+
+	h := newTestHub()
+	if h.ClientCount() != 0 {
+		t.Fatalf("fresh hub should have 0 clients, got %d", h.ClientCount())
+	}
+	c1, _ := h.subscribe()
+	c2, _ := h.subscribe()
+	if h.ClientCount() != 2 {
+		t.Fatalf("expected 2 clients, got %d", h.ClientCount())
+	}
+	h.unsubscribe(c1)
+	if h.ClientCount() != 1 {
+		t.Fatalf("expected 1 client after unsubscribe, got %d", h.ClientCount())
+	}
+	h.unsubscribe(c2)
+	if h.ClientCount() != 0 {
+		t.Fatalf("expected 0 clients, got %d", h.ClientCount())
+	}
+}

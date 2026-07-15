@@ -7,14 +7,16 @@ import (
 
 	"github.com/highland-io/highland/apps/api/internal/audit"
 	"github.com/highland-io/highland/apps/api/internal/auth"
+	"github.com/highland-io/highland/apps/api/internal/observability"
 )
 
 // RequireRole rejects requests that fail method-level RBAC or admin-only paths.
-func RequireRole(auditStore *audit.Store) func(http.Handler) http.Handler {
+func RequireRole(auditStore *audit.Store, m *observability.Metrics) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			user, ok := UserFromContext(r.Context())
 			if !ok {
+				m.IncAuthzDenial("unauthorized")
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return
 			}
@@ -37,6 +39,7 @@ func RequireRole(auditStore *audit.Store) func(http.Handler) http.Handler {
 							Message:  "admin only",
 						})
 					}
+					m.IncAuthzDenial("admin_only")
 					http.Error(w, `{"error":"forbidden: admin role required"}`, http.StatusForbidden)
 					return
 				}
@@ -56,6 +59,7 @@ func RequireRole(auditStore *audit.Store) func(http.Handler) http.Handler {
 							SourceIP: r.RemoteAddr,
 						})
 					}
+					m.IncAuthzDenial("settings_admin")
 					http.Error(w, `{"error":"forbidden: admin role required for settings"}`, http.StatusForbidden)
 					return
 				}
@@ -74,6 +78,7 @@ func RequireRole(auditStore *audit.Store) func(http.Handler) http.Handler {
 						Message:  "viewer cannot mutate",
 					})
 				}
+				m.IncAuthzDenial("method_denied")
 				http.Error(w, `{"error":"forbidden: role cannot perform this method"}`, http.StatusForbidden)
 				return
 			}
