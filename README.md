@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="apps/web/public/favicon.svg?v=2" alt="Highland" width="88" height="88" />
-
 # Highland
 
 ### An enterprise-grade alternative UI & management plane for [Longhorn](https://longhorn.io/)
