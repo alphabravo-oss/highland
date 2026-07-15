@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="apps/web/public/favicon.svg?v=3" alt="Highland" width="88" height="88" />
+
 # Highland
 
 ### An enterprise-grade alternative UI & management plane for [Longhorn](https://longhorn.io/)
@@ -20,7 +22,7 @@ live I/O metrics, guided backups, and fio benchmarks — layered on top of your 
 
 ---
 
-> ⚠️ **Alpha software.** Highland is under active development. APIs, Helm chart
+> **Alpha software.** Highland is under active development. APIs, Helm chart
 > values, and UI are subject to change without notice, and it is **not yet
 > recommended for production use**. Feedback and issues are very welcome.
 
@@ -30,20 +32,20 @@ Longhorn ships a capable UI — Highland is what you reach for when you need to 
 a hardened access model, an operator-grade console, and workflows that make day-2 storage administration
 boringly easy.
 
-- 🔐 **Enterprise access, built in** — local admin, OIDC/SSO, RBAC (admin vs. viewer), and an audit log.
+- **Enterprise access, built in** — local admin, OIDC/SSO, RBAC (admin vs. viewer), and an audit log.
   The browser **never** talks to the Longhorn manager directly; everything flows through an authenticated
   backend-for-frontend (BFF).
-- 📊 **Live insight** — real-time volume/node/disk dashboards, per-volume I/O throughput & IOPS charts,
+- **Live insight** — real-time volume/node/disk dashboards, per-volume I/O throughput & IOPS charts,
   and on-demand **fio benchmarks** you can run from the UI.
-- 🧭 **Operator-grade console** — enterprise data tables everywhere (sort, search, pagination, CSV export,
+- **Operator-grade console** — enterprise data tables everywhere (sort, search, pagination, CSV export,
   bulk actions), consolidated kebab/action menus, guided wizards, and confirmation modals on every
   destructive action. Light / dark / system themes. English & Spanish.
-- 💾 **Guided backups** — a step-by-step wizard for S3 / NFS / Azure backup targets and credentials, plus
+- **Guided backups** — a step-by-step wizard for S3 / NFS / Azure backup targets and credentials, plus
   full snapshot, backup, restore, DR-standby, and recurring-job management.
-- 🧩 **Full Longhorn parity — and beyond** — volumes, nodes & disks, backing images, engine images,
+- **Full Longhorn parity — and beyond** — volumes, nodes & disks, backing images, engine images,
   instance managers, orphans, system backups, support bundles, and every manager setting (grouped, with
   a danger zone and inline docs).
-- ☸️ **Kubernetes-native** — Helm chart, stateless signed-cookie sessions (no Redis), Kubernetes Secrets
+- **Kubernetes-native** — Helm chart, stateless signed-cookie sessions (no Redis), Kubernetes Secrets
   for credentials, and ConfigMap-persisted benchmark history. Nothing to babysit.
 
 ---
