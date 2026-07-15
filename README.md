@@ -26,6 +26,8 @@ live I/O metrics, guided backups, and fio benchmarks — layered on top of your 
 > values, and UI are subject to change without notice, and it is **not yet
 > recommended for production use**. Feedback and issues are very welcome.
 
+![Highland dashboard in dark mode](docs/highland-dashboard-dark.png)
+
 ## Why Highland
 
 Longhorn ships a capable UI — Highland is what you reach for when you need to run it like a **product**:
