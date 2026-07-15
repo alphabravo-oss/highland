@@ -84,10 +84,6 @@ export function NodesPage() {
   const { canMutate, isAdmin } = useAuth()
   const toast = useToast()
   const q = useNodes()
-  const nodeTagsQ = useNodeTags()
-  const diskTagsQ = useDiskTags()
-  const nodeTagOptions = nodeTagsQ.data ?? []
-  const diskTagOptions = diskTagsQ.data ?? []
   const updateMut = useUpdateNode()
   const actionMut = useNodeAction()
   const [error, setError] = useState<string | null>(null)
@@ -96,6 +92,11 @@ export function NodesPage() {
   const [deleteNode, setDeleteNode] = useState<Node | null>(null)
   const [diskNode, setDiskNode] = useState<Node | null>(null)
   const [diskDrafts, setDiskDrafts] = useState<DiskDraft[]>([])
+  // Tag lists are only shown in the Edit-Tags / Edit-Disks dialogs — fetch on open.
+  const nodeTagsQ = useNodeTags(Boolean(tagNode))
+  const diskTagsQ = useDiskTags(Boolean(diskNode))
+  const nodeTagOptions = nodeTagsQ.data ?? []
+  const diskTagOptions = diskTagsQ.data ?? []
 
   const rows = useMemo(() => q.data ?? [], [q.data])
 

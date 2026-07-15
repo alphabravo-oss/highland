@@ -121,10 +121,6 @@ export function VolumesPage() {
   const q = useVolumes()
   const nodesQ = useNodes()
   const settingsQ = useSettings()
-  const imagesQ = useEngineImages()
-  const backingImagesQ = useBackingImages()
-  const nodeTagsQ = useNodeTags()
-  const diskTagsQ = useDiskTags()
   const createMut = useCreateVolume()
   const deleteMut = useDeleteVolume()
   const actionMut = useVolumeAction()
@@ -179,6 +175,13 @@ export function VolumesPage() {
   const [bulkHost, setBulkHost] = useState('')
   const [actionDef, setActionDef] = useState<VolumeActionDef | null>(null)
   const [actionVol, setActionVol] = useState<Volume | null>(null)
+
+  // Dialog-only data: fetch engine/backing images and tag lists only when the
+  // dialog that needs them is open, instead of on every volumes-page load.
+  const imagesQ = useEngineImages(Boolean(bulkKey) || Boolean(actionDef))
+  const backingImagesQ = useBackingImages(createOpen)
+  const nodeTagsQ = useNodeTags(createOpen)
+  const diskTagsQ = useDiskTags(createOpen)
 
   const hosts = (nodesQ.data ?? []).map((n) => n.name)
   const images = (imagesQ.data ?? []).map((i) => i.image ?? i.name).filter(Boolean) as string[]
