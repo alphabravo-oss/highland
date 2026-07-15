@@ -22,7 +22,14 @@ export default defineConfig({
       output: {
         manualChunks(id: string) {
           if (!id.includes('node_modules')) return
-          if (id.includes('recharts') || id.includes('d3-')) return 'recharts'
+          // recharts/d3 are NOT manually chunked: used only by lazy chart pages,
+          // so Rollup auto-splits them into an on-demand chunk. A named chunk
+          // here makes it a static dep of an eager shared chunk (pulls it onto
+          // the initial load).
+          // react-table is only used by lazy list pages, so keep it out of the
+          // eager react-query chunk (QueryClientProvider is eager in App.tsx).
+          if (id.includes('@tanstack/react-table') || id.includes('@tanstack/table-core'))
+            return 'tanstack-table'
           if (id.includes('@tanstack')) return 'tanstack'
           if (id.includes('react-router') || id.includes('react-dom') || /node_modules\/react\//.test(id))
             return 'react-vendor'

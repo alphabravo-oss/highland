@@ -1,7 +1,10 @@
+import { Suspense, useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { CommandPalette } from '@/components/layout/CommandPalette'
+import { PageFallback } from '@/components/layout/PageFallback'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { Topbar } from '@/components/layout/Topbar'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import type { HighlandUser } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/ui'
@@ -15,6 +18,23 @@ export function AppShell({ user, onLogout }: AppShellProps) {
   const location = useLocation()
   const mobileOpen = useUIStore((s) => s.mobileSidebarOpen)
   const setMobileSidebarOpen = useUIStore((s) => s.setMobileSidebarOpen)
+
+  // Warm the highest-traffic route chunks once the shell is idle so the common
+  // post-login landings (dashboard, volumes) don't flash the loading skeleton.
+  useEffect(() => {
+    const warm = () => {
+      void import('@/features/dashboard/DashboardPage')
+      void import('@/features/volumes/VolumesPage')
+    }
+    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void) => number })
+      .requestIdleCallback
+    if (ric) {
+      const id = ric(warm)
+      return () => (window as unknown as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback?.(id)
+    }
+    const t = window.setTimeout(warm, 1500)
+    return () => window.clearTimeout(t)
+  }, [])
 
   return (
     <div className="flex h-full min-h-0" data-testid="app-shell">
@@ -46,7 +66,13 @@ export function AppShell({ user, onLogout }: AppShellProps) {
           )}
         >
           <div className="mx-auto max-w-[1400px]">
-            <Outlet />
+            {/* Reset the boundary on navigation, and show a skeleton while the
+                lazily-loaded route chunk streams in — the shell stays put. */}
+            <ErrorBoundary resetKey={location.pathname}>
+              <Suspense fallback={<PageFallback />}>
+                <Outlet />
+              </Suspense>
+            </ErrorBoundary>
           </div>
         </main>
       </div>
