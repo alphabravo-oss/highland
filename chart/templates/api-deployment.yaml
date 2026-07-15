@@ -93,6 +93,8 @@ spec:
                   fieldPath: metadata.namespace
             - name: HIGHLAND_LONGHORN_NAMESPACE
               value: {{ .Values.longhorn.namespace | quote }}
+            - name: HIGHLAND_TRUSTED_PROXIES
+              value: {{ .Values.config.trustedProxies | quote }}
             - name: HIGHLAND_FIO_IMAGE
               value: {{ .Values.benchmark.fioImage | default "ghcr.io/aksakalli/fio:latest" | quote }}
             - name: HIGHLAND_FIO_STORAGECLASS

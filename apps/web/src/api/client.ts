@@ -9,6 +9,32 @@ export type MeResponse = {
 
 const jsonHeaders = { 'Content-Type': 'application/json' }
 
+// CSRF: the BFF issues a readable `highland_csrf` cookie on authenticated GETs;
+// echo it back in a header on state-changing requests (double-submit). Cookie
+// name is fixed to match the server default so the two cannot drift.
+const CSRF_COOKIE = 'highland_csrf'
+const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+
+function readCookie(name: string): string {
+  return (
+    document.cookie
+      .split('; ')
+      .find((c) => c.startsWith(name + '='))
+      ?.split('=')
+      .slice(1)
+      .join('=') ?? ''
+  )
+}
+
+/**
+ * CSRF header for state-changing requests made OUTSIDE highlandFetch (e.g. raw
+ * binary uploads). highlandFetch attaches this automatically; hand-rolled
+ * fetch() calls to mutating endpoints must spread this into their headers.
+ */
+export function csrfHeaders(): Record<string, string> {
+  return { 'X-CSRF-Token': readCookie(CSRF_COOKIE) }
+}
+
 export async function parseError(res: Response): Promise<string> {
   try {
     const body = (await res.json()) as {
@@ -89,11 +115,13 @@ async function highlandFetch<T>(
   init?: RequestInit,
 ): Promise<T> {
   const path = toHighlandPath(pathOrUrl)
+  const method = (init?.method ?? 'GET').toUpperCase()
   const res = await fetch(path, {
     credentials: 'include',
     ...init,
     headers: {
       ...(init?.body ? jsonHeaders : {}),
+      ...(UNSAFE_METHODS.has(method) ? { 'X-CSRF-Token': readCookie(CSRF_COOKIE) } : {}),
       ...init?.headers,
     },
   })

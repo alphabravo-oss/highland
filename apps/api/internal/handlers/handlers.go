@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/highland-io/highland/apps/api/internal/auth"
 	"github.com/highland-io/highland/apps/api/internal/config"
 	"github.com/highland-io/highland/apps/api/internal/middleware"
+	"github.com/highland-io/highland/apps/api/internal/ratelimit"
 )
 
 // API groups HTTP handlers for Highland native endpoints.
@@ -21,6 +24,7 @@ type API struct {
 	Users       *auth.UserStore
 	OIDC        *auth.OIDCProvider // legacy pointer; prefer OIDCRuntime
 	OIDCRuntime *auth.OIDCRuntime  // runtime-configurable enterprise SSO
+	Limiter     *ratelimit.LoginLimiter
 	Started     time.Time
 }
 
@@ -126,14 +130,34 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 		return
 	}
+	// Brute-force gate: reject before the (expensive) credential check when the
+	// account or client IP is locked out. Response is identical regardless of
+	// which key tripped or whether the account exists.
+	if a.Limiter != nil {
+		if ok, retry := a.Limiter.Allow(req.Username, r.RemoteAddr); !ok {
+			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retry.Seconds()))))
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{
+				"error": "too many login attempts, please try again later",
+			})
+			return
+		}
+	}
 	id, user, err := a.Auth.Login(req.Username, req.Password)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
+			if a.Limiter != nil {
+				a.Limiter.RecordFailure(req.Username, r.RemoteAddr)
+			}
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 			return
 		}
+		// Do NOT record a failure on backend errors — avoids locking admins out
+		// during an auth-backend outage.
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "login failed"})
 		return
+	}
+	if a.Limiter != nil {
+		a.Limiter.RecordSuccess(req.Username, r.RemoteAddr)
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     a.Cfg.CookieName,

@@ -74,6 +74,32 @@ test.describe('Phase 1 parity smoke', () => {
     expect(res.status()).toBe(401)
   })
 
+  test('CSRF is enforced: an authenticated mutation without the token is rejected', async ({
+    page,
+  }) => {
+    await page.goto('/login')
+    await page.locator('#username').fill('admin')
+    await page.locator('#password').fill('highland')
+    await page.getByRole('button', { name: /sign in/i }).click()
+    await expect(page.getByTestId('app-shell')).toBeVisible()
+    // An authenticated GET mints the highland_csrf cookie.
+    await page.goto('/volumes')
+    await expect(page.getByTestId('volumes-page')).toBeVisible()
+
+    // Same-origin POST WITHOUT the X-CSRF-Token header must be rejected (403),
+    // even though the session cookie is sent — proving CSRF actually enforces.
+    const status = await page.evaluate(async () => {
+      const r = await fetch('/api/v1/lh/volumes', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'csrf-should-fail', size: 1073741824 }),
+      })
+      return r.status
+    })
+    expect(status).toBe(403)
+  })
+
   test('viewer cannot mutate volumes; admin can run benchmark', async ({ page }) => {
     await page.goto('/login')
     await page.locator('#username').fill('viewer')

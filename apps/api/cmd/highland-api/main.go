@@ -108,19 +108,21 @@ func main() {
 	defer scraper.Stop()
 
 	router := handlers.NewRouter(handlers.Deps{
-		Cfg:         cfg,
-		Auth:        authenticator,
-		OIDC:        oidcProv,
-		OIDCRuntime: oidcRuntime,
-		Proxy:       lhProxy,
-		Stream:      stream,
-		Audit:       auditStore,
-		Metrics:     scraper,
-		Benchmarks:  benchStore,
+		Cfg:               cfg,
+		Auth:              authenticator,
+		OIDC:              oidcProv,
+		OIDCRuntime:       oidcRuntime,
+		Proxy:             lhProxy,
+		Stream:            stream,
+		Audit:             auditStore,
+		Metrics:           scraper,
+		Benchmarks:        benchStore,
 		K8s:               k8sClient,
 		LonghornNamespace: os.Getenv("HIGHLAND_LONGHORN_NAMESPACE"),
 		SessionBackend:    "stateless",
 		BenchmarkMode:     benchmarkMode,
+		// Share the exact session-signing key so CSRF tokens verify against it.
+		SessionSecret: secret,
 	})
 
 	srv := &http.Server{

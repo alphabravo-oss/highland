@@ -46,6 +46,10 @@ config:
   cookieSecure: true
   sessionTTL: 24h
   metricsInterval: 10s
+  # Reverse-proxy CIDRs whose X-Forwarded-For is trusted for the real client IP
+  # (login limiter + audit). Defaults to private ranges since the web sidecar /
+  # ingress sits in-cluster. Empty = trust none (use the direct socket peer).
+  trustedProxies: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
   oidcMock: false
   version: "0.1.0"
   # Comma-separated; empty = same-origin via nginx only
@@ -109,6 +113,11 @@ networkPolicy:
 ingress:
   enabled: false
   className: ""
+  # The BFF sets security headers on its own responses; the SPA document gets
+  # its CSP/headers from nginx. HSTS, however, must come from the TLS edge — add
+  # it here when serving over HTTPS, e.g. (nginx-ingress):
+  #   nginx.ingress.kubernetes.io/configuration-snippet: |
+  #     more_set_headers "Strict-Transport-Security: max-age=63072000; includeSubDomains";
   annotations: {}
   hosts:
     - host: highland.example.com

@@ -9,9 +9,10 @@ import (
 )
 
 // AuthMode controls which login methods are offered.
-//   local       — username/password only (default; no IdP required)
-//   oidc        — OIDC only (still allows bootstrap recovery if LocalAlways)
-//   local+oidc  — both local form and OIDC
+//
+//	local       — username/password only (default; no IdP required)
+//	oidc        — OIDC only (still allows bootstrap recovery if LocalAlways)
+//	local+oidc  — both local form and OIDC
 type AuthMode string
 
 const (
@@ -52,6 +53,23 @@ type Config struct {
 	RedisDB       int
 	// Version reported by compatibility API.
 	Version string
+
+	// TrustedProxies are CIDRs of reverse proxies whose forwarding headers we
+	// trust when deriving the client IP. Empty = trust none (use socket peer).
+	TrustedProxies []string
+
+	// CSRF double-submit token protection for state-changing requests.
+	CSRFEnabled    bool
+	CSRFCookieName string
+
+	// Local-login brute-force protection (in-memory, dual-keyed by user + IP).
+	LoginRateLimitEnabled bool
+	LoginMaxFailuresUser  int
+	LoginMaxFailuresIP    int
+	LoginLockoutBase      time.Duration
+	LoginLockoutMax       time.Duration
+	LoginFailureWindow    time.Duration
+	LoginMaxEntries       int
 }
 
 // LocalEnabled is true when username/password login is accepted.
@@ -103,6 +121,17 @@ func LoadFromEnv() (*Config, error) {
 		RedisPassword: os.Getenv("HIGHLAND_REDIS_PASSWORD"),
 		RedisDB:       envInt("HIGHLAND_REDIS_DB", 0),
 		Version:       envOr("HIGHLAND_VERSION", "0.1.0"),
+
+		CSRFEnabled:    envBool("HIGHLAND_CSRF_ENABLED", true),
+		CSRFCookieName: envOr("HIGHLAND_CSRF_COOKIE_NAME", "highland_csrf"),
+
+		LoginRateLimitEnabled: envBool("HIGHLAND_LOGIN_RATELIMIT_ENABLED", true),
+		LoginMaxFailuresUser:  envInt("HIGHLAND_LOGIN_MAX_FAILURES_USER", 5),
+		LoginMaxFailuresIP:    envInt("HIGHLAND_LOGIN_MAX_FAILURES_IP", 15),
+		LoginLockoutBase:      envDuration("HIGHLAND_LOGIN_LOCKOUT_BASE", time.Minute),
+		LoginLockoutMax:       envDuration("HIGHLAND_LOGIN_LOCKOUT_MAX", 15*time.Minute),
+		LoginFailureWindow:    envDuration("HIGHLAND_LOGIN_FAILURE_WINDOW", 15*time.Minute),
+		LoginMaxEntries:       envInt("HIGHLAND_LOGIN_MAX_ENTRIES", 100000),
 	}
 
 	if origins := os.Getenv("HIGHLAND_ALLOWED_ORIGINS"); origins != "" {
@@ -114,6 +143,16 @@ func LoadFromEnv() (*Config, error) {
 		}
 	} else {
 		cfg.AllowedOrigins = []string{"http://localhost:5173", "http://127.0.0.1:5173"}
+	}
+
+	// Trusted reverse-proxy CIDRs whose X-Forwarded-For / X-Real-IP we honor when
+	// resolving the client IP. Empty (default) means trust NONE — the raw socket
+	// peer is used, so forwarding headers cannot spoof the login limiter or audit
+	// source IP. Set to your ingress/proxy CIDR(s) in production.
+	for _, p := range strings.Split(os.Getenv("HIGHLAND_TRUSTED_PROXIES"), ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			cfg.TrustedProxies = append(cfg.TrustedProxies, p)
+		}
 	}
 
 	if cfg.BootstrapUsername == "" || cfg.BootstrapPassword == "" {

@@ -15,6 +15,7 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/longhorn"
 	"github.com/highland-io/highland/apps/api/internal/metrics"
 	mw "github.com/highland-io/highland/apps/api/internal/middleware"
+	"github.com/highland-io/highland/apps/api/internal/ratelimit"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -34,6 +35,10 @@ type Deps struct {
 	LonghornNamespace string
 	SessionBackend    string
 	BenchmarkMode     string
+	// SessionSecret is the raw HMAC key used to sign session tokens; passed so
+	// CSRF tokens share the exact same key (Cfg.SessionSecret is empty on the
+	// ephemeral-secret path).
+	SessionSecret []byte
 }
 
 // NewRouter builds the Highland API HTTP router.
@@ -42,6 +47,15 @@ func NewRouter(d Deps) http.Handler {
 	if oidcProv == nil && d.OIDCRuntime != nil {
 		oidcProv = d.OIDCRuntime.Provider()
 	}
+	limiter := ratelimit.New(ratelimit.Options{
+		Enabled:         d.Cfg.LoginRateLimitEnabled,
+		MaxFailuresUser: d.Cfg.LoginMaxFailuresUser,
+		MaxFailuresIP:   d.Cfg.LoginMaxFailuresIP,
+		LockoutBase:     d.Cfg.LoginLockoutBase,
+		LockoutMax:      d.Cfg.LoginLockoutMax,
+		FailureWindow:   d.Cfg.LoginFailureWindow,
+		MaxEntries:      d.Cfg.LoginMaxEntries,
+	})
 	api := &API{
 		Cfg:         d.Cfg,
 		Auth:        d.Auth,
@@ -49,12 +63,13 @@ func NewRouter(d Deps) http.Handler {
 		Users:       d.Auth.Users(),
 		OIDC:        oidcProv,
 		OIDCRuntime: d.OIDCRuntime,
+		Limiter:     limiter,
 		Started:     time.Now(),
 	}
 	hapi := &HighlandAPI{
-		Audit:      d.Audit,
-		Metrics:    d.Metrics,
-		Benchmarks: d.Benchmarks,
+		Audit:             d.Audit,
+		Metrics:           d.Metrics,
+		Benchmarks:        d.Benchmarks,
 		Users:             d.Auth.Users(),
 		Version:           d.Cfg.Version,
 		ManagerURL:        d.Cfg.ManagerURL,
@@ -66,8 +81,11 @@ func NewRouter(d Deps) http.Handler {
 
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
-	r.Use(chimw.RealIP)
+	// Trusted-proxy-aware client IP (replaces chi's spoofable RealIP) so the
+	// login limiter and audit source IP cannot be forged via forwarding headers.
+	r.Use(mw.ClientIP(d.Cfg.TrustedProxies))
 	r.Use(chimw.Recoverer)
+	r.Use(mw.SecurityHeaders(d.Cfg.CookieSecure))
 	r.Use(mw.CORS(d.Cfg.AllowedOrigins))
 
 	r.Get("/healthz", api.Healthz)
@@ -88,6 +106,9 @@ func NewRouter(d Deps) http.Handler {
 
 	r.Group(func(r chi.Router) {
 		r.Use(mw.SessionAuth(api.Store, d.Cfg.CookieName))
+		if d.Cfg.CSRFEnabled {
+			r.Use(mw.CSRF(d.SessionSecret, d.Cfg.CSRFCookieName, d.Cfg.CookieSecure, d.Cfg.SessionTTL))
+		}
 		r.Use(mw.RequireRole(d.Audit))
 
 		// Streaming path for large backing-image upload/download (no full buffer)

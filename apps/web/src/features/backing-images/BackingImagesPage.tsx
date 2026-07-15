@@ -17,6 +17,7 @@ import {
   type BackingImage,
   type BackupBackingImage,
 } from '@/api/longhorn'
+import { csrfHeaders } from '@/api/client'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { DataTable } from '@/components/data/DataTable'
 import { PageHeader } from '@/components/data/PageHeader'
@@ -265,6 +266,8 @@ export function BackingImagesPage() {
           body: file,
           headers: {
             'Content-Type': 'application/octet-stream',
+            // Raw upload bypasses highlandFetch, so attach the CSRF token here.
+            ...csrfHeaders(),
           },
         })
         if (!res.ok) {

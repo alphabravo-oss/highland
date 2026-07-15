@@ -17,7 +17,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-
 // HighlandAPI serves native Highland endpoints (not Longhorn proxy).
 type HighlandAPI struct {
 	Audit             *audit.Store
@@ -158,8 +157,8 @@ func (h *HighlandAPI) VolumeMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"volume":  name,
-		"series":  h.Metrics.Snapshot(name),
+		"volume":      name,
+		"series":      h.Metrics.Snapshot(name),
 		"scrapeError": h.Metrics.LastError(),
 	})
 }
@@ -395,9 +394,9 @@ func (h *HighlandAPI) CapacityPlanning(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"usedBytes":  used,
-		"totalBytes": total,
-		"note":       "Offline: values come from scraped /metrics when available; on k3s scrape longhorn manager",
+		"usedBytes":   used,
+		"totalBytes":  total,
+		"note":        "Offline: values come from scraped /metrics when available; on k3s scrape longhorn manager",
 		"seriesCount": len(series),
 	})
 }
