@@ -5,6 +5,7 @@ import {
   type UseQueryOptions,
 } from '@tanstack/react-query'
 import { highlandDelete, highlandGet, highlandPost, highlandPut } from './client'
+import { optimisticPatch, optimisticRemove, pick } from './optimistic'
 import {
   backupTargetsApi,
   backupVolumesApi,
@@ -104,12 +105,12 @@ export function useStatus() {
   })
 }
 
-export function useNodeTags() {
-  return useQuery({ queryKey: ['nodetags'], queryFn: () => tagsApi.node(), refetchInterval: 60_000 })
+export function useNodeTags(enabled = true) {
+  return useQuery({ queryKey: ['nodetags'], queryFn: () => tagsApi.node(), enabled, refetchInterval: 60_000 })
 }
 
-export function useDiskTags() {
-  return useQuery({ queryKey: ['disktags'], queryFn: () => tagsApi.disk(), refetchInterval: 60_000 })
+export function useDiskTags(enabled = true) {
+  return useQuery({ queryKey: ['disktags'], queryFn: () => tagsApi.disk(), enabled, refetchInterval: 60_000 })
 }
 
 export function useSettings() {
@@ -144,18 +145,20 @@ export function useRecurringJobs() {
   })
 }
 
-export function useEngineImages() {
+export function useEngineImages(enabled = true) {
   return useQuery({
     queryKey: ['engineimages'],
     queryFn: () => engineImagesApi.list(),
+    enabled,
     ...poll,
   })
 }
 
-export function useBackingImages() {
+export function useBackingImages(enabled = true) {
   return useQuery({
     queryKey: ['backingimages'],
     queryFn: () => backingImagesApi.list(),
+    enabled,
     ...poll,
   })
 }
@@ -227,10 +230,12 @@ export function useCreateVolume() {
 }
 
 export function useDeleteVolume() {
-  const inv = useInvalidate()
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (vol: Volume) => volumesApi.remove(vol),
-    onSuccess: () => inv(['volumes', 'dashboard']),
+    ...optimisticRemove<Volume, Volume>(qc, 'volumes', (v) => v.name, ['volumes', 'dashboard'], {
+      refetchOnSuccess: false,
+    }),
   })
 }
 
@@ -251,11 +256,19 @@ export function useVolumeAction() {
 }
 
 export function useUpdateNode() {
-  const inv = useInvalidate()
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ node, body }: { node: Node; body: Record<string, unknown> }) =>
       nodesApi.update(node, body),
-    onSuccess: () => inv(['nodes', 'dashboard']),
+    // Patch ONLY the scheduling fields — never spread body.disks, which carries
+    // stale server-computed capacity/conditions that would freeze wrong numbers.
+    ...optimisticPatch<Node, { node: Node; body: Record<string, unknown> }>(
+      qc,
+      'nodes',
+      (v) => v.node.name,
+      (v) => pick(v.body, ['allowScheduling', 'evictionRequested', 'tags']) as Partial<Node>,
+      ['nodes', 'dashboard'],
+    ),
   })
 }
 
@@ -276,11 +289,17 @@ export function useNodeAction() {
 }
 
 export function useUpdateSetting() {
-  const inv = useInvalidate()
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ setting, value }: { setting: Setting; value: string }) =>
       settingsApi.update(setting, value),
-    onSuccess: () => inv(['settings']),
+    ...optimisticPatch<Setting, { setting: Setting; value: string }>(
+      qc,
+      'settings',
+      (v) => v.setting.name,
+      (v) => ({ value: v.value }),
+      ['settings'],
+    ),
   })
 }
 
@@ -300,10 +319,10 @@ export function useCreateBackupTarget() {
 }
 
 export function useDeleteBackupTarget() {
-  const inv = useInvalidate()
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (bt: BackupTarget) => backupTargetsApi.remove(bt),
-    onSuccess: () => inv(['backuptargets']),
+    ...optimisticRemove<BackupTarget, BackupTarget>(qc, 'backuptargets', (v) => v.name, ['backuptargets']),
   })
 }
 
@@ -316,19 +335,25 @@ export function useCreateRecurringJob() {
 }
 
 export function useUpdateRecurringJob() {
-  const inv = useInvalidate()
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ job, body }: { job: RecurringJob; body: Record<string, unknown> }) =>
       recurringJobsApi.update(job, body),
-    onSuccess: () => inv(['recurringjobs']),
+    ...optimisticPatch<RecurringJob, { job: RecurringJob; body: Record<string, unknown> }>(
+      qc,
+      'recurringjobs',
+      (v) => v.job.name,
+      (v) => v.body as Partial<RecurringJob>,
+      ['recurringjobs'],
+    ),
   })
 }
 
 export function useDeleteRecurringJob() {
-  const inv = useInvalidate()
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (job: RecurringJob) => recurringJobsApi.remove(job),
-    onSuccess: () => inv(['recurringjobs']),
+    ...optimisticRemove<RecurringJob, RecurringJob>(qc, 'recurringjobs', (v) => v.name, ['recurringjobs']),
   })
 }
 
@@ -341,18 +366,18 @@ export function useCreateSupportBundle() {
 }
 
 export function useDeleteBackupVolume() {
-  const inv = useInvalidate()
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (bv: BackupVolume) => backupVolumesApi.remove(bv),
-    onSuccess: () => inv(['backupvolumes']),
+    ...optimisticRemove<BackupVolume, BackupVolume>(qc, 'backupvolumes', (v) => v.name, ['backupvolumes']),
   })
 }
 
 export function useDeleteOrphan() {
-  const inv = useInvalidate()
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (o: Orphan) => orphansApi.remove(o),
-    onSuccess: () => inv(['orphans']),
+    ...optimisticRemove<Orphan, Orphan>(qc, 'orphans', (v) => v.name, ['orphans']),
   })
 }
 
@@ -365,10 +390,10 @@ export function useCreateEngineImage() {
 }
 
 export function useDeleteEngineImage() {
-  const inv = useInvalidate()
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (img: EngineImage) => engineImagesApi.remove(img),
-    onSuccess: () => inv(['engineimages']),
+    ...optimisticRemove<EngineImage, EngineImage>(qc, 'engineimages', (v) => v.name, ['engineimages']),
   })
 }
 
@@ -381,10 +406,12 @@ export function useCreateBackingImage() {
 }
 
 export function useDeleteBackingImage() {
-  const inv = useInvalidate()
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (img: BackingImage) => backingImagesApi.remove(img),
-    onSuccess: () => inv(['backingimages']),
+    ...optimisticRemove<BackingImage, BackingImage>(qc, 'backingimages', (v) => v.name, ['backingimages'], {
+      refetchOnSuccess: false,
+    }),
   })
 }
 
@@ -414,10 +441,10 @@ export function useBackupBackingImage() {
 }
 
 export function useDeleteBackupBackingImage() {
-  const inv = useInvalidate()
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (bbi: BackupBackingImage) => backupBackingImagesApi.remove(bbi),
-    onSuccess: () => inv(['backupbackingimages']),
+    ...optimisticRemove<BackupBackingImage, BackupBackingImage>(qc, 'backupbackingimages', (v) => v.name, ['backupbackingimages']),
   })
 }
 
@@ -444,10 +471,10 @@ export function useCreateSystemBackup() {
 }
 
 export function useDeleteSystemBackup() {
-  const inv = useInvalidate()
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (b: SystemBackup) => systemBackupsApi.remove(b),
-    onSuccess: () => inv(['systembackups']),
+    ...optimisticRemove<SystemBackup, SystemBackup>(qc, 'systembackups', (v) => v.name, ['systembackups']),
   })
 }
 
