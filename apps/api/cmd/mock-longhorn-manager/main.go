@@ -75,6 +75,16 @@ func newStore() *store {
 				"type":        "int",
 			},
 		},
+		{
+			"id": "v2-data-engine", "type": "setting", "name": "v2-data-engine",
+			"value": "true",
+			"definition": map[string]any{
+				"displayName": "V2 Data Engine",
+				"category":    "v2 data engine",
+				"description": "Enable the experimental SPDK-based v2 data engine",
+				"type":        "bool",
+			},
+		},
 	}
 	// Seed one volume so empty clusters still show data
 	s.upsertVolume("pvc-db", "10737418240", 3)
@@ -222,6 +232,13 @@ longhorn_disk_storage_available_bytes{node="node-1",disk="default-disk"} 9663676
 			replicas = int(n)
 		}
 		v := s.upsertVolume(name, size, replicas)
+		// Echo back engine/frontend the client requested so the UI reflects them.
+		if de := str(body["dataEngine"]); de != "" {
+			v["dataEngine"] = de
+		}
+		if fe := str(body["frontend"]); fe != "" {
+			v["frontend"] = fe
+		}
 		self := base + "/v1/volumes/" + name
 		writeJSON(w, s.withLinks(v, self))
 

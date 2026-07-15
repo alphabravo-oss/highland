@@ -279,7 +279,13 @@
     "noActions": "No hay acciones disponibles",
     "createdToast": "Volumen \"{{name}}\" creado",
     "deletedToast": "Volumen \"{{name}}\" eliminado",
-    "emptyDescription": "Crea tu primer volumen para comenzar."
+    "emptyDescription": "Crea tu primer volumen para comenzar.",
+    "dataEngine": "Motor de datos",
+    "dataEngineV1": "v1 (predeterminado)",
+    "dataEngineV2": "v2 (SPDK)",
+    "dataEngineV2Hint": "v2 usa el motor SPDK y requiere discos de tipo bloque. Algunas opciones (p. ej. cifrado, imagen base) pueden no ser compatibles según tu versión de Longhorn.",
+    "filterEngine": "Filtrar por motor de datos",
+    "filterAllEngines": "Todos los motores"
   },
   "volumeDetail": {
     "description": "Detalle de paridad: info, réplicas, instantáneas, eventos, adjuntos, E/S en vivo, todas las acciones del manager",

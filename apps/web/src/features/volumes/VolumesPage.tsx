@@ -10,6 +10,7 @@ import {
   useEngineImages,
   useNodes,
   useNodeTags,
+  useSettings,
   useVolumeAction,
   useVolumes,
 } from '@/api/hooks'
@@ -119,6 +120,7 @@ export function VolumesPage() {
   const toast = useToast()
   const q = useVolumes()
   const nodesQ = useNodes()
+  const settingsQ = useSettings()
   const imagesQ = useEngineImages()
   const backingImagesQ = useBackingImages()
   const nodeTagsQ = useNodeTags()
@@ -141,10 +143,12 @@ export function VolumesPage() {
   const [stateFilter, setStateFilter] = useState('')
   const [robustnessFilter, setRobustnessFilter] = useState('')
   const [nodeFilter, setNodeFilter] = useState('')
+  const [engineFilter, setEngineFilter] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [name, setName] = useState('')
   const [size, setSize] = useState('10Gi')
   const [replicas, setReplicas] = useState('3')
+  const [dataEngine, setDataEngine] = useState('v1')
   const [frontend, setFrontend] = useState('blockdev')
   const [accessMode, setAccessMode] = useState('rwo')
   const [dataLocality, setDataLocality] = useState('disabled')
@@ -182,6 +186,19 @@ export function VolumesPage() {
   const nodeTagOptions = nodeTagsQ.data ?? []
   const diskTagOptions = diskTagsQ.data ?? []
 
+  // The v2 (SPDK) data engine can only be targeted when the cluster has it
+  // enabled via the `v2-data-engine` setting. Only then do we offer the engine
+  // choice — otherwise every volume is v1 and the selector would be dead weight.
+  const v2Enabled =
+    (settingsQ.data ?? []).find((s) => s.name === 'v2-data-engine')?.value?.toLowerCase() === 'true'
+  // Valid frontends differ by engine: iscsi is v1-only; nvmf/ublk are v2-only;
+  // blockdev works for both. Gating prevents submitting a combo the manager rejects.
+  const FRONTENDS_BY_ENGINE: Record<string, string[]> = {
+    v1: ['blockdev', 'iscsi', ''],
+    v2: ['blockdev', 'nvmf', 'ublk', ''],
+  }
+  const frontendOptions: string[] = FRONTENDS_BY_ENGINE[dataEngine] ?? ['blockdev', 'iscsi', '']
+
   // Map the ColumnPicker/preferences visible-column set into TanStack VisibilityState.
   const columnVisibility = useMemo(() => {
     const visible = new Set(resolveColumns(columnPrefs, VOLUMES_TABLE_ID, DEFAULT_VOLUME_COLUMN_IDS))
@@ -217,9 +234,13 @@ export function VolumesPage() {
         if (stateFilter && v.state !== stateFilter) return false
         if (robustnessFilter && v.robustness !== robustnessFilter) return false
         if (nodeFilter && attachedNode(v) !== nodeFilter) return false
+        // Gate on v2Enabled so a filter left set when v2 is later disabled (its
+        // control is then hidden) can't silently hide rows. `||` matches the
+        // column's display normalization so empty-string engines bucket as v1.
+        if (v2Enabled && engineFilter && (v.dataEngine || 'v1') !== engineFilter) return false
         return true
       }),
-    [allVolumes, stateFilter, robustnessFilter, nodeFilter],
+    [allVolumes, stateFilter, robustnessFilter, nodeFilter, engineFilter, v2Enabled],
   )
 
   const selectedVols = data.filter((v) => selected[v.name])
@@ -330,8 +351,12 @@ export function VolumesPage() {
       },
       {
         id: 'engine',
-        accessorFn: (v) => v.dataEngine ?? 'v1',
+        accessorFn: (v) => v.dataEngine || 'v1',
         header: t('volumes.columns.engine'),
+        cell: ({ getValue }) => {
+          const eng = (getValue() as string) || 'v1'
+          return <Badge tone={eng === 'v2' ? 'info' : 'default'}>{eng}</Badge>
+        },
       },
       {
         id: 'dataLocality',
@@ -425,6 +450,8 @@ export function VolumesPage() {
 
   function resetCreateForm() {
     setName('')
+    setDataEngine('v1')
+    setFrontend('blockdev')
     setFromBackup('')
     setStandby(false)
     setShowAdvanced(false)
@@ -452,6 +479,7 @@ export function VolumesPage() {
         name,
         size: sizeBytes,
         numberOfReplicas: Number(replicas) || 3,
+        dataEngine,
         frontend,
         dataLocality,
         accessMode,
@@ -634,7 +662,20 @@ export function VolumesPage() {
             </option>
           ))}
         </Select>
-        {stateFilter || robustnessFilter || nodeFilter ? (
+        {v2Enabled ? (
+          <Select
+            value={engineFilter}
+            onChange={(e) => setEngineFilter(e.target.value)}
+            className="h-9 w-auto min-w-[9rem]"
+            aria-label={t('volumes.filterEngine')}
+            data-testid="volume-filter-engine"
+          >
+            <option value="">{t('volumes.filterAllEngines')}</option>
+            <option value="v1">{t('volumes.dataEngineV1')}</option>
+            <option value="v2">{t('volumes.dataEngineV2')}</option>
+          </Select>
+        ) : null}
+        {stateFilter || robustnessFilter || nodeFilter || engineFilter ? (
           <Button
             type="button"
             variant="ghost"
@@ -643,6 +684,7 @@ export function VolumesPage() {
               setStateFilter('')
               setRobustnessFilter('')
               setNodeFilter('')
+              setEngineFilter('')
             }}
             data-testid="volume-filter-clear"
           >
@@ -774,14 +816,40 @@ export function VolumesPage() {
             <span className="font-medium">{t('volumes.columns.replicas')}</span>
             <Input value={replicas} onChange={(e) => setReplicas(e.target.value)} />
           </label>
+          {v2Enabled ? (
+            <label className="block space-y-1 text-sm">
+              <span className="font-medium">{t('volumes.dataEngine')}</span>
+              <select
+                className="flex h-9 w-full rounded-md border border-[var(--color-input)] bg-[var(--color-background)] px-3 text-sm"
+                value={dataEngine}
+                data-testid="create-volume-data-engine"
+                onChange={(e) => {
+                  const next = e.target.value
+                  setDataEngine(next)
+                  // Reset to a frontend valid for the new engine so no incompatible
+                  // engine/frontend combo can be submitted (blockdev works for both).
+                  if (!(FRONTENDS_BY_ENGINE[next] ?? []).includes(frontend)) setFrontend('blockdev')
+                }}
+              >
+                <option value="v1">{t('volumes.dataEngineV1')}</option>
+                <option value="v2">{t('volumes.dataEngineV2')}</option>
+              </select>
+              {dataEngine === 'v2' ? (
+                <span className="block text-xs text-[var(--color-muted-foreground)]">
+                  {t('volumes.dataEngineV2Hint')}
+                </span>
+              ) : null}
+            </label>
+          ) : null}
           <label className="block space-y-1 text-sm">
             <span className="font-medium">{t('volumes.frontend')}</span>
             <select
               className="flex h-9 w-full rounded-md border border-[var(--color-input)] bg-[var(--color-background)] px-3 text-sm"
               value={frontend}
+              data-testid="create-volume-frontend"
               onChange={(e) => setFrontend(e.target.value)}
             >
-              {['blockdev', 'iscsi', 'nvmf', 'ublk', ''].map((f) => (
+              {frontendOptions.map((f) => (
                 <option key={f || 'none'} value={f}>
                   {f || t('volumes.emptyFrontend')}
                 </option>

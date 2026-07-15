@@ -105,4 +105,48 @@ test.describe('Phase 1 parity smoke', () => {
     await page.goto('/preflight')
     await expect(page.getByTestId('preflight-page')).toBeVisible()
   })
+
+  test('create a v2 (SPDK) data-engine volume with engine-aware frontend gating', async ({ page }) => {
+    const volName = `e2e-v2-${Date.now()}`
+
+    await page.goto('/login')
+    await page.locator('#username').fill('admin')
+    await page.locator('#password').fill('highland')
+    await page.getByRole('button', { name: /sign in/i }).click()
+    await expect(page.getByTestId('app-shell')).toBeVisible()
+
+    await page.goto('/volumes')
+    await expect(page.getByTestId('volumes-page')).toBeVisible()
+
+    // The mock manager enables `v2-data-engine`, so the engine controls appear.
+    await expect(page.getByTestId('volume-filter-engine')).toBeVisible()
+
+    await page.getByTestId('create-volume').click()
+    await page.getByTestId('create-volume-name').fill(volName)
+    await page.getByTestId('create-volume-size').fill('1Gi')
+
+    // Default engine is v1 → frontend offers iscsi, not nvmf.
+    const engine = page.getByTestId('create-volume-data-engine')
+    await expect(engine).toBeVisible()
+    const frontend = page.getByTestId('create-volume-frontend')
+    await expect(frontend.locator('option[value="iscsi"]')).toHaveCount(1)
+    await expect(frontend.locator('option[value="nvmf"]')).toHaveCount(0)
+
+    // Switch to v2 → frontend gating flips: nvmf/ublk in, iscsi out.
+    await engine.selectOption('v2')
+    await expect(frontend.locator('option[value="nvmf"]')).toHaveCount(1)
+    await expect(frontend.locator('option[value="ublk"]')).toHaveCount(1)
+    await expect(frontend.locator('option[value="iscsi"]')).toHaveCount(0)
+
+    await page.getByTestId('create-volume-submit').click()
+
+    // The new volume row shows a v2 engine badge.
+    const row = page.getByRole('row', { name: new RegExp(volName) })
+    await expect(row).toBeVisible({ timeout: 15_000 })
+    await expect(row.getByText('v2', { exact: true })).toBeVisible()
+
+    // The engine filter narrows to v2.
+    await page.getByTestId('volume-filter-engine').selectOption('v2')
+    await expect(page.getByRole('link', { name: volName })).toBeVisible()
+  })
 })
