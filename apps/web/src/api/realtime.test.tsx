@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { RealtimeProvider } from './realtime'
+import { RealtimeProvider, useSseConnected } from './realtime'
 
 // Mock auth so the provider thinks we're logged in.
 vi.mock('@/auth/AuthContext', () => ({
@@ -71,5 +71,25 @@ describe('RealtimeProvider', () => {
     )
     FakeEventSource.instances[0]!.emit('change', JSON.stringify({ keys: ['__all__'] }))
     expect(invalidate).toHaveBeenCalledWith() // no args = invalidate all
+  })
+
+  it('flips the useSseConnected signal true on stream open (drives adaptive polling)', () => {
+    vi.stubGlobal('EventSource', FakeEventSource as unknown as typeof EventSource)
+    const qc = new QueryClient()
+    function Probe() {
+      return <span data-testid="sig">{String(useSseConnected())}</span>
+    }
+    const { getByTestId } = render(
+      <QueryClientProvider client={qc}>
+        <RealtimeProvider>
+          <Probe />
+        </RealtimeProvider>
+      </QueryClientProvider>,
+    )
+    expect(getByTestId('sig').textContent).toBe('false')
+    act(() => {
+      FakeEventSource.instances[0]!.onopen?.()
+    })
+    expect(getByTestId('sig').textContent).toBe('true')
   })
 })
