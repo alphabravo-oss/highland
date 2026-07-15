@@ -16,6 +16,8 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/handlers"
 	"github.com/highland-io/highland/apps/api/internal/longhorn"
 	"github.com/highland-io/highland/apps/api/internal/metrics"
+	"github.com/highland-io/highland/apps/api/internal/watch"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -93,6 +95,9 @@ func main() {
 	benchStore := benchmark.NewStore(k8sRunner)
 	benchmarkMode := "synthetic"
 	var k8sClient kubernetes.Interface
+	var hub *watch.Hub
+	watchCtx, cancelWatch := context.WithCancel(context.Background())
+	defer cancelWatch()
 	if k8sRunner != nil && k8sRunner.Available() {
 		// Persist benchmark records as ConfigMaps (etcd) so they survive restarts.
 		benchStore.SetPersister(benchmark.NewConfigMapPersister(k8sRunner.Clientset(), k8sRunner.Namespace()))
@@ -100,6 +105,13 @@ func main() {
 		benchmarkMode = "kubernetes-job"
 		k8sClient = k8sRunner.Clientset()
 		slog.Info("benchmark mode", "mode", "kubernetes-job", "persistence", "configmap")
+		// Real-time SSE: watch Longhorn CRDs via a dynamic client and fan out.
+		if dyn, err := dynamic.NewForConfig(k8sRunner.RESTConfig()); err != nil {
+			slog.Warn("realtime: dynamic client init failed; SSE disabled", "err", err)
+		} else {
+			hub = watch.NewHub(dyn, os.Getenv("HIGHLAND_LONGHORN_NAMESPACE"))
+			hub.Start(watchCtx)
+		}
 	} else {
 		slog.Info("benchmark mode", "mode", "synthetic", "persistence", "memory")
 	}
@@ -123,6 +135,7 @@ func main() {
 		BenchmarkMode:     benchmarkMode,
 		// Share the exact session-signing key so CSRF tokens verify against it.
 		SessionSecret: secret,
+		WatchHub:      hub,
 	})
 
 	srv := &http.Server{
@@ -148,6 +161,13 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
+
+	// Stop the informers, then close SSE client channels so the long-lived
+	// stream handlers return — otherwise srv.Shutdown() blocks on them.
+	cancelWatch()
+	if hub != nil {
+		hub.Stop()
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

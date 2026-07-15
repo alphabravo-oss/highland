@@ -25,6 +25,7 @@ const mountPath = "/data"
 // K8sRunner creates real fio Jobs when in-cluster (or kubeconfig) is available.
 type K8sRunner struct {
 	client       kubernetes.Interface
+	restConfig   *rest.Config
 	namespace    string
 	fioImage     string
 	storageClass string
@@ -67,12 +68,16 @@ func NewK8sRunnerFromEnv() *K8sRunner {
 	if size == "" {
 		size = "10Gi"
 	}
-	return &K8sRunner{client: client, namespace: ns, fioImage: img, storageClass: sc, size: size}
+	return &K8sRunner{client: client, restConfig: cfg, namespace: ns, fioImage: img, storageClass: sc, size: size}
 }
 
 // Clientset exposes the k8s client so other components (e.g. the ConfigMap
 // persister) can reuse it.
 func (k *K8sRunner) Clientset() kubernetes.Interface { return k.client }
+
+// RESTConfig exposes the resolved REST config so other components (e.g. the
+// dynamic watch hub) can build additional clients.
+func (k *K8sRunner) RESTConfig() *rest.Config { return k.restConfig }
 
 // Namespace is where Highland's cluster resources live.
 func (k *K8sRunner) Namespace() string { return k.namespace }
@@ -312,11 +317,11 @@ type fioJob struct {
 
 type fioStream struct {
 	// bw is in KiB/s; bw_bytes (when present) is bytes/s.
-	Bw       float64  `json:"bw"`
-	BwBytes  float64  `json:"bw_bytes"`
-	IOPS     float64  `json:"iops"`
-	LatNs    fioLat   `json:"lat_ns"`
-	ClatNs   fioLat   `json:"clat_ns"`
+	Bw      float64 `json:"bw"`
+	BwBytes float64 `json:"bw_bytes"`
+	IOPS    float64 `json:"iops"`
+	LatNs   fioLat  `json:"lat_ns"`
+	ClatNs  fioLat  `json:"clat_ns"`
 }
 
 type fioLat struct {
