@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="apps/web/public/favicon.svg" alt="Highland" width="88" height="88" />
+<img src="apps/web/public/favicon.svg?v=2" alt="Highland" width="88" height="88" />
 
 # Highland
 
@@ -14,12 +14,17 @@ live I/O metrics, guided backups, and fio benchmarks — layered on top of your 
 [![Publish images](https://github.com/alphabravo-oss/highland/actions/workflows/release.yaml/badge.svg)](https://github.com/alphabravo-oss/highland/actions/workflows/release.yaml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![GHCR](https://img.shields.io/badge/images-ghcr.io-2496ED?logo=github)](https://github.com/orgs/alphabravo-oss/packages?repo_name=highland)
+[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)](https://github.com/alphabravo-oss/highland)
 
 **Built by [AlphaBravo](https://alphabravo.io)**
 
 </div>
 
 ---
+
+> ⚠️ **Alpha software.** Highland is under active development. APIs, Helm chart
+> values, and UI are subject to change without notice, and it is **not yet
+> recommended for production use**. Feedback and issues are very welcome.
 
 ## Why Highland
 
