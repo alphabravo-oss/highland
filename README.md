@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="apps/web/public/favicon.svg?v=3" alt="Highland" width="88" height="88" />
+<img src="apps/web/public/logo.svg?v=4" alt="Highland" width="88" height="88" />
 
 # Highland
 
