@@ -16,6 +16,7 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/metrics"
 	mw "github.com/highland-io/highland/apps/api/internal/middleware"
 	"github.com/highland-io/highland/apps/api/internal/ratelimit"
+	"github.com/highland-io/highland/apps/api/internal/watch"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -39,6 +40,8 @@ type Deps struct {
 	// CSRF tokens share the exact same key (Cfg.SessionSecret is empty on the
 	// ephemeral-secret path).
 	SessionSecret []byte
+	// WatchHub streams Longhorn change events over SSE; nil when no cluster.
+	WatchHub *watch.Hub
 }
 
 // NewRouter builds the Highland API HTTP router.
@@ -154,6 +157,11 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/api/v1/benchmarks", hapi.CreateBenchmark)
 		r.Get("/api/v1/benchmarks/{name}", hapi.GetBenchmark)
 		r.Delete("/api/v1/benchmarks/{name}", hapi.DeleteBenchmark)
+
+		// Real-time change stream (SSE). GET is safe under CSRF; auth via cookie.
+		if d.WatchHub != nil {
+			r.Get("/api/v1/events/stream", d.WatchHub.ServeSSE)
+		}
 	})
 
 	return r

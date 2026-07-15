@@ -2,6 +2,7 @@ import { lazy } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '@/auth/AuthContext'
+import { RealtimeProvider } from '@/api/realtime'
 import { ToastProvider } from '@/components/ui/toast'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ThemeProvider } from '@/features/theme/ThemeProvider'
@@ -95,6 +96,7 @@ export default function App() {
         <TooltipProvider delayDuration={300}>
           <ToastProvider>
             <AuthProvider>
+              <RealtimeProvider>
               <BrowserRouter>
                 <Routes>
                   <Route path="/login" element={<LoginPage />} />
@@ -127,6 +129,7 @@ export default function App() {
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Routes>
               </BrowserRouter>
+              </RealtimeProvider>
             </AuthProvider>
           </ToastProvider>
         </TooltipProvider>
