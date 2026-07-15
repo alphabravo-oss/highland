@@ -55,7 +55,25 @@ rules:
     verbs: ["get", "create", "update"]
   # Real-time SSE: watch Longhorn CRDs so UI updates without polling.
   - apiGroups: ["longhorn.io"]
-    resources: ["volumes", "engines", "replicas", "nodes"]
+    resources:
+      - volumes
+      - engines
+      - replicas
+      - volumeattachments
+      - nodes
+      - backupvolumes
+      - backups
+      - backuptargets
+      - engineimages
+      - backingimages
+      - backupbackingimages
+      - settings
+      - recurringjobs
+      - instancemanagers
+      - orphans
+      - systembackups
+      - systemrestores
+      - supportbundles
     verbs: ["list", "watch"]
   - apiGroups: [""]
     resources: ["events"]

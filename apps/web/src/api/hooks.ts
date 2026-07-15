@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-query'
 import { highlandDelete, highlandGet, highlandPost, highlandPut } from './client'
 import { optimisticPatch, optimisticRemove, pick } from './optimistic'
+import { useSseConnected } from './realtime'
 import {
   backupTargetsApi,
   backupVolumesApi,
@@ -37,13 +38,19 @@ import {
   type Volume,
 } from './longhorn'
 
-const poll = { refetchInterval: 10_000 as const }
+// Adaptive polling: when the SSE change stream is healthy, fall back to a slow
+// safety poll; when it's down, poll at the fast interval so freshness never
+// depends on the stream. Only use for hooks whose keys the watch hub invalidates
+// (see internal/watch/hub.go) — never for Highland-native / Prometheus data.
+function usePoll(fast = 10_000, slow = 60_000): { refetchInterval: number } {
+  return { refetchInterval: useSseConnected() ? slow : fast }
+}
 
 export function useDashboard() {
   return useQuery({
     queryKey: ['dashboard'],
     queryFn: () => dashboardApi.get(),
-    ...poll,
+    ...usePoll(),
   })
 }
 
@@ -51,7 +58,7 @@ export function useEvents() {
   return useQuery({
     queryKey: ['events'],
     queryFn: () => eventsApi.list(),
-    refetchInterval: 15_000,
+    ...usePoll(15_000, 60_000),
   })
 }
 
@@ -59,7 +66,7 @@ export function useVolumes() {
   return useQuery({
     queryKey: ['volumes'],
     queryFn: () => volumesApi.list(),
-    ...poll,
+    ...usePoll(),
   })
 }
 
@@ -68,7 +75,7 @@ export function useVolume(name: string | undefined) {
     queryKey: ['volumes', name],
     queryFn: () => volumesApi.get(name!),
     enabled: Boolean(name),
-    refetchInterval: 5_000,
+    ...usePoll(5_000, 30_000),
   })
 }
 
@@ -77,7 +84,7 @@ export function useNode(name: string | undefined) {
     queryKey: ['nodes', name],
     queryFn: () => nodesApi.get(name!),
     enabled: Boolean(name),
-    refetchInterval: 5_000,
+    ...usePoll(5_000, 30_000),
   })
 }
 
@@ -85,7 +92,7 @@ export function useNodes() {
   return useQuery({
     queryKey: ['nodes'],
     queryFn: () => nodesApi.list(),
-    ...poll,
+    ...usePoll(),
   })
 }
 
@@ -117,7 +124,7 @@ export function useSettings() {
   return useQuery({
     queryKey: ['settings'],
     queryFn: () => settingsApi.list(),
-    refetchInterval: 30_000,
+    ...usePoll(30_000, 60_000),
   })
 }
 
@@ -125,7 +132,7 @@ export function useBackupVolumes() {
   return useQuery({
     queryKey: ['backupvolumes'],
     queryFn: () => backupVolumesApi.list(),
-    ...poll,
+    ...usePoll(),
   })
 }
 
@@ -133,7 +140,7 @@ export function useBackupTargets() {
   return useQuery({
     queryKey: ['backuptargets'],
     queryFn: () => backupTargetsApi.list(),
-    ...poll,
+    ...usePoll(),
   })
 }
 
@@ -141,7 +148,7 @@ export function useRecurringJobs() {
   return useQuery({
     queryKey: ['recurringjobs'],
     queryFn: () => recurringJobsApi.list(),
-    ...poll,
+    ...usePoll(),
   })
 }
 
@@ -150,7 +157,7 @@ export function useEngineImages(enabled = true) {
     queryKey: ['engineimages'],
     queryFn: () => engineImagesApi.list(),
     enabled,
-    ...poll,
+    ...usePoll(),
   })
 }
 
@@ -159,7 +166,7 @@ export function useBackingImages(enabled = true) {
     queryKey: ['backingimages'],
     queryFn: () => backingImagesApi.list(),
     enabled,
-    ...poll,
+    ...usePoll(),
   })
 }
 
@@ -167,7 +174,7 @@ export function useBackupBackingImages() {
   return useQuery({
     queryKey: ['backupbackingimages'],
     queryFn: () => backupBackingImagesApi.list(),
-    ...poll,
+    ...usePoll(),
   })
 }
 
@@ -175,7 +182,7 @@ export function useInstanceManagers() {
   return useQuery({
     queryKey: ['instancemanagers'],
     queryFn: () => instanceManagersApi.list(),
-    ...poll,
+    ...usePoll(),
   })
 }
 
@@ -183,7 +190,7 @@ export function useOrphans() {
   return useQuery({
     queryKey: ['orphans'],
     queryFn: () => orphansApi.list(),
-    ...poll,
+    ...usePoll(),
   })
 }
 
@@ -191,7 +198,7 @@ export function useSystemBackups() {
   return useQuery({
     queryKey: ['systembackups'],
     queryFn: () => systemBackupsApi.list(),
-    ...poll,
+    ...usePoll(),
   })
 }
 
@@ -199,7 +206,7 @@ export function useSystemRestores() {
   return useQuery({
     queryKey: ['systemrestores'],
     queryFn: () => systemRestoresApi.list(),
-    ...poll,
+    ...usePoll(),
   })
 }
 
@@ -486,6 +493,7 @@ export function useAuditLog() {
   return useQuery({
     queryKey: ['audit'],
     queryFn: () => highlandGet<{ data: Array<Record<string, unknown>> }>('/audit'),
+    // Highland-native (not a Longhorn CRD) — no SSE signal, so keep a fixed poll.
     refetchInterval: 5_000,
   })
 }

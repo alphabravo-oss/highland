@@ -44,14 +44,35 @@ type watchEntry struct {
 	keys []string
 }
 
-// watchedEntries maps each watched resource to the TanStack query keys it
-// invalidates. Increment 1: volumes (+ their engines/replicas), nodes, events.
+// watchedEntries maps each watched Longhorn CRD (+ core events) to the TanStack
+// query keys it invalidates. Resource plurals are the exact longhorn.io GVR
+// names (see `kubectl api-resources --api-group=longhorn.io`).
 func watchedEntries() []watchEntry {
 	return []watchEntry{
+		// Volumes and everything that reflects volume state.
 		{lhGVR("volumes"), []string{"volumes", "dashboard"}},
 		{lhGVR("engines"), []string{"volumes", "dashboard"}},
 		{lhGVR("replicas"), []string{"volumes", "dashboard"}},
+		{lhGVR("volumeattachments"), []string{"volumes"}},
+		// Nodes.
 		{lhGVR("nodes"), []string{"nodes", "dashboard", "nodetags", "disktags"}},
+		// Backups.
+		{lhGVR("backupvolumes"), []string{"backupvolumes", "dashboard"}},
+		{lhGVR("backups"), []string{"backupvolumes"}},
+		{lhGVR("backuptargets"), []string{"backuptargets"}},
+		// Images.
+		{lhGVR("engineimages"), []string{"engineimages"}},
+		{lhGVR("backingimages"), []string{"backingimages"}},
+		{lhGVR("backupbackingimages"), []string{"backupbackingimages"}},
+		// Misc list views.
+		{lhGVR("settings"), []string{"settings"}},
+		{lhGVR("recurringjobs"), []string{"recurringjobs"}},
+		{lhGVR("instancemanagers"), []string{"instancemanagers"}},
+		{lhGVR("orphans"), []string{"orphans"}},
+		{lhGVR("systembackups"), []string{"systembackups"}},
+		{lhGVR("systemrestores"), []string{"systemrestores"}},
+		{lhGVR("supportbundles"), []string{"supportbundles"}},
+		// Core Kubernetes events feed the Events view.
 		{coreEventsGVR, []string{"events"}},
 	}
 }
