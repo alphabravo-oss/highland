@@ -8,18 +8,32 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
+
+	chimw "github.com/go-chi/chi/v5/middleware"
 )
+
+// Observer records proxy metrics (implemented by observability.Metrics; kept as
+// a local interface so this package doesn't depend on it).
+type Observer interface {
+	ObserveManagerRequest(method string, status int, d time.Duration)
+	IncManagerError(reason string)
+}
 
 // Proxy is an authenticated reverse proxy to the Longhorn manager /v1 API.
 // Browser clients never talk to the manager directly; all traffic goes through Highland.
 type Proxy struct {
 	managerBase *url.URL
 	proxy       *httputil.ReverseProxy
+	obs         Observer
 	// PublicAPIPrefix is the path prefix exposed by Highland (e.g. /api/v1/lh).
 	PublicAPIPrefix string
 	// ManagerAPIPrefix is the path on the manager (e.g. /v1).
 	ManagerAPIPrefix string
 }
+
+// SetMetrics attaches an observer (nil disables proxy instrumentation).
+func (p *Proxy) SetMetrics(o Observer) { p.obs = o }
 
 // NewProxy creates a reverse proxy that rewrites /api/v1/lh/* → manager /v1/*.
 func NewProxy(managerURL string) (*Proxy, error) {
@@ -36,6 +50,9 @@ func NewProxy(managerURL string) (*Proxy, error) {
 		Director:       p.director,
 		ModifyResponse: p.modifyResponse,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if p.obs != nil {
+				p.obs.IncManagerError("upstream_unavailable")
+			}
 			http.Error(w, "longhorn manager unavailable: "+err.Error(), http.StatusBadGateway)
 		},
 	}
@@ -44,7 +61,14 @@ func NewProxy(managerURL string) (*Proxy, error) {
 
 // ServeHTTP implements http.Handler.
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	p.proxy.ServeHTTP(w, r)
+	if p.obs == nil {
+		p.proxy.ServeHTTP(w, r)
+		return
+	}
+	ww := chimw.NewWrapResponseWriter(w, r.ProtoMajor)
+	start := time.Now()
+	p.proxy.ServeHTTP(ww, r)
+	p.obs.ObserveManagerRequest(r.Method, ww.Status(), time.Since(start))
 }
 
 // RewritePath maps a Highland public path to the manager path.

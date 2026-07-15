@@ -15,9 +15,11 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/longhorn"
 	"github.com/highland-io/highland/apps/api/internal/metrics"
 	mw "github.com/highland-io/highland/apps/api/internal/middleware"
+	"github.com/highland-io/highland/apps/api/internal/observability"
 	"github.com/highland-io/highland/apps/api/internal/ratelimit"
 	"github.com/highland-io/highland/apps/api/internal/watch"
 	"k8s.io/client-go/kubernetes"
+	"log/slog"
 )
 
 // Deps bundles runtime dependencies for the router.
@@ -42,6 +44,9 @@ type Deps struct {
 	SessionSecret []byte
 	// WatchHub streams Longhorn change events over SSE; nil when no cluster.
 	WatchHub *watch.Hub
+	// Obs holds Prometheus metrics; Logger is the structured request logger.
+	Obs    *observability.Metrics
+	Logger *slog.Logger
 }
 
 // NewRouter builds the Highland API HTTP router.
@@ -67,6 +72,7 @@ func NewRouter(d Deps) http.Handler {
 		OIDC:        oidcProv,
 		OIDCRuntime: d.OIDCRuntime,
 		Limiter:     limiter,
+		Obs:         d.Obs,
 		Started:     time.Now(),
 	}
 	hapi := &HighlandAPI{
@@ -87,12 +93,16 @@ func NewRouter(d Deps) http.Handler {
 	// Trusted-proxy-aware client IP (replaces chi's spoofable RealIP) so the
 	// login limiter and audit source IP cannot be forged via forwarding headers.
 	r.Use(mw.ClientIP(d.Cfg.TrustedProxies))
+	r.Use(mw.RequestLogger(d.Logger, 1))
+	r.Use(d.Obs.InstrumentHandler())
 	r.Use(chimw.Recoverer)
 	r.Use(mw.SecurityHeaders(d.Cfg.CookieSecure))
 	r.Use(mw.CORS(d.Cfg.AllowedOrigins))
 
 	r.Get("/healthz", api.Healthz)
 	r.Get("/readyz", api.Readyz)
+	// Prometheus scrape endpoint (unauthenticated; in-cluster, NetworkPolicy-gated).
+	r.Handle("/metrics", d.Obs.Handler())
 
 	r.Route("/auth", func(r chi.Router) {
 		r.Get("/providers", api.Providers)
@@ -102,17 +112,17 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/oidc/callback", api.OIDCCallback)
 		r.Post("/oidc/mock", api.OIDCMockLogin)
 		r.Group(func(r chi.Router) {
-			r.Use(mw.SessionAuth(api.Store, d.Cfg.CookieName))
+			r.Use(mw.SessionAuth(api.Store, d.Cfg.CookieName, d.Obs))
 			r.Get("/me", api.Me)
 		})
 	})
 
 	r.Group(func(r chi.Router) {
-		r.Use(mw.SessionAuth(api.Store, d.Cfg.CookieName))
+		r.Use(mw.SessionAuth(api.Store, d.Cfg.CookieName, d.Obs))
 		if d.Cfg.CSRFEnabled {
-			r.Use(mw.CSRF(d.SessionSecret, d.Cfg.CSRFCookieName, d.Cfg.CookieSecure, d.Cfg.SessionTTL))
+			r.Use(mw.CSRF(d.SessionSecret, d.Cfg.CSRFCookieName, d.Cfg.CookieSecure, d.Cfg.SessionTTL, d.Obs))
 		}
-		r.Use(mw.RequireRole(d.Audit))
+		r.Use(mw.RequireRole(d.Audit, d.Obs))
 
 		// Streaming path for large backing-image upload/download (no full buffer)
 		if d.Stream != nil {

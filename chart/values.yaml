@@ -106,6 +106,32 @@ persistence:
     storageClass: ""
     accessMode: ReadWriteOnce
 
+# Prometheus scraping of the BFF's own /metrics endpoint (self-observability).
+metrics:
+  enabled: true
+  # Pod annotations (prometheus.io/scrape,port,path) for annotation-based scrapers.
+  podAnnotations: true
+  # Path the BFF exposes exposition on (matches the Go handler mount).
+  path: /metrics
+  serviceMonitor:
+    # Requires the Prometheus Operator CRDs; safe to leave off otherwise.
+    enabled: false
+    # Blank = release namespace. Set to your Prometheus namespace if it selects by ns.
+    namespace: ""
+    interval: 30s
+    scrapeTimeout: 10s
+    # Extra labels so a Prometheus instance's serviceMonitorSelector can match it.
+    labels: {}
+  # When true, add a NetworkPolicy that makes the API pods' allowed ingress
+  # explicit (port 8080 only) so Prometheus scrapes, the web sidecar, and kubelet
+  # probes all keep working once the pods are policy-selected. Restrict *which*
+  # Prometheus may scrape at the ServiceMonitor/Prometheus selector layer, not
+  # here — node-sourced probes cannot be expressed as a NetworkPolicy `from`.
+  # NOTE: this rule is nested under the global networkPolicy.enabled below; if
+  # that is false, no NetworkPolicies (including this one) are rendered at all.
+  networkPolicy:
+    enabled: true
+
 networkPolicy:
   enabled: true
   # Egress from highland-api to Longhorn manager + DNS + kube-api

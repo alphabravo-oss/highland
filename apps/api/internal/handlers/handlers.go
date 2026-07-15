@@ -13,6 +13,7 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/auth"
 	"github.com/highland-io/highland/apps/api/internal/config"
 	"github.com/highland-io/highland/apps/api/internal/middleware"
+	"github.com/highland-io/highland/apps/api/internal/observability"
 	"github.com/highland-io/highland/apps/api/internal/ratelimit"
 )
 
@@ -25,6 +26,7 @@ type API struct {
 	OIDC        *auth.OIDCProvider // legacy pointer; prefer OIDCRuntime
 	OIDCRuntime *auth.OIDCRuntime  // runtime-configurable enterprise SSO
 	Limiter     *ratelimit.LoginLimiter
+	Obs         *observability.Metrics
 	Started     time.Time
 }
 
@@ -135,6 +137,7 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 	// which key tripped or whether the account exists.
 	if a.Limiter != nil {
 		if ok, retry := a.Limiter.Allow(req.Username, r.RemoteAddr); !ok {
+			a.Obs.IncLoginAttempt("locked_out")
 			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retry.Seconds()))))
 			writeJSON(w, http.StatusTooManyRequests, map[string]string{
 				"error": "too many login attempts, please try again later",
@@ -148,17 +151,20 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 			if a.Limiter != nil {
 				a.Limiter.RecordFailure(req.Username, r.RemoteAddr)
 			}
+			a.Obs.IncLoginAttempt("invalid_credentials")
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 			return
 		}
 		// Do NOT record a failure on backend errors — avoids locking admins out
 		// during an auth-backend outage.
+		a.Obs.IncLoginAttempt("error")
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "login failed"})
 		return
 	}
 	if a.Limiter != nil {
 		a.Limiter.RecordSuccess(req.Username, r.RemoteAddr)
 	}
+	a.Obs.IncLoginAttempt("success")
 	http.SetCookie(w, &http.Cookie{
 		Name:     a.Cfg.CookieName,
 		Value:    id,

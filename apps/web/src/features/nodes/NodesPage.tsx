@@ -43,6 +43,8 @@ type DiskDraft = {
   name: string
   path: string
   diskType: string
+  // Block-disk engine driver: '' (auto), 'aio', 'nvme'. Ignored for filesystem.
+  diskDriver: string
   allowScheduling: boolean
   evictionRequested: boolean
   storageReservedGi: string
@@ -66,6 +68,7 @@ function draftsFromNode(node: Node): DiskDraft[] {
       name: d.name ?? id,
       path: d.path ?? '',
       diskType: d.diskType ?? 'filesystem',
+      diskDriver: d.diskDriver ?? '',
       allowScheduling: Boolean(d.allowScheduling),
       evictionRequested: Boolean(d.evictionRequested),
       storageReservedGi: bytesToGiString(d.storageReserved),
@@ -178,6 +181,7 @@ export function NodesPage() {
         name: '',
         path: '',
         diskType: 'filesystem',
+        diskDriver: '',
         allowScheduling: true,
         evictionRequested: false,
         storageReservedGi: '0',
@@ -210,6 +214,9 @@ export function NodesPage() {
           name: key,
           path: d.path,
           diskType: d.diskType,
+          // diskDriver only applies to block disks; force it empty otherwise so
+          // we never send a stray driver on a filesystem disk.
+          diskDriver: d.diskType === 'block' ? d.diskDriver : '',
           allowScheduling: d.allowScheduling,
           evictionRequested: d.evictionRequested,
           storageReserved: reservedBytes,
@@ -545,6 +552,21 @@ export function NodesPage() {
                     <option value="block">{t('nodes.diskTypeBlock')}</option>
                   </Select>
                 </div>
+                {d.diskType === 'block' ? (
+                  <div className="space-y-1">
+                    <Label htmlFor={`disk-driver-${d.id}`}>{t('nodes.diskDriver')}</Label>
+                    <Select
+                      id={`disk-driver-${d.id}`}
+                      value={d.diskDriver}
+                      disabled={!d.isNew || d.removed}
+                      onChange={(e) => updateDraft(d.id, { diskDriver: e.target.value })}
+                    >
+                      <option value="">{t('nodes.diskDriverAuto')}</option>
+                      <option value="aio">aio</option>
+                      <option value="nvme">nvme</option>
+                    </Select>
+                  </div>
+                ) : null}
                 <div className="space-y-1 sm:col-span-2">
                   <Label htmlFor={`disk-path-${d.id}`}>{t('common.path')}</Label>
                   <Input

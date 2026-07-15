@@ -16,6 +16,7 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/handlers"
 	"github.com/highland-io/highland/apps/api/internal/longhorn"
 	"github.com/highland-io/highland/apps/api/internal/metrics"
+	"github.com/highland-io/highland/apps/api/internal/observability"
 	"github.com/highland-io/highland/apps/api/internal/watch"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -24,6 +25,9 @@ import (
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
+
+	// Self-observability: Prometheus metrics for the BFF's own operation.
+	obsMetrics := observability.New()
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -84,6 +88,7 @@ func main() {
 		slog.Error("longhorn proxy init failed", "err", err)
 		os.Exit(1)
 	}
+	lhProxy.SetMetrics(obsMetrics)
 	stream, err := longhorn.NewStreamProxy(cfg.ManagerURL)
 	if err != nil {
 		slog.Error("stream proxy init failed", "err", err)
@@ -110,6 +115,8 @@ func main() {
 			slog.Warn("realtime: dynamic client init failed; SSE disabled", "err", err)
 		} else {
 			hub = watch.NewHub(dyn, os.Getenv("HIGHLAND_LONGHORN_NAMESPACE"))
+			hub.SetMetrics(obsMetrics)
+			obsMetrics.RegisterSSEClientSource(hub.ClientCount)
 			hub.Start(watchCtx)
 		}
 	} else {
@@ -136,6 +143,8 @@ func main() {
 		// Share the exact session-signing key so CSRF tokens verify against it.
 		SessionSecret: secret,
 		WatchHub:      hub,
+		Obs:           obsMetrics,
+		Logger:        logger,
 	})
 
 	srv := &http.Server{
