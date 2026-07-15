@@ -2,7 +2,7 @@ apiVersion: v2
 name: highland
 description: Highland management plane for Longhorn — modern console, auth, and BFF
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "0.1.0"
 keywords:
   - longhorn
@@ -11,3 +11,9 @@ keywords:
 maintainers:
   - name: Highland
 home: https://github.com/highland-io/highland
+dependencies:
+  - name: longhorn
+    alias: embeddedLonghorn
+    version: "1.12.0"
+    repository: https://charts.longhorn.io
+    condition: embeddedLonghorn.enabled

@@ -97,7 +97,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: HIGHLAND_LONGHORN_NAMESPACE
-              value: {{ .Values.longhorn.namespace | quote }}
+              value: {{ include "highland.longhornNamespace" . | quote }}
             - name: HIGHLAND_TRUSTED_PROXIES
               value: {{ .Values.config.trustedProxies | quote }}
             - name: HIGHLAND_FIO_IMAGE

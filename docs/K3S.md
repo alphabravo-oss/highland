@@ -44,6 +44,7 @@ npm run dev
 
 ```bash
 ./hack/kind-up.sh   # similar pattern; adapt for k3s context
+helm dependency build ./chart
 helm upgrade --install highland ./chart -n highland-system --create-namespace \
   --set longhorn.enabled=false \
   --set longhorn.namespace=longhorn-system

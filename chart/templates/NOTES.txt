@@ -1,9 +1,22 @@
-Highland {{ .Chart.AppVersion }} installed in namespace {{ .Release.Namespace }}.
+Highland chart {{ .Chart.Version }} (app {{ .Chart.AppVersion }}) installed in namespace {{ .Release.Namespace }}.
 
 Components:
   - API:  {{ include "highland.fullname" . }}-api
   - Web:  {{ include "highland.fullname" . }}-web
   - Longhorn manager: {{ include "highland.managerUrl" . }}
+{{- if .Values.embeddedLonghorn.enabled }}
+  - Embedded Longhorn: enabled (chart 1.12.0; stock UI replicas: {{ .Values.embeddedLonghorn.longhornUI.replicas }})
+
+IMPORTANT — embedded Longhorn:
+  - Install this release in longhorn-system. Helm places Highland and Longhorn
+    subchart resources in the same release namespace.
+  - Do not enable embedded mode in a cluster that already has Longhorn installed.
+  - Wait for the storage backend with: --wait --timeout 10m
+  - Do NOT run `helm uninstall` until Longhorn-backed workloads and volumes have
+    been safely removed or backed up. Longhorn's deleting-confirmation-flag and
+    uninstall hook protect data; bypassing them can orphan resources or lose data.
+  - Follow the embedded uninstall runbook in docs/INSTALL.md.
+{{- end }}
 
 Local admin login (no OIDC required):
   Username: from Secret {{ if .Values.auth.local.existingSecret }}{{ .Values.auth.local.existingSecret }}{{ else }}{{ include "highland.fullname" . }}-admin{{ end }} key "username"
@@ -24,5 +37,10 @@ NetworkPolicy: {{ .Values.networkPolicy.enabled }}
   Highland API may reach Longhorn manager; browsers never talk to longhorn-backend.
 
 Next:
+{{- if .Values.embeddedLonghorn.enabled }}
+  - Wait for longhorn-manager and Highland API pods to become Ready
+  - Review embedded upgrade and uninstall procedures in docs/INSTALL.md
+{{- else }}
   - Disable stock Longhorn UI exposure if desired (operator NetworkPolicy / Ingress)
+{{- end }}
   - See chart values for auth.local / auth.oidc
