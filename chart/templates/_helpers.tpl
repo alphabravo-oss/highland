@@ -26,8 +26,16 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
+{{- define "highland.longhornNamespace" -}}
+{{- if .Values.embeddedLonghorn.enabled -}}
+{{- .Release.Namespace -}}
+{{- else -}}
+{{- .Values.longhorn.namespace -}}
+{{- end -}}
+{{- end }}
+
 {{- define "highland.managerUrl" -}}
-http://{{ .Values.longhorn.managerService }}.{{ .Values.longhorn.namespace }}.svc.cluster.local:{{ .Values.longhorn.managerPort }}
+http://{{ .Values.longhorn.managerService }}.{{ include "highland.longhornNamespace" . }}.svc.cluster.local:{{ .Values.longhorn.managerPort }}
 {{- end }}
 
 {{- define "highland.serviceAccountName" -}}

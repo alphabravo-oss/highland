@@ -22,7 +22,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: {{ .Values.longhorn.namespace }}
+              kubernetes.io/metadata.name: {{ include "highland.longhornNamespace" . }}
       ports:
         - protocol: TCP
           port: {{ .Values.longhorn.managerPort }}

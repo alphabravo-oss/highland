@@ -79,9 +79,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: azure/setup-helm@v5
+      - name: Add Longhorn chart repository
+        run: helm repo add longhorn https://charts.longhorn.io
       - name: Package & push chart to GHCR (OCI)
         run: |
           version="${GITHUB_REF_NAME#v}"
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u '${{ github.actor }}' --password-stdin
+          helm dependency build ./chart
           helm package ./chart --version "$version" --app-version "$version"
+          tar -tzf "highland-${version}.tgz" | grep -Fx 'highland/charts/longhorn/Chart.yaml' >/dev/null
           helm push "highland-${version}.tgz" "oci://ghcr.io/${{ github.repository_owner }}/charts"

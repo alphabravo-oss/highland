@@ -16,9 +16,8 @@ echo "== playwright e2e =="
 (cd "$ROOT/apps/web" && npx playwright install chromium && CI=true npm run test:e2e)
 
 if command -v helm >/dev/null 2>&1; then
-  echo "== helm lint =="
-  helm lint "$ROOT/chart"
-  helm template highland "$ROOT/chart" --namespace highland-system >/dev/null
+  echo "== helm dependency/lint/render =="
+  "$ROOT/hack/test-chart.sh"
 else
   echo "== helm skipped (not installed) =="
 fi

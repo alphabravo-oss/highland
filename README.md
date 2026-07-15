@@ -26,6 +26,8 @@ live I/O metrics, guided backups, and fio benchmarks — layered on top of your 
 > values, and UI are subject to change without notice, and it is **not yet
 > recommended for production use**. Feedback and issues are very welcome.
 
+![Highland dashboard in dark mode](docs/highland-dashboard-dark.png)
+
 ## Why Highland
 
 Longhorn ships a capable UI — Highland is what you reach for when you need to run it like a **product**:
@@ -52,6 +54,8 @@ boringly easy.
 
 ## Quick start
 
+### Bolt on to an existing Longhorn installation (default)
+
 > **Prerequisites:** a Kubernetes cluster with **Longhorn already installed** (its own UI can be disabled),
 > plus `helm` and `kubectl`. Highland connects to the in-cluster `longhorn-backend` service.
 
@@ -59,7 +63,7 @@ Install straight from GitHub Container Registry — no cloning, no image builds:
 
 ```bash
 helm install highland oci://ghcr.io/alphabravo-oss/charts/highland \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --namespace highland-system --create-namespace \
   --set auth.local.createSecret=true \
   --set auth.local.password='change-me' \
@@ -72,6 +76,30 @@ Then open the UI:
 kubectl -n highland-system port-forward svc/highland-web 8080:80
 # → http://127.0.0.1:8080     log in with  admin / change-me
 ```
+
+### All-in-one Highland + Longhorn (opt-in alpha)
+
+Embedded mode installs the pinned Longhorn backend in the same Helm release and scales the stock
+Longhorn UI to zero. Use it only on a cluster that does **not** already have Longhorn, prepare every
+storage node using the [Longhorn prerequisites](docs/INSTALL.md#embedded-longhorn-node-prerequisites),
+and install the release in `longhorn-system`:
+
+```bash
+helm install highland oci://ghcr.io/alphabravo-oss/charts/highland \
+  --version 0.2.0 \
+  --namespace longhorn-system --create-namespace \
+  --set embeddedLonghorn.enabled=true \
+  --set auth.local.createSecret=true \
+  --set auth.local.password='change-me' \
+  --wait --timeout 10m
+
+kubectl -n longhorn-system port-forward svc/highland-web 8080:80
+# → http://127.0.0.1:8080
+```
+
+> **Data-loss warning:** an embedded release owns the storage backend as well as Highland. Do not run
+> `helm uninstall` until Longhorn-backed workloads and volumes are safely removed or backed up, and
+> follow the [embedded uninstall runbook](docs/INSTALL.md#11-uninstall).
 
 That's it. To expose it beyond your laptop, enable the Ingress (`--set ingress.enabled=true`) or a
 NodePort/LoadBalancer service — see **[docs/INSTALL.md](docs/INSTALL.md)** (and **[docs/K3S.md](docs/K3S.md)**
@@ -131,6 +159,8 @@ highland/
 | **Backups** | Use the in-app **backup setup wizard** (S3 / NFS / Azure) — it provisions the credential Secret and backup target for you. |
 | **Sessions** | Stateless HMAC-signed cookies — no Redis, no external session store. |
 | **Longhorn namespace** | `longhorn.namespace` (default `longhorn-system`). |
+| **Embedded Longhorn** | `embeddedLonghorn.enabled=true` installs pinned Longhorn 1.12.0 in the release namespace; default is `false`. |
+| **Embedded tuning** | Pass Longhorn chart values under `embeddedLonghorn.*`; the stock UI remains off by default. |
 
 Full reference: **[docs/INSTALL.md](docs/INSTALL.md)**.
 
@@ -143,8 +173,8 @@ Full reference: **[docs/INSTALL.md](docs/INSTALL.md)**.
 cd apps/api && go test ./...    cd apps/web && npm ci && npm run dev
 ```
 
-CI runs Go build/test, web typecheck/unit/build/Storybook, a Playwright smoke + a11y suite, Helm lint,
-and a parity gate on every push. Images and the Helm chart publish to GHCR on tagged releases. See
+CI runs Go build/test, web typecheck/unit/build/Storybook, a Playwright smoke + a11y suite, Helm lint
+and both chart deployment-mode renders, plus a parity gate on every push. Images and the Helm chart publish to GHCR on tagged releases. See
 `.github/workflows/`.
 
 ---

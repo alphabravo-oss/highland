@@ -96,11 +96,14 @@ jobs:
       - uses: azure/setup-helm@v5
         with:
           version: v3.14.4
+      - name: Add Longhorn chart repository
+        run: helm repo add longhorn https://charts.longhorn.io
+      - name: Build chart dependencies
+        run: helm dependency build ./chart
       - name: Lint & template
-        run: |
-          helm lint ./chart
-          helm template highland ./chart --namespace highland-system \
-            --set auth.local.createSecret=true --set auth.local.password=ci-test >/dev/null
+        env:
+          SKIP_DEPENDENCY_BUILD: "1"
+        run: ./hack/test-chart.sh
 
   parity:
     name: Parity matrix gate

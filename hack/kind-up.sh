@@ -60,6 +60,7 @@ kubectl -n "$HIGHLAND_NAMESPACE" create secret generic highland-admin \
 
 # Chart currently expects prebuilt images; for local, document port-forward of API/web from host.
 # Install chart resources for NetworkPolicy/deploy skeleton.
+helm dependency build "$ROOT/chart"
 helm upgrade --install highland "$ROOT/chart" \
   --namespace "$HIGHLAND_NAMESPACE" \
   --set longhorn.enabled=false \

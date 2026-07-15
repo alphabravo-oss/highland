@@ -27,3 +27,6 @@ test-results/
 storybook-static/
 apps/web/storybook-static/
 *storybook.log
+
+# Helm dependencies are restored reproducibly from chart/Chart.lock.
+/chart/charts/*.tgz

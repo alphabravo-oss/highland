@@ -75,11 +75,30 @@ auth:
     clientSecret: ""
 
 longhorn:
-  # Bolt-on: talk to existing Longhorn manager Service (DNS)
-  enabled: false # if true, chart may declare dependency later
+  # Bolt-on connection settings for an existing Longhorn manager Service (DNS).
+  # When embeddedLonghorn.enabled=true, namespace is replaced by the Helm release
+  # namespace; managerService and managerPort continue to apply.
+  enabled: false
   namespace: longhorn-system
   managerService: longhorn-backend
   managerPort: 9500
+
+# Opt-in Longhorn subchart. The dependency is aliased to avoid colliding with the
+# longhorn connection settings above. Embedded Longhorn is installed in the same
+# namespace as Highland; use longhorn-system for this deployment mode.
+embeddedLonghorn:
+  enabled: false
+  # Highland is the only UI in embedded mode. The frontend Service may still be
+  # rendered by Longhorn, but it has no UI pods behind it.
+  longhornUI:
+    replicas: 0
+  ingress:
+    enabled: false
+  # All other Longhorn chart values can be supplied below this key, for example:
+  # persistence:
+  #   defaultClassReplicaCount: 3
+  # defaultSettings:
+  #   defaultDataPath: /var/lib/longhorn
 
 benchmark:
   # Used when API can reach the Kubernetes API (in-cluster ServiceAccount)
