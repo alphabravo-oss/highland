@@ -96,6 +96,8 @@ jobs:
       - uses: azure/setup-helm@v5
         with:
           version: v3.14.4
+      - name: Add Longhorn chart repository
+        run: helm repo add longhorn https://charts.longhorn.io
       - name: Build chart dependencies
         run: helm dependency build ./chart
       - name: Lint & template

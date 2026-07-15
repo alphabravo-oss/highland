@@ -79,6 +79,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: azure/setup-helm@v5
+      - name: Add Longhorn chart repository
+        run: helm repo add longhorn https://charts.longhorn.io
       - name: Package & push chart to GHCR (OCI)
         run: |
           version="${GITHUB_REF_NAME#v}"
