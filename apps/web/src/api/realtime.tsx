@@ -45,10 +45,27 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
     const onChange = (e: MessageEvent) => {
       try {
-        const { keys } = JSON.parse(e.data) as { keys?: string[] }
+        const { keys, version, providerId, namespace, resource } = JSON.parse(e.data) as {
+          keys?: string[]
+          version?: number
+          providerId?: string
+          namespace?: string
+          resource?: string
+        }
         for (const k of keys ?? []) {
           if (k === '__all__') void qc.invalidateQueries()
           else void qc.invalidateQueries({ queryKey: [k] })
+        }
+        if (version === 2 && resource) {
+          void qc.invalidateQueries({
+            predicate: (query) => {
+              const key = query.queryKey
+              if (key[0] !== 'storage') return false
+              const filters = key.find((part) => typeof part === 'object' && part !== null) as Record<string, string> | undefined
+              return (!providerId || !filters?.provider || filters.provider === providerId) &&
+                (!namespace || !filters?.namespace || filters.namespace === namespace)
+            },
+          })
         }
       } catch {
         // ignore a malformed frame

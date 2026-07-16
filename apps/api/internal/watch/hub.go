@@ -1,9 +1,6 @@
-// Package watch turns Longhorn CRD change events into Server-Sent Events so the
-// browser can refresh instantly instead of polling. A single dynamic shared
-// informer set per BFF replica watches the CRDs; a coalescing broker fans out
-// tiny "these query keys changed" frames to all connected SSE clients, which
-// invalidate the matching TanStack Query caches. It AUGMENTS polling — if the
-// stream drops or RBAC is missing, the UI keeps refreshing on its timers.
+// Package watch turns Kubernetes and provider resource changes into scoped
+// Server-Sent Events. Version 2 frames carry cluster/provider/namespace/resource
+// identity while retaining legacy query keys during the Longhorn migration.
 package watch
 
 import (
@@ -40,8 +37,11 @@ func lhGVR(resource string) schema.GroupVersionResource {
 var coreEventsGVR = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "events"}
 
 type watchEntry struct {
-	gvr  schema.GroupVersionResource
-	keys []string
+	gvr        schema.GroupVersionResource
+	namespace  string
+	providerID string
+	kind       string
+	keys       []string
 }
 
 // watchedEntries maps each watched Longhorn CRD (+ core events) to the TanStack
@@ -50,36 +50,52 @@ type watchEntry struct {
 func watchedEntries() []watchEntry {
 	return []watchEntry{
 		// Volumes and everything that reflects volume state.
-		{lhGVR("volumes"), []string{"volumes", "dashboard"}},
-		{lhGVR("engines"), []string{"volumes", "dashboard"}},
-		{lhGVR("replicas"), []string{"volumes", "dashboard"}},
-		{lhGVR("volumeattachments"), []string{"volumes"}},
+		{gvr: lhGVR("volumes"), providerID: "longhorn", kind: "volumes", keys: []string{"volumes", "dashboard"}},
+		{gvr: lhGVR("engines"), providerID: "longhorn", kind: "volumes", keys: []string{"volumes", "dashboard"}},
+		{gvr: lhGVR("replicas"), providerID: "longhorn", kind: "volumes", keys: []string{"volumes", "dashboard"}},
+		{gvr: lhGVR("volumeattachments"), providerID: "longhorn", kind: "attachments", keys: []string{"volumes"}},
 		// Nodes.
-		{lhGVR("nodes"), []string{"nodes", "dashboard", "nodetags", "disktags"}},
+		{gvr: lhGVR("nodes"), providerID: "longhorn", kind: "nodes", keys: []string{"nodes", "dashboard", "nodetags", "disktags"}},
 		// Backups.
-		{lhGVR("backupvolumes"), []string{"backupvolumes", "dashboard"}},
-		{lhGVR("backups"), []string{"backupvolumes"}},
-		{lhGVR("backuptargets"), []string{"backuptargets"}},
+		{gvr: lhGVR("backupvolumes"), providerID: "longhorn", kind: "backups", keys: []string{"backupvolumes", "dashboard"}},
+		{gvr: lhGVR("backups"), providerID: "longhorn", kind: "backups", keys: []string{"backupvolumes"}},
+		{gvr: lhGVR("backuptargets"), providerID: "longhorn", kind: "backup-targets", keys: []string{"backuptargets"}},
 		// Images.
-		{lhGVR("engineimages"), []string{"engineimages"}},
-		{lhGVR("backingimages"), []string{"backingimages"}},
-		{lhGVR("backupbackingimages"), []string{"backupbackingimages"}},
+		{gvr: lhGVR("engineimages"), providerID: "longhorn", kind: "engine-images", keys: []string{"engineimages"}},
+		{gvr: lhGVR("backingimages"), providerID: "longhorn", kind: "backing-images", keys: []string{"backingimages"}},
+		{gvr: lhGVR("backupbackingimages"), providerID: "longhorn", kind: "backing-images", keys: []string{"backupbackingimages"}},
 		// Misc list views.
-		{lhGVR("settings"), []string{"settings"}},
-		{lhGVR("recurringjobs"), []string{"recurringjobs"}},
-		{lhGVR("instancemanagers"), []string{"instancemanagers"}},
-		{lhGVR("orphans"), []string{"orphans"}},
-		{lhGVR("systembackups"), []string{"systembackups"}},
-		{lhGVR("systemrestores"), []string{"systemrestores"}},
-		{lhGVR("supportbundles"), []string{"supportbundles"}},
+		{gvr: lhGVR("settings"), providerID: "longhorn", kind: "settings", keys: []string{"settings"}},
+		{gvr: lhGVR("recurringjobs"), providerID: "longhorn", kind: "recurring-jobs", keys: []string{"recurringjobs"}},
+		{gvr: lhGVR("instancemanagers"), providerID: "longhorn", kind: "instance-managers", keys: []string{"instancemanagers"}},
+		{gvr: lhGVR("orphans"), providerID: "longhorn", kind: "orphans", keys: []string{"orphans"}},
+		{gvr: lhGVR("systembackups"), providerID: "longhorn", kind: "system-backups", keys: []string{"systembackups"}},
+		{gvr: lhGVR("systemrestores"), providerID: "longhorn", kind: "system-restores", keys: []string{"systemrestores"}},
+		{gvr: lhGVR("supportbundles"), providerID: "longhorn", kind: "support-bundles", keys: []string{"supportbundles"}},
 		// Core Kubernetes events feed the Events view.
-		{coreEventsGVR, []string{"events"}},
+		{gvr: coreEventsGVR, kind: "events", keys: []string{"events"}},
 	}
 }
 
 type frame struct {
-	keys []string
-	name string
+	version    int
+	cluster    string
+	providerID string
+	namespace  string
+	kind       string
+	keys       []string
+	name       string
+}
+
+// Registration describes a dynamic informer and the cache scopes it invalidates.
+// Providers may register entries before Start; duplicate GVR/namespace entries
+// are rejected to avoid accidental double watches.
+type Registration struct {
+	GVR        schema.GroupVersionResource
+	Namespace  string
+	ProviderID string
+	Kind       string
+	QueryKeys  []string
 }
 
 type sseClient struct {
@@ -98,14 +114,16 @@ type ErrObserver interface{ IncWatchError() }
 
 // Hub is the change broker. Safe for concurrent use.
 type Hub struct {
-	dyn dynamic.Interface
-	ns  string
+	dyn             dynamic.Interface
+	ns              string
+	clusterID       string
+	includeLonghorn bool
 
-	mu       sync.Mutex
-	clients  map[*sseClient]struct{}
-	pending  map[string]struct{}
-	lastName string
-	stopped  bool
+	mu            sync.Mutex
+	clients       map[*sseClient]struct{}
+	pending       map[string]frame
+	registrations []Registration
+	stopped       bool
 
 	errObs  ErrObserver
 	factory dynamicinformer.DynamicSharedInformerFactory
@@ -131,11 +149,51 @@ func NewHub(dyn dynamic.Interface, ns string) *Hub {
 		ns = "longhorn-system"
 	}
 	return &Hub{
-		dyn:     dyn,
-		ns:      ns,
-		clients: map[*sseClient]struct{}{},
-		pending: map[string]struct{}{},
+		dyn:             dyn,
+		ns:              ns,
+		clusterID:       "local",
+		includeLonghorn: true,
+		clients:         map[*sseClient]struct{}{},
+		pending:         map[string]frame{},
 	}
+}
+
+// NewStorageHub creates a provider-neutral broker without implicit Longhorn
+// CRD registrations. Providers may add their own registrations before Start.
+func NewStorageHub(dyn dynamic.Interface) *Hub {
+	h := NewHub(dyn, "default")
+	h.includeLonghorn = false
+	return h
+}
+
+// SetClusterID changes the bounded cluster identity included in v2 frames.
+func (h *Hub) SetClusterID(id string) {
+	if h == nil || strings.TrimSpace(id) == "" {
+		return
+	}
+	h.mu.Lock()
+	h.clusterID = strings.TrimSpace(id)
+	h.mu.Unlock()
+}
+
+// Register adds a provider watch before Start.
+func (h *Hub) Register(reg Registration) error {
+	if h == nil || reg.GVR.Resource == "" || strings.TrimSpace(reg.Kind) == "" {
+		return fmt.Errorf("watch registration requires GVR and kind")
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.factory != nil {
+		return fmt.Errorf("watch registration after start")
+	}
+	for _, existing := range h.registrations {
+		if existing.GVR == reg.GVR && existing.Namespace == reg.Namespace {
+			return fmt.Errorf("duplicate watch registration for %s namespace %q", reg.GVR, reg.Namespace)
+		}
+	}
+	reg.QueryKeys = append([]string(nil), reg.QueryKeys...)
+	h.registrations = append(h.registrations, reg)
+	return nil
 }
 
 // Start registers the informers and the coalescing flush loop. It never blocks
@@ -143,8 +201,18 @@ func NewHub(dyn dynamic.Interface, ns string) *Hub {
 // rather than hanging.
 func (h *Hub) Start(ctx context.Context) {
 	h.factory = dynamicinformer.NewFilteredDynamicSharedInformerFactory(h.dyn, 10*time.Minute, h.ns, nil)
-	for _, e := range watchedEntries() {
+	var entries []watchEntry
+	if h.includeLonghorn {
+		entries = watchedEntries()
+	}
+	h.mu.Lock()
+	for _, reg := range h.registrations {
+		entries = append(entries, watchEntry{gvr: reg.GVR, namespace: reg.Namespace, providerID: reg.ProviderID, kind: reg.Kind, keys: reg.QueryKeys})
+	}
+	h.mu.Unlock()
+	for _, e := range entries {
 		keys := e.keys
+		providerID, kind := e.providerID, e.kind
 		inf := h.factory.ForResource(e.gvr).Informer()
 		// Count runtime watch/list failures (e.g. RBAC or connection loss).
 		_ = inf.SetWatchErrorHandler(func(_ *cache.Reflector, _ error) {
@@ -152,7 +220,14 @@ func (h *Hub) Start(ctx context.Context) {
 				h.errObs.IncWatchError()
 			}
 		})
-		handler := func(obj any) { h.mark(keys, nameOf(obj)) }
+		handler := func(obj any) {
+			accessor, _ := meta.Accessor(obj)
+			namespace := ""
+			if accessor != nil {
+				namespace = accessor.GetNamespace()
+			}
+			h.markScoped(providerID, namespace, kind, nameOf(obj), keys)
+		}
 		if _, err := inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    func(obj any) { handler(obj) },
 			UpdateFunc: func(_, obj any) { handler(obj) },
@@ -166,7 +241,7 @@ func (h *Hub) Start(ctx context.Context) {
 	}
 	h.factory.Start(ctx.Done())
 	go h.flushLoop(ctx)
-	slog.Info("watch hub started", "namespace", h.ns, "resources", len(watchedEntries()))
+	slog.Info("watch hub started", "namespace", h.ns, "resources", len(entries))
 }
 
 func nameOf(obj any) string {
@@ -177,13 +252,37 @@ func nameOf(obj any) string {
 }
 
 func (h *Hub) mark(keys []string, name string) {
+	h.markScoped("", "", "", name, keys)
+}
+
+// PublishStorageChange implements storage.ChangePublisher. Inventory changes
+// are already informer-backed, so they publish directly without a second watch.
+func (h *Hub) PublishStorageChange(providerID, namespace, kind, name string) {
+	keys := []string{"storage", "storage-" + kind}
+	h.markScoped(providerID, namespace, kind, name, keys)
+}
+
+func (h *Hub) markScoped(providerID, namespace, kind, name string, keys []string) {
 	h.mu.Lock()
-	for _, k := range keys {
-		h.pending[k] = struct{}{}
+	scopeKey := strings.Join([]string{providerID, namespace, kind}, "\x00")
+	fr := h.pending[scopeKey]
+	fr.version = 2
+	fr.cluster = h.clusterID
+	fr.providerID = providerID
+	fr.namespace = namespace
+	fr.kind = kind
+	fr.name = name
+	seen := make(map[string]struct{}, len(fr.keys))
+	for _, key := range fr.keys {
+		seen[key] = struct{}{}
 	}
-	if name != "" {
-		h.lastName = name
+	for _, key := range keys {
+		if _, ok := seen[key]; !ok && key != "" {
+			fr.keys = append(fr.keys, key)
+			seen[key] = struct{}{}
+		}
 	}
+	h.pending[scopeKey] = fr
 	h.mu.Unlock()
 }
 
@@ -208,22 +307,21 @@ func (h *Hub) flushOnce() {
 		h.mu.Unlock()
 		return
 	}
-	keys := make([]string, 0, len(h.pending))
-	for k := range h.pending {
-		keys = append(keys, k)
-		delete(h.pending, k)
+	frames := make([]frame, 0, len(h.pending))
+	for key, fr := range h.pending {
+		frames = append(frames, fr)
+		delete(h.pending, key)
 	}
-	name := h.lastName
-	h.lastName = ""
 	clients := make([]*sseClient, 0, len(h.clients))
 	for c := range h.clients {
 		clients = append(clients, c)
 	}
 	h.mu.Unlock()
 
-	fr := frame{keys: keys, name: name}
-	for _, c := range clients {
-		h.send(c, fr)
+	for _, fr := range frames {
+		for _, c := range clients {
+			h.send(c, fr)
+		}
 	}
 }
 
@@ -253,7 +351,7 @@ drain:
 		}
 	}
 	select {
-	case c.ch <- frame{keys: []string{"__all__"}}:
+	case c.ch <- frame{version: 2, cluster: h.clusterID, keys: []string{"__all__"}}:
 	case <-c.done:
 	default:
 	}
@@ -346,7 +444,10 @@ func (h *Hub) ServeSSE(w http.ResponseWriter, r *http.Request) {
 			}
 			flusher.Flush()
 		case fr := <-c.ch:
-			payload, _ := json.Marshal(map[string]any{"keys": fr.keys, "name": fr.name})
+			payload, _ := json.Marshal(map[string]any{
+				"version": fr.version, "cluster": fr.cluster, "providerId": fr.providerID,
+				"namespace": fr.namespace, "resource": fr.kind, "keys": fr.keys, "name": fr.name,
+			})
 			var b strings.Builder
 			b.WriteString("event: change\n")
 			fmt.Fprintf(&b, "data: %s\n\n", payload)

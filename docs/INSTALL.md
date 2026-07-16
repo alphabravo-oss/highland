@@ -75,6 +75,7 @@ helm upgrade --install highland ./chart \
   --set auth.local.createSecret=true \
   --set auth.local.username=admin \
   --set auth.local.password='change-me-strong' \
+  --set longhorn.enabled=true \
   --set longhorn.namespace=longhorn-system \
   --set longhorn.managerService=longhorn-backend \
   --set longhorn.managerPort=9500 \
@@ -263,8 +264,18 @@ Without Redis, use one API replica or sticky sessions at the Ingress.
 
 ## 9. Benchmarks on cluster
 
-When the API pod can reach the Kubernetes API, benchmarks run as fio Jobs and provision a PVC using
-`benchmark.storageClass` (default `longhorn`). The chart grants the required namespaced permissions.
+Real in-cluster benchmarks are opt-in so the default chart has no storage mutation permissions:
+
+```yaml
+benchmark:
+  kubernetesJobEnabled: true
+```
+
+When enabled, benchmarks run as fio Jobs and provision a PVC using the StorageClass selected in the
+UI. `benchmark.storageClass` may set a default; blank requires an explicit selection. Results retain
+provider, CSI driver, class, PVC/PV, node, and topology identity. Failed PVC retention is admin-only
+and requires typing `RETAIN FAILED PVC`; cleanup is the default. When disabled, the offline synthetic
+mode remains available but creates no Kubernetes resources.
 
 ## 10. Upgrade
 
@@ -359,6 +370,8 @@ and adapt the Helm release name to `highland`:
 | `embeddedLonghorn.persistence.defaultClassReplicaCount` | Longhorn default (`3`) | Overrides replicas in the default Longhorn StorageClass. |
 | `embeddedLonghorn.defaultSettings.defaultDataPath` | Longhorn default (`/var/lib/longhorn`) | Overrides the host data path for new Longhorn nodes. |
 | `longhorn.namespace` | `longhorn-system` | Longhorn namespace in bolt-on mode. In embedded mode, the release namespace always wins. |
+| `longhorn.enabled` | `false` | Legacy bolt-on provider switch. Set true when connecting to an existing Longhorn release. |
+| `providers.longhorn.enabled` | `null` | Explicit provider-native override; null synthesizes from the legacy/embedded switch. |
 | `longhorn.managerService` | `longhorn-backend` | Manager Service name in both modes. |
 | `longhorn.managerPort` | `9500` | Manager REST port in both modes. |
 
@@ -377,7 +390,31 @@ The computed manager URL is:
 The API namespace environment variable, RBAC, and manager NetworkPolicy use the same effective
 namespace, so custom bolt-on namespaces remain supported while embedded mode stays co-located.
 
-## 13. Development without Docker
+## 13. Universal storage and Rook/Ceph preview
+
+The common read-only CSI inventory is enabled by default. Cluster scope renders read-only
+ClusterRole access; least-privilege namespace scope renders Roles only in the allowlist and visibly
+omits cluster-scoped PV/driver/attachment metadata:
+
+```yaml
+storage:
+  enabled: true
+  scope:
+    mode: namespaces
+    namespaces: [team-a, team-b]
+  writes:
+    enabled: false
+```
+
+Rook/Ceph is separately opt-in and requires a dedicated read-only Dashboard credential. See the
+[Rook/Ceph provider guide](providers/rook-ceph.md). New storage and Ceph writes are off by default;
+enabling them installs narrowly split roles and the durable operation controller. The pool-delete
+gate remains separate. Review the [storage concepts](storage-control-plane.md),
+[capability matrix](storage-capability-matrix.md), [complete RBAC reference](security/storage-rbac.md),
+[threat model](security/storage-threat-model.md), and [operation runbook](runbooks/storage-operations.md)
+before enabling any write gate.
+
+## 14. Development without Docker
 
 Contributors can still use `go run`, `npm run dev`, or Compose. The production path is Helm plus
 Kubernetes Secrets; shell exports are not required for a cluster install.

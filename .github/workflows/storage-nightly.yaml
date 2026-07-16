@@ -1,0 +1,66 @@
+name: Storage nightly qualification
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts-and-scale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/api/go.sum
+      - name: API contracts, fixtures, race, and 10k inventory target
+        working-directory: apps/api
+        run: go test -race ./internal/storage/... ./internal/providers/... ./internal/watch -count=1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+        working-directory: apps/web
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - name: Shared storage browser scale and accessibility
+        working-directory: apps/web
+        env:
+          CI: true
+          HIGHLAND_ADMIN_USER: admin
+          HIGHLAND_ADMIN_PASSWORD: highland
+        run: npx playwright test e2e/storage.spec.ts
+
+  rook-current:
+    if: ${{ vars.ENABLE_STORAGE_LIVE_CI == 'true' }}
+    runs-on: [self-hosted, storage-lab, rook-current]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate current Rook/Ceph profile
+        env:
+          HIGHLAND_RUN_ID: nightly-${{ github.run_id }}-current
+          HIGHLAND_BASE_URL: ${{ vars.HIGHLAND_CURRENT_URL }}
+          HIGHLAND_USERNAME: ${{ secrets.HIGHLAND_LAB_USERNAME }}
+          HIGHLAND_PASSWORD: ${{ secrets.HIGHLAND_LAB_PASSWORD }}
+        run: ./hack/storage-lab/validate-rook-ceph.sh
+
+  rook-previous:
+    if: ${{ vars.ENABLE_STORAGE_LIVE_CI == 'true' }}
+    runs-on: [self-hosted, storage-lab, rook-previous]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate previous Rook/Ceph profile
+        env:
+          HIGHLAND_RUN_ID: nightly-${{ github.run_id }}-previous
+          HIGHLAND_BASE_URL: ${{ vars.HIGHLAND_PREVIOUS_URL }}
+          HIGHLAND_USERNAME: ${{ secrets.HIGHLAND_LAB_USERNAME }}
+          HIGHLAND_PASSWORD: ${{ secrets.HIGHLAND_LAB_PASSWORD }}
+        run: ./hack/storage-lab/validate-rook-ceph.sh

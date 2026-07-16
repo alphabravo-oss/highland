@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -53,6 +55,49 @@ type Config struct {
 	RedisDB       int
 	// Version reported by compatibility API.
 	Version string
+
+	// Provider-neutral Kubernetes storage inventory and operation policy.
+	StorageEnabled                  bool
+	StorageScopeMode                string
+	StorageNamespaces               []string
+	StorageWritesEnabled            bool
+	StorageOperationRecoveryEnabled bool
+	RequiredProviders               []string
+
+	// Longhorn managed-provider compatibility. ManagerURL remains the legacy
+	// connection setting and is synthesized into this provider when enabled.
+	LonghornEnabled   bool
+	LonghornRequired  bool
+	LonghornNamespace string
+
+	// Optional read-only OpenEBS managed provider. Individual engines are
+	// discovered from their documented drivers, workloads, and CRDs.
+	OpenEBSEnabled   bool
+	OpenEBSNamespace string
+
+	// Optional read-only Rook/Ceph managed provider. Write gates are evaluated
+	// separately by the operation policy.
+	RookCephEnabled                 bool
+	RookCephNamespace               string
+	RookCephClusterName             string
+	RookCephDashboardURL            string
+	RookCephDashboardPublicURL      string
+	RookCephDashboardAllowHTTP      bool
+	RookCephDashboardUsername       string
+	RookCephDashboardPassword       string
+	RookCephDashboardCAFile         string
+	RookCephDashboardInsecureTLS    bool
+	RookCephCredentialRevealEnabled bool
+	RookCephDashboardAdminUsername  string
+	RookCephDashboardAdminSecret    string
+	RookCephPrometheusURL           string
+	RookCephWritesEnabled           bool
+	RookCephAllowStorageClassDelete bool
+	RookCephAllowPoolDelete         bool
+
+	// KubernetesBenchmarkEnabled permits fio Job/PVC and ConfigMap persistence.
+	// Synthetic/offline benchmark records remain available when it is false.
+	KubernetesBenchmarkEnabled bool
 
 	// TrustedProxies are CIDRs of reverse proxies whose forwarding headers we
 	// trust when deriving the client IP. Empty = trust none (use socket peer).
@@ -122,6 +167,36 @@ func LoadFromEnv() (*Config, error) {
 		RedisDB:       envInt("HIGHLAND_REDIS_DB", 0),
 		Version:       envOr("HIGHLAND_VERSION", "0.1.0"),
 
+		StorageEnabled:                  envBool("HIGHLAND_STORAGE_ENABLED", true),
+		StorageScopeMode:                strings.ToLower(envOr("HIGHLAND_STORAGE_SCOPE", "cluster")),
+		StorageNamespaces:               envCSV("HIGHLAND_STORAGE_NAMESPACES"),
+		StorageWritesEnabled:            envBool("HIGHLAND_STORAGE_WRITES_ENABLED", false),
+		StorageOperationRecoveryEnabled: envBool("HIGHLAND_STORAGE_OPERATION_RECOVERY_ENABLED", false),
+		RequiredProviders:               envCSV("HIGHLAND_REQUIRED_PROVIDERS"),
+		LonghornEnabled:                 envBool("HIGHLAND_LONGHORN_ENABLED", true),
+		LonghornRequired:                envBool("HIGHLAND_LONGHORN_REQUIRED", true),
+		LonghornNamespace:               envOr("HIGHLAND_LONGHORN_NAMESPACE", "longhorn-system"),
+		OpenEBSEnabled:                  envBool("HIGHLAND_OPENEBS_ENABLED", false),
+		OpenEBSNamespace:                envOr("HIGHLAND_OPENEBS_NAMESPACE", "openebs"),
+		RookCephEnabled:                 envBool("HIGHLAND_ROOK_CEPH_ENABLED", false),
+		RookCephNamespace:               envOr("HIGHLAND_ROOK_CEPH_NAMESPACE", "rook-ceph"),
+		RookCephClusterName:             envOr("HIGHLAND_ROOK_CEPH_CLUSTER_NAME", "rook-ceph"),
+		RookCephDashboardURL:            strings.TrimRight(os.Getenv("HIGHLAND_ROOK_CEPH_DASHBOARD_URL"), "/"),
+		RookCephDashboardPublicURL:      strings.TrimRight(os.Getenv("HIGHLAND_ROOK_CEPH_DASHBOARD_PUBLIC_URL"), "/"),
+		RookCephDashboardAllowHTTP:      envBool("HIGHLAND_ROOK_CEPH_DASHBOARD_ALLOW_HTTP", false),
+		RookCephDashboardUsername:       os.Getenv("HIGHLAND_ROOK_CEPH_DASHBOARD_USERNAME"),
+		RookCephDashboardPassword:       os.Getenv("HIGHLAND_ROOK_CEPH_DASHBOARD_PASSWORD"),
+		RookCephDashboardCAFile:         os.Getenv("HIGHLAND_ROOK_CEPH_DASHBOARD_CA_FILE"),
+		RookCephDashboardInsecureTLS:    envBool("HIGHLAND_ROOK_CEPH_DASHBOARD_INSECURE_TLS", false),
+		RookCephCredentialRevealEnabled: envBool("HIGHLAND_ROOK_CEPH_CREDENTIAL_REVEAL_ENABLED", false),
+		RookCephDashboardAdminUsername:  envOr("HIGHLAND_ROOK_CEPH_DASHBOARD_ADMIN_USERNAME", "admin"),
+		RookCephDashboardAdminSecret:    envOr("HIGHLAND_ROOK_CEPH_DASHBOARD_ADMIN_SECRET", "rook-ceph-dashboard-password"),
+		RookCephPrometheusURL:           strings.TrimRight(os.Getenv("HIGHLAND_ROOK_CEPH_PROMETHEUS_URL"), "/"),
+		RookCephWritesEnabled:           envBool("HIGHLAND_ROOK_CEPH_WRITES_ENABLED", false),
+		RookCephAllowStorageClassDelete: envBool("HIGHLAND_ROOK_CEPH_ALLOW_STORAGE_CLASS_DELETE", false),
+		RookCephAllowPoolDelete:         envBool("HIGHLAND_ROOK_CEPH_ALLOW_POOL_DELETE", false),
+		KubernetesBenchmarkEnabled:      envBool("HIGHLAND_KUBERNETES_BENCHMARK_ENABLED", true),
+
 		CSRFEnabled:    envBool("HIGHLAND_CSRF_ENABLED", true),
 		CSRFCookieName: envOr("HIGHLAND_CSRF_COOKIE_NAME", "highland_csrf"),
 
@@ -158,8 +233,47 @@ func LoadFromEnv() (*Config, error) {
 	if cfg.BootstrapUsername == "" || cfg.BootstrapPassword == "" {
 		return nil, fmt.Errorf("HIGHLAND_ADMIN_USER and HIGHLAND_ADMIN_PASSWORD are required")
 	}
-	if cfg.ManagerURL == "" {
+	if cfg.LonghornEnabled && cfg.ManagerURL == "" {
 		return nil, fmt.Errorf("HIGHLAND_MANAGER_URL is required")
+	}
+	if cfg.StorageScopeMode != "cluster" && cfg.StorageScopeMode != "namespaces" {
+		return nil, fmt.Errorf("HIGHLAND_STORAGE_SCOPE must be cluster or namespaces")
+	}
+	if cfg.StorageScopeMode == "namespaces" && len(cfg.StorageNamespaces) == 0 {
+		return nil, fmt.Errorf("HIGHLAND_STORAGE_NAMESPACES is required when scope is namespaces")
+	}
+	if cfg.RookCephEnabled && cfg.RookCephDashboardURL != "" && (cfg.RookCephDashboardUsername == "" || cfg.RookCephDashboardPassword == "") {
+		return nil, fmt.Errorf("Rook/Ceph Dashboard username and password are required when dashboard URL is configured")
+	}
+	if cfg.RookCephDashboardPublicURL != "" {
+		publicURL, err := url.Parse(cfg.RookCephDashboardPublicURL)
+		if err != nil || !publicURL.IsAbs() || publicURL.Opaque != "" || publicURL.Host == "" || !validPublicHostname(publicURL.Hostname()) || publicURL.User != nil {
+			return nil, fmt.Errorf("HIGHLAND_ROOK_CEPH_DASHBOARD_PUBLIC_URL must be an absolute URL without userinfo")
+		}
+		if publicURL.RawQuery != "" || publicURL.ForceQuery || publicURL.Fragment != "" {
+			return nil, fmt.Errorf("HIGHLAND_ROOK_CEPH_DASHBOARD_PUBLIC_URL must not contain a query or fragment")
+		}
+		switch strings.ToLower(publicURL.Scheme) {
+		case "https":
+		case "http":
+			if !cfg.RookCephDashboardAllowHTTP {
+				return nil, fmt.Errorf("HIGHLAND_ROOK_CEPH_DASHBOARD_PUBLIC_URL requires HTTPS unless HIGHLAND_ROOK_CEPH_DASHBOARD_ALLOW_HTTP is explicitly enabled for a disposable lab")
+			}
+		default:
+			return nil, fmt.Errorf("HIGHLAND_ROOK_CEPH_DASHBOARD_PUBLIC_URL must use HTTPS")
+		}
+	}
+	if cfg.StorageWritesEnabled && !cfg.StorageEnabled {
+		return nil, fmt.Errorf("HIGHLAND_STORAGE_WRITES_ENABLED requires HIGHLAND_STORAGE_ENABLED")
+	}
+	if cfg.RookCephWritesEnabled && !cfg.RookCephEnabled {
+		return nil, fmt.Errorf("HIGHLAND_ROOK_CEPH_WRITES_ENABLED requires HIGHLAND_ROOK_CEPH_ENABLED")
+	}
+	if cfg.RookCephAllowPoolDelete && !cfg.RookCephWritesEnabled {
+		return nil, fmt.Errorf("HIGHLAND_ROOK_CEPH_ALLOW_POOL_DELETE requires HIGHLAND_ROOK_CEPH_WRITES_ENABLED")
+	}
+	if cfg.RookCephAllowStorageClassDelete && !cfg.RookCephWritesEnabled {
+		return nil, fmt.Errorf("HIGHLAND_ROOK_CEPH_ALLOW_STORAGE_CLASS_DELETE requires HIGHLAND_ROOK_CEPH_WRITES_ENABLED")
 	}
 	return cfg, nil
 }
@@ -205,4 +319,37 @@ func envInt(key string, def int) int {
 		return def
 	}
 	return n
+}
+
+func envCSV(key string) []string {
+	var out []string
+	for _, value := range strings.Split(os.Getenv(key), ",") {
+		if value = strings.TrimSpace(value); value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func validPublicHostname(hostname string) bool {
+	if hostname == "" {
+		return false
+	}
+	if net.ParseIP(hostname) != nil {
+		return true
+	}
+	if len(hostname) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(hostname, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, char := range label {
+			if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') && char != '-' {
+				return false
+			}
+		}
+	}
+	return true
 }

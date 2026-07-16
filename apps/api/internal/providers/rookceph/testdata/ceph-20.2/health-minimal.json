@@ -1,0 +1,6 @@
+{
+  "status": "HEALTH_OK",
+  "health": {"status": "HEALTH_OK", "checks": {}},
+  "mon_status": {"quorum": [0, 1, 2]},
+  "mgr_map": {"available": true, "num_standbys": 1}
+}

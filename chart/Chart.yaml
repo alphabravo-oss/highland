@@ -1,11 +1,14 @@
 apiVersion: v2
 name: highland
-description: Highland management plane for Longhorn — modern console, auth, and BFF
+description: Secure Kubernetes storage control plane for CSI, Longhorn, and Rook/Ceph
 type: application
 version: 0.2.0
 appVersion: "0.1.0"
 keywords:
   - longhorn
+  - csi
+  - ceph
+  - rook
   - storage
   - highland
 maintainers:

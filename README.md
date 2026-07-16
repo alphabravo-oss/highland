@@ -4,11 +4,10 @@
 
 # Highland
 
-### An enterprise-grade alternative UI & management plane for [Longhorn](https://longhorn.io/)
+### A secure Kubernetes storage control plane for CSI, Longhorn, and Rook/Ceph
 
-Highland is a modern, secure console for Longhorn distributed storage — enterprise login (SSO/RBAC),
-live I/O metrics, guided backups, and fio benchmarks — layered on top of your existing Longhorn
-**without changing the data plane**.
+Highland is a modern, secure console for Kubernetes storage: provider-neutral CSI inventory, durable
+guarded workflows, and managed Longhorn and Rook/Ceph views — **without replacing the data plane**.
 
 [![CI](https://github.com/alphabravo-oss/highland/actions/workflows/ci.yaml/badge.svg)](https://github.com/alphabravo-oss/highland/actions/workflows/ci.yaml)
 [![Publish images](https://github.com/alphabravo-oss/highland/actions/workflows/release.yaml/badge.svg)](https://github.com/alphabravo-oss/highland/actions/workflows/release.yaml)
@@ -30,9 +29,8 @@ live I/O metrics, guided backups, and fio benchmarks — layered on top of your 
 
 ## Why Highland
 
-Longhorn ships a capable UI — Highland is what you reach for when you need to run it like a **product**:
-a hardened access model, an operator-grade console, and workflows that make day-2 storage administration
-boringly easy.
+Kubernetes storage spans API objects, CSI drivers, and backend-specific consoles. Highland brings
+those facts into one hardened operator experience while keeping Kubernetes authoritative.
 
 - **Enterprise access, built in** — local admin, OIDC/SSO, RBAC (admin vs. viewer), and an audit log.
   The browser **never** talks to the Longhorn manager directly; everything flows through an authenticated
@@ -44,9 +42,13 @@ boringly easy.
   destructive action. Light / dark / system themes. English & Spanish.
 - **Guided backups** — a step-by-step wizard for S3 / NFS / Azure backup targets and credentials, plus
   full snapshot, backup, restore, DR-standby, and recurring-job management.
-- **Full Longhorn parity — and beyond** — volumes, nodes & disks, backing images, engine images,
+- **Universal CSI inventory** — drivers, classes, claims/PVs, workloads, snapshots, attachments,
+  capacity, topology, and events, including unknown CSI drivers without custom code.
+- **Managed providers** — Longhorn volumes, nodes & disks, backing images, engine images,
   instance managers, orphans, system backups, support bundles, and every manager setting (grouped, with
-  a danger zone and inline docs).
+  a danger zone and inline docs), plus opt-in read-only Rook/Ceph health, pools, OSDs, RBD, and CephFS.
+- **Guarded workflows** — typed plans, role and namespace policy, expiring confirmation, durable
+  Kubernetes operations, fresh preflight, audit, and read-only defaults.
 - **Kubernetes-native** — Helm chart, stateless signed-cookie sessions (no Redis), Kubernetes Secrets
   for credentials, and ConfigMap-persisted benchmark history. Nothing to babysit.
 
@@ -67,6 +69,7 @@ helm install highland oci://ghcr.io/alphabravo-oss/charts/highland \
   --namespace highland-system --create-namespace \
   --set auth.local.createSecret=true \
   --set auth.local.password='change-me' \
+  --set longhorn.enabled=true \
   --set longhorn.namespace=longhorn-system
 ```
 
@@ -130,19 +133,19 @@ docker compose -f deploy/docker-compose.yaml up --build
 ## Architecture
 
 ```text
-Browser ──▶ highland-web (nginx)  ──▶ highland-api (BFF)  ──▶ longhorn-backend:9500
-            static console            authn/z · RBAC · audit    (Longhorn manager REST)
-                                       stateless signed cookie
+Browser ──▶ highland-web ──▶ highland-api ──▶ Kubernetes APIs (CSI inventory + operations)
+            static console    auth/RBAC/audit ├──▶ Longhorn manager (managed adapter + legacy API)
+                              signed sessions └──▶ Rook CRDs · Ceph Dashboard GET · Prometheus
 ```
 
-Highland never proxies the Longhorn manager to the browser. The **BFF** terminates auth, enforces RBAC,
-rewrites manager links, negotiates content types, and audits every mutation — so the manager API is never
-directly exposed.
+The browser never receives Kubernetes/provider credentials or direct provider access. The **BFF**
+terminates auth, enforces action and namespace policy, serves informer-backed inventory, and audits
+mutations. Highland does not call CSI sockets or expose a raw Ceph proxy.
 
 ```text
 highland/
 ├── apps/
-│   ├── api/    # Go BFF (chi): /auth, /healthz, /api/v1/lh/*, status, benchmarks
+│   ├── api/    # Go BFF: auth, CSI inventory, provider adapters, durable operations, legacy Longhorn
 │   └── web/    # React 19 + Vite + TypeScript + Tailwind 4 console
 ├── chart/      # Helm chart (api + web + RBAC + NetworkPolicy)
 └── docs/       # install, k3s, UX, parity matrix
@@ -158,11 +161,17 @@ highland/
 | **SSO / OIDC** | Configure `auth.oidc.*`; users map to admin/viewer roles. |
 | **Backups** | Use the in-app **backup setup wizard** (S3 / NFS / Azure) — it provisions the credential Secret and backup target for you. |
 | **Sessions** | Stateless HMAC-signed cookies — no Redis, no external session store. |
-| **Longhorn namespace** | `longhorn.namespace` (default `longhorn-system`). |
+| **Universal storage** | `storage.enabled=true`; choose cluster or namespace-allowlist scope. |
+| **Storage writes** | `storage.writes.enabled=false` by default; approved workflows use durable `StorageOperation` records. |
+| **Longhorn provider** | `longhorn.enabled=true` for the legacy bolt-on switch, or `providers.longhorn.enabled`; namespace defaults to `longhorn-system`. |
+| **Rook/Ceph provider** | Opt in with `providers.rookCeph.enabled=true` and a dedicated read-only Dashboard Secret. |
 | **Embedded Longhorn** | `embeddedLonghorn.enabled=true` installs pinned Longhorn 1.12.0 in the release namespace; default is `false`. |
 | **Embedded tuning** | Pass Longhorn chart values under `embeddedLonghorn.*`; the stock UI remains off by default. |
 
-Full reference: **[docs/INSTALL.md](docs/INSTALL.md)**.
+Full references: **[install](docs/INSTALL.md)**, **[storage control plane](docs/storage-control-plane.md)**,
+**[capability matrix](docs/storage-capability-matrix.md)**, **[compatibility matrix](docs/compatibility.yaml)**,
+**[RBAC](docs/security/storage-rbac.md)**, **[troubleshooting](docs/troubleshooting-storage.md)**, and
+**[OpenAPI](docs/openapi/storage-v1.yaml)**.
 
 ---
 

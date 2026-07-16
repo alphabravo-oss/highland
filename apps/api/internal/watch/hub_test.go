@@ -63,9 +63,10 @@ func waitUntil(t *testing.T, cond func() bool) {
 
 func newTestHub() *Hub {
 	return &Hub{
-		clients: map[*sseClient]struct{}{},
-		pending: map[string]struct{}{},
-		ns:      "longhorn-system",
+		clients:   map[*sseClient]struct{}{},
+		pending:   map[string]frame{},
+		ns:        "longhorn-system",
+		clusterID: "local",
 	}
 }
 
@@ -204,6 +205,17 @@ func TestWatchedEntriesMappingIsSane(t *testing.T) {
 		if e.gvr.Resource != "events" && e.gvr.Group != "longhorn.io" {
 			t.Fatalf("unexpected group for %s: %q", e.gvr.Resource, e.gvr.Group)
 		}
+	}
+}
+
+func TestScopedStorageFrame(t *testing.T) {
+	h := newTestHub()
+	c, _ := h.subscribe()
+	h.PublishStorageChange("rook-ceph", "tenant-a", "claims", "data")
+	h.flushOnce()
+	fr := <-c.ch
+	if fr.version != 2 || fr.cluster != "local" || fr.providerID != "rook-ceph" || fr.namespace != "tenant-a" || fr.kind != "claims" || fr.name != "data" {
+		t.Fatalf("unexpected scoped frame: %#v", fr)
 	}
 }
 

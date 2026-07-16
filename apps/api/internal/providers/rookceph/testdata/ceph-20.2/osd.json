@@ -1,0 +1,5 @@
+[
+  {"id": 0, "up": 1, "in": 1, "state": ["exists", "up"], "device_class": "ssd"},
+  {"id": 1, "up": 1, "in": 1, "state": ["exists", "up"], "device_class": "ssd"},
+  {"id": 2, "up": 1, "in": 1, "state": ["exists", "up"], "device_class": "ssd"}
+]

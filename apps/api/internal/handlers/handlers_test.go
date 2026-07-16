@@ -33,6 +33,9 @@ func testDeps(t *testing.T, managerURL string) handlers.Deps {
 		OIDCMock:          true, // tests that need mock; production default is false
 		Version:           "0.1.0-test",
 		AllowedOrigins:    []string{"http://localhost:5173"},
+		StorageEnabled:    false,
+		LonghornEnabled:   true,
+		LonghornRequired:  true,
 	}
 	users := auth.NewUserStoreFromEnv(cfg.BootstrapUsername, cfg.BootstrapPassword)
 	store := auth.NewStore(cfg.SessionTTL)

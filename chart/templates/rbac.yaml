@@ -1,4 +1,355 @@
-# Allow highland-api to create fio Jobs for benchmarks (in-cluster)
+{{- if .Values.storage.enabled }}
+{{- if eq .Values.storage.scope.mode "cluster" }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "highland.fullname" . }}-storage-read
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes", "persistentvolumeclaims", "pods", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "csidrivers", "csinodes", "csistoragecapacities", "volumeattachments", "volumeattributesclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots", "volumesnapshotclasses", "volumesnapshotcontents"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-storage-read
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "highland.fullname" . }}-storage-read
+---
+{{- else }}
+{{- range .Values.storage.scope.namespaces }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "highland.fullname" $ }}-storage-read
+  namespace: {{ . | quote }}
+  labels:
+    {{- include "highland.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims", "pods", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["csistoragecapacities"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "highland.fullname" $ }}-storage-read
+  namespace: {{ . | quote }}
+  labels:
+    {{- include "highland.labels" $ | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" $ }}
+    namespace: {{ $.Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "highland.fullname" $ }}-storage-read
+---
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if .Values.storage.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "highland.fullname" . }}-storage-operations-read
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["highland.io"]
+    resources: ["storageoperations"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-storage-operations-read
+  namespace: {{ .Release.Namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "highland.fullname" . }}-storage-operations-read
+---
+{{- end }}
+{{- if and .Values.storage.enabled (or .Values.storage.writes.enabled .Values.storage.writes.recoveryEnabled) }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "highland.fullname" . }}-storage-operation-controller
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: ["highland.io"]
+    resources: ["storageoperations"]
+    # Delete is required by the elected controller's terminal-object retention
+    # job. Audit records are stored separately and are never deleted here.
+    verbs: ["get", "list", "watch", "delete"{{ if .Values.storage.writes.enabled }}, "create"{{ end }}]
+  - apiGroups: ["highland.io"]
+    resources: ["storageoperations/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    resourceNames: ["highland-storage-operations"]
+    verbs: ["get", "update", "patch"]
+  # A create request cannot be constrained by resourceNames. This Role is in
+  # Highland's own namespace; all subsequent lease access is name-scoped.
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-storage-operation-controller
+  namespace: {{ .Release.Namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "highland.fullname" . }}-storage-operation-controller
+---
+{{- if or .Values.storage.writes.enabled .Values.storage.writes.recoveryEnabled }}
+{{- if eq .Values.storage.scope.mode "cluster" }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "highland.fullname" . }}-namespaced-storage-writer
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-namespaced-storage-writer
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "highland.fullname" . }}-namespaced-storage-writer
+---
+{{- else }}
+{{- range .Values.storage.scope.namespaces }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "highland.fullname" $ }}-storage-writer
+  namespace: {{ . | quote }}
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "highland.fullname" $ }}-storage-writer
+  namespace: {{ . | quote }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" $ }}
+    namespace: {{ $.Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "highland.fullname" $ }}-storage-writer
+---
+{{- end }}
+{{- end }}
+{{- if and .Values.storage.enabled (or .Values.storage.writes.enabled .Values.storage.writes.recoveryEnabled) .Values.providers.rookCeph.enabled .Values.providers.rookCeph.writes.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "highland.fullname" . }}-ceph-storageclass-writer
+rules:
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"{{ if .Values.providers.rookCeph.writes.allowStorageClassDelete }}, "delete"{{ end }}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-ceph-storageclass-writer
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "highland.fullname" . }}-ceph-storageclass-writer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "highland.fullname" . }}-ceph-pool-writer
+  namespace: {{ .Values.providers.rookCeph.namespace | quote }}
+rules:
+  - apiGroups: ["ceph.rook.io"]
+    resources: ["cephblockpools"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"{{ if .Values.providers.rookCeph.writes.allowPoolDelete }}, "delete"{{ end }}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-ceph-pool-writer
+  namespace: {{ .Values.providers.rookCeph.namespace | quote }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "highland.fullname" . }}-ceph-pool-writer
+---
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if .Values.providers.openebs.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "highland.fullname" . }}-openebs-read
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["openebs.io"]
+    resources: ["diskpools"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["local.openebs.io"]
+    resources: ["lvmnodes", "lvmvolumes", "lvmsnapshots"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["zfs.openebs.io"]
+    resources: ["zfsnodes", "zfsvolumes", "zfssnapshots", "zfsbackups", "zfsrestores"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-openebs-read
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "highland.fullname" . }}-openebs-read
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "highland.fullname" . }}-openebs-components-read
+  namespace: {{ .Values.providers.openebs.namespace | quote }}
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-openebs-components-read
+  namespace: {{ .Values.providers.openebs.namespace | quote }}
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "highland.fullname" . }}-openebs-components-read
+---
+{{- end }}
+{{- if .Values.providers.rookCeph.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "highland.fullname" . }}-rook-ceph-read
+  namespace: {{ .Values.providers.rookCeph.namespace | quote }}
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["rook-ceph-operator"]
+    verbs: ["get"]
+  - apiGroups: ["ceph.rook.io"]
+    resources: ["cephclusters", "cephblockpools", "cephfilesystems", "cephrbdmirrors"]
+    verbs: ["get", "list", "watch"]
+  {{- if .Values.providers.rookCeph.dashboard.credentialReveal.enabled }}
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: [{{ default "rook-ceph-dashboard-password" .Values.providers.rookCeph.dashboard.credentialReveal.secretName | quote }}]
+    verbs: ["get"]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-rook-ceph-read
+  namespace: {{ .Values.providers.rookCeph.namespace | quote }}
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "highland.fullname" . }}-rook-ceph-read
+---
+{{- end }}
+{{- if .Values.benchmark.kubernetesJobEnabled }}
+# Allow highland-api to create fio Jobs for explicitly enabled benchmarks.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -36,6 +387,8 @@ roleRef:
   kind: Role
   name: {{ include "highland.fullname" . }}-benchmark
 ---
+{{- end }}
+{{- if eq (include "highland.longhornEnabled" .) "true" }}
 # Read-only access in the Longhorn namespace to report the Longhorn version
 # (longhorn-manager DaemonSet image tag) on the Status page.
 apiVersion: rbac.authorization.k8s.io/v1
@@ -94,3 +447,4 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ include "highland.fullname" . }}-longhorn-read
+{{- end }}

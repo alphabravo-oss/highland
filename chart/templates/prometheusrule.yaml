@@ -1,0 +1,109 @@
+{{- if and .Values.metrics.enabled .Values.metrics.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "highland.fullname" . }}-storage
+  {{- with .Values.metrics.prometheusRule.namespace }}
+  namespace: {{ . }}
+  {{- end }}
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+    {{- with .Values.metrics.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: highland.storage
+      rules:
+        - alert: HighlandStorageCacheNotSynced
+          expr: max(time() - highland_storage_sync_timestamp_seconds) > 300
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Highland storage inventory has not synchronized recently
+            description: Check Kubernetes API connectivity, informer permissions, and watch errors.
+        - alert: HighlandStorageProviderUnavailable
+          expr: highland_storage_provider_up == 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: A configured Highland storage provider is unavailable
+            description: Provider {{ "{{" }} $labels.provider {{ "}}" }} ({{ "{{" }} $labels.kind {{ "}}" }}) has remained unhealthy.
+        - alert: HighlandStorageWatchFailures
+          expr: increase(highland_storage_watch_errors_total[10m]) > 3
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Highland storage watches are repeatedly failing
+            description: Source {{ "{{" }} $labels.source {{ "}}" }} is reconnecting repeatedly; cached data may become stale.
+        - alert: HighlandStorageProviderErrors
+          expr: increase(highland_storage_provider_errors_total[10m]) > 5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Highland provider requests are repeatedly failing
+            description: Provider {{ "{{" }} $labels.provider {{ "}}" }} is reporting repeated {{ "{{" }} $labels.reason {{ "}}" }} failures.
+        - alert: HighlandStorageAuthoritativeDrift
+          expr: sum by (provider) (highland_storage_drift_records{severity=~"warning|error"}) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Highland observes sustained storage desired/runtime drift
+            description: Provider {{ "{{" }} $labels.provider {{ "}}" }} has evidence-backed drift outside the reconciliation grace period.
+        - alert: HighlandStorageUnresolvedRelationships
+          expr: highland_storage_unresolved_relationships > 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: Highland cannot authoritatively resolve storage relationships
+            description: Provider {{ "{{" }} $labels.provider {{ "}}" }} has unresolved backend correlation; destructive impact checks will fail closed.
+        - alert: HighlandStorageImpactFailures
+          expr: increase(highland_storage_impact_failures_total[15m]) > 3
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Highland storage impact analysis is repeatedly incomplete
+            description: Provider {{ "{{" }} $labels.provider {{ "}}" }} impact checks report {{ "{{" }} $labels.reason {{ "}}" }}.
+        {{- if or .Values.storage.writes.enabled .Values.storage.writes.recoveryEnabled }}
+        - alert: HighlandStorageOperationLeaderAbsent
+          expr: sum(highland_storage_operation_controller_leader) < 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: No Highland storage operation controller leader is active
+            description: Pending and running durable storage operations cannot make progress.
+        - alert: HighlandStorageOperationStuck
+          expr: min_over_time(highland_storage_operations_in_progress[30m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: A Highland storage workflow has remained in progress
+            description: Review the durable operation timeline and provider health before retrying.
+        - alert: HighlandStorageOperationRetries
+          expr: increase(highland_storage_operation_retries_total[15m]) > 5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Highland storage operations are repeatedly retrying
+            description: Provider {{ "{{" }} $labels.provider {{ "}}" }} has repeated {{ "{{" }} $labels.reason {{ "}}" }} retries.
+        - alert: HighlandStorageCephPostflightMismatch
+          expr: increase(highland_storage_postflight_mismatches_total{provider="rook-ceph",kind="CephBlockPool"}[15m]) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: Highland observed a Ceph pool postflight mismatch
+            description: Rook desired state and fresh Ceph runtime state did not agree after an approved pool operation. Inspect the durable operation and Ceph health; do not force cleanup.
+        {{- end }}
+{{- end }}

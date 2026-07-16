@@ -35,7 +35,7 @@ import {
   type RecurringJob,
   type Setting,
   type SystemBackup,
-  type Volume,
+  type LonghornVolume,
 } from './longhorn'
 
 // Adaptive polling: when the SSE change stream is healthy, fall back to a slow
@@ -62,10 +62,11 @@ export function useEvents() {
   })
 }
 
-export function useVolumes() {
+export function useVolumes(enabled = true) {
   return useQuery({
     queryKey: ['volumes'],
     queryFn: () => volumesApi.list(),
+    enabled,
     ...usePoll(),
   })
 }
@@ -88,20 +89,22 @@ export function useNode(name: string | undefined) {
   })
 }
 
-export function useNodes() {
+export function useNodes(enabled = true) {
   return useQuery({
     queryKey: ['nodes'],
     queryFn: () => nodesApi.list(),
+    enabled,
     ...usePoll(),
   })
 }
 
 export type StatusResponse = {
   highland: { version: string; sessionBackend: string; benchmarkMode: string }
-  longhorn: { version: string; namespace: string; managerUrl: string; reachable: boolean; supported: string[] }
+  longhorn: { enabled: boolean; version: string; namespace: string; managerUrl: string; reachable: boolean; supported: string[] }
   kubernetes: { version: string }
   components: { api: string; managerProxy: string; metricsScraper: string; scrapeError: string }
   vendor: { name: string; url: string; tagline: string }
+  storage?: { ready: boolean; lastSync?: string; snapshotApi?: boolean; providers?: Array<{ id: string; displayName: string; supportLevel: string; health: { status: string } }> }
 }
 
 export function useStatus() {
@@ -239,8 +242,8 @@ export function useCreateVolume() {
 export function useDeleteVolume() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (vol: Volume) => volumesApi.remove(vol),
-    ...optimisticRemove<Volume, Volume>(qc, 'volumes', (v) => v.name, ['volumes', 'dashboard'], {
+    mutationFn: (vol: LonghornVolume) => volumesApi.remove(vol),
+    ...optimisticRemove<LonghornVolume, LonghornVolume>(qc, 'volumes', (v) => v.name, ['volumes', 'dashboard'], {
       refetchOnSuccess: false,
     }),
   })
@@ -254,7 +257,7 @@ export function useVolumeAction() {
       action,
       params,
     }: {
-      vol: Volume
+      vol: LonghornVolume
       action: string
       params?: Record<string, unknown>
     }) => volumesApi.action(vol, action, params),
@@ -529,10 +532,11 @@ export function usePreflight() {
   })
 }
 
-export function useCapacity() {
+export function useCapacity(enabled = true) {
   return useQuery({
     queryKey: ['capacity'],
     queryFn: () => highlandGet<{ usedBytes: number; totalBytes: number; note: string; seriesCount: number }>('/capacity'),
+    enabled,
     refetchInterval: 15_000,
   })
 }

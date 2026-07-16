@@ -24,6 +24,7 @@ func RequireRole(auditStore *audit.Store, m *observability.Metrics) func(http.Ha
 			path := r.URL.Path
 			// Admin-only Highland surfaces
 			if strings.HasPrefix(path, "/api/v1/audit") ||
+				strings.HasPrefix(path, "/api/v1/admin") ||
 				strings.HasPrefix(path, "/api/v1/users") ||
 				strings.HasPrefix(path, "/api/v1/auth/oidc-config") {
 				if !auth.AdminOnly(user.Role) {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Activity, Gauge } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
@@ -20,6 +20,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
+import { useStorageList } from '@/api/storage/hooks'
+import type { StorageClassSummary } from '@/api/storage/types'
 
 // Human-readable rendering for the raw fio result keys.
 const BENCH_METRICS: Array<{ key: string; labelKey: string; fmt: (v: number) => string }> = [
@@ -127,16 +129,29 @@ export function PerformancePage() {
 
 export function BenchmarksPage() {
   const { t } = useAppTranslation()
-  const { canMutate } = useAuth()
+  const { canMutate, isAdmin } = useAuth()
   const q = useBenchmarks()
   const create = useCreateBenchmark()
   const del = useDeleteBenchmark()
   const nodesQ = useNodes()
+  const classesQ = useStorageList<StorageClassSummary>('classes', { limit: 500 })
   const [profile, setProfile] = useState('quick')
   const [nodeName, setNodeName] = useState('')
+  const [storageClass, setStorageClass] = useState('')
+  const [retainFailedPvc, setRetainFailedPvc] = useState(false)
+  const [retainConfirmation, setRetainConfirmation] = useState('')
   const [deleteBench, setDeleteBench] = useState<string | null>(null)
 
   const nodeNames = (nodesQ.data ?? []).map((n) => n.name).filter(Boolean)
+  const storageClasses = classesQ.data?.data ?? []
+
+  useEffect(() => {
+    if (!storageClass && storageClasses.length > 0) {
+      setStorageClass(storageClasses.find((item) => item.default)?.name ?? storageClasses[0]?.name ?? '')
+    }
+  }, [storageClass, storageClasses])
+
+  const selectedClass = storageClasses.find((item) => item.name === storageClass)
 
   function formatBenchResults(results: Record<string, number>) {
     const out: Array<{ key: string; label: string; value: string }> = []
@@ -174,6 +189,20 @@ export function BenchmarksPage() {
                 <option value="thorough">{t('performance.profileThorough')}</option>
               </Select>
               <Select
+                value={storageClass}
+                onChange={(e) => setStorageClass(e.target.value)}
+                className="h-8 w-auto"
+                aria-label="Storage class"
+                disabled={create.isPending || classesQ.isLoading}
+              >
+                <option value="">Select StorageClass</option>
+                {storageClasses.map((item) => (
+                  <option key={item.name} value={item.name}>
+                    {item.name} · {item.provisioner}
+                  </option>
+                ))}
+              </Select>
+              <Select
                 value={nodeName}
                 onChange={(e) => setNodeName(e.target.value)}
                 className="h-8 w-auto"
@@ -187,15 +216,42 @@ export function BenchmarksPage() {
                   </option>
                 ))}
               </Select>
+              {isAdmin ? (
+                <label className="flex items-center gap-1.5 text-xs text-[var(--color-muted-foreground)]">
+                  <input
+                    type="checkbox"
+                    checked={retainFailedPvc}
+                    onChange={(event) => {
+                      setRetainFailedPvc(event.target.checked)
+                      if (!event.target.checked) setRetainConfirmation('')
+                    }}
+                  />
+                  Retain failed PVC
+                </label>
+              ) : null}
+              {retainFailedPvc ? (
+                <input
+                  className="h-8 rounded-md border bg-transparent px-2 text-xs"
+                  aria-label="Retain failed PVC confirmation"
+                  placeholder="RETAIN FAILED PVC"
+                  value={retainConfirmation}
+                  onChange={(event) => setRetainConfirmation(event.target.value)}
+                />
+              ) : null}
               <Button
                 type="button"
                 size="sm"
                 data-testid="run-benchmark"
-                disabled={create.isPending}
+                disabled={create.isPending || !storageClass || (retainFailedPvc && retainConfirmation !== 'RETAIN FAILED PVC')}
                 onClick={() =>
                   void create.mutateAsync({
                     profile,
                     type: 'Disk',
+                    storageClass,
+                    accessMode: 'ReadWriteOnce',
+                    volumeMode: 'Filesystem',
+                    retainFailedPvc,
+                    ...(retainFailedPvc ? { retainConfirmation } : {}),
                     // Omit nodeName for "any node" so the scheduler places it;
                     // otherwise target the chosen node.
                     ...(nodeName ? { nodeName } : {}),
@@ -204,6 +260,11 @@ export function BenchmarksPage() {
               >
                 <Gauge size={14} /> {t('performance.runBenchmark')}
               </Button>
+              {selectedClass ? (
+                <span className="basis-full text-right text-xs text-[var(--color-muted-foreground)]">
+                  Provider {selectedClass.providerId} · CSI {selectedClass.provisioner}
+                </span>
+              ) : null}
             </div>
           ) : null
         }
@@ -224,6 +285,13 @@ export function BenchmarksPage() {
                 <div className="text-xs text-[var(--color-muted-foreground)]">
                   {String(b.profile)} · {String(b.phase)} · {String(b.message ?? '')}
                 </div>
+                {b.storageClass ? (
+                  <div className="text-xs text-[var(--color-muted-foreground)]">
+                    {String(b.providerId ?? 'unknown provider')} · {String(b.csiDriver ?? 'unknown driver')} · {String(b.storageClass)}
+                    {b.pvcName ? ` · PVC ${String(b.pvcName)}` : ''}
+                    {b.pvName ? ` · PV ${String(b.pvName)}` : ''}
+                  </div>
+                ) : null}
                 {b.results && typeof b.results === 'object' ? (
                   <div className="mt-2 grid max-w-lg grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3">
                     {formatBenchResults(b.results as Record<string, number>).map((m) => (

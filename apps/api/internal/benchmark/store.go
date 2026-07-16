@@ -26,20 +26,27 @@ type Benchmark struct {
 	Type     string `json:"type"`
 	NodeName string `json:"nodeName,omitempty"`
 	Profile  string `json:"profile"`
-	// StorageClass targets a Longhorn StorageClass for a freshly-provisioned PVC
-	// (defaults to the runner's HIGHLAND_FIO_STORAGECLASS, commonly "longhorn").
+	// StorageClass selects the CSI provisioning profile for a new test PVC.
 	StorageClass string `json:"storageClass,omitempty"`
 	// Size is the requested PVC size (defaults to HIGHLAND_FIO_SIZE, e.g. 10Gi).
 	Size string `json:"size,omitempty"`
 	// PVCName references an existing PVC to benchmark instead of creating one.
-	PVCName   string             `json:"pvcName,omitempty"`
-	Phase     Phase              `json:"phase"`
-	Message   string             `json:"message,omitempty"`
-	CreatedAt time.Time          `json:"createdAt"`
-	Completed *time.Time         `json:"completedAt,omitempty"`
-	Results   map[string]float64 `json:"results,omitempty"`
-	FioCmd    string             `json:"fioCmd,omitempty"`
-	Mode      string             `json:"mode,omitempty"` // synthetic | kubernetes-job
+	PVCName            string             `json:"pvcName,omitempty"`
+	PVName             string             `json:"pvName,omitempty"`
+	CSIDriver          string             `json:"csiDriver,omitempty"`
+	ProviderID         string             `json:"providerId,omitempty"`
+	AccessMode         string             `json:"accessMode,omitempty"`
+	VolumeMode         string             `json:"volumeMode,omitempty"`
+	Topology           map[string]string  `json:"topology,omitempty"`
+	RetainFailedPVC    bool               `json:"retainFailedPvc,omitempty"`
+	RetainConfirmation string             `json:"-"`
+	Phase              Phase              `json:"phase"`
+	Message            string             `json:"message,omitempty"`
+	CreatedAt          time.Time          `json:"createdAt"`
+	Completed          *time.Time         `json:"completedAt,omitempty"`
+	Results            map[string]float64 `json:"results,omitempty"`
+	FioCmd             string             `json:"fioCmd,omitempty"`
+	Mode               string             `json:"mode,omitempty"` // synthetic | kubernetes-job
 }
 
 // Store manages benchmarks (synthetic and/or k8s Job).
@@ -147,6 +154,9 @@ func (s *Store) Create(b Benchmark) (*Benchmark, error) {
 	b.FioCmd = fioCmdFor(b.Profile)
 	b.Results = map[string]float64{}
 	if s.runner != nil && s.runner.Available() {
+		if err := s.runner.Prepare(&b); err != nil {
+			return nil, err
+		}
 		b.Mode = "kubernetes-job"
 		b.Message = "queued fio Job"
 	} else {
@@ -159,8 +169,8 @@ func (s *Store) Create(b Benchmark) (*Benchmark, error) {
 	s.mu.Unlock()
 	s.persistItem(b.Name)
 
-	go s.run(b.Name)
 	cp := b
+	go s.run(b.Name)
 	return &cp, nil
 }
 
@@ -191,13 +201,16 @@ func (s *Store) run(name string) {
 	b.Phase = PhaseRunning
 	mode := b.Mode
 	req := Benchmark{
-		Name:         b.Name,
-		NodeName:     b.NodeName,
-		Profile:      b.Profile,
-		StorageClass: b.StorageClass,
-		Size:         b.Size,
-		PVCName:      b.PVCName,
-		FioCmd:       b.FioCmd,
+		Name:            b.Name,
+		NodeName:        b.NodeName,
+		Profile:         b.Profile,
+		StorageClass:    b.StorageClass,
+		Size:            b.Size,
+		PVCName:         b.PVCName,
+		AccessMode:      b.AccessMode,
+		VolumeMode:      b.VolumeMode,
+		RetainFailedPVC: b.RetainFailedPVC,
+		FioCmd:          b.FioCmd,
 	}
 	profile := b.Profile
 	s.mu.Unlock()
@@ -222,6 +235,8 @@ func (s *Store) run(name string) {
 			bb.Phase = PhaseSucceeded
 			bb.Message = msg
 			bb.Results = res
+			bb.StorageClass, bb.PVCName, bb.PVName = req.StorageClass, req.PVCName, req.PVName
+			bb.CSIDriver, bb.ProviderID, bb.NodeName, bb.Topology = req.CSIDriver, req.ProviderID, req.NodeName, req.Topology
 		}
 		s.mu.Unlock()
 		s.persistItem(name)

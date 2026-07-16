@@ -3,7 +3,23 @@ Highland chart {{ .Chart.Version }} (app {{ .Chart.AppVersion }}) installed in n
 Components:
   - API:  {{ include "highland.fullname" . }}-api
   - Web:  {{ include "highland.fullname" . }}-web
+  - Universal CSI inventory: {{ .Values.storage.enabled }} (scope: {{ .Values.storage.scope.mode }})
+{{- if eq (include "highland.longhornEnabled" .) "true" }}
   - Longhorn manager: {{ include "highland.managerUrl" . }}
+{{- end }}
+{{- if .Values.providers.rookCeph.enabled }}
+  - Rook/Ceph: enabled in {{ .Values.providers.rookCeph.namespace }} (read-only by default)
+
+IMPORTANT — Rook/Ceph credentials:
+  - Use a dedicated least-privilege Dashboard reader in Secret
+    {{ .Values.providers.rookCeph.dashboard.existingSecret | default "<not configured>" }}.
+  - Do not use Rook's generated Dashboard administrator password.
+  - TLS verification is the default; insecureSkipVerify is for disposable labs only.
+  - See docs/providers/rook-ceph.md before enabling Ceph writes.
+{{- end }}
+{{- if .Values.providers.openebs.enabled }}
+  - OpenEBS: enabled in {{ .Values.providers.openebs.namespace }} (read-only provider insights)
+{{- end }}
 {{- if .Values.embeddedLonghorn.enabled }}
   - Embedded Longhorn: enabled (chart 1.12.0; stock UI replicas: {{ .Values.embeddedLonghorn.longhornUI.replicas }})
 
@@ -34,7 +50,10 @@ Access (port-forward):
 {{- end }}
 
 NetworkPolicy: {{ .Values.networkPolicy.enabled }}
-  Highland API may reach Longhorn manager; browsers never talk to longhorn-backend.
+  The API may reach only configured provider/Kubernetes endpoints; browsers never receive provider credentials.
+
+Storage writes: {{ .Values.storage.writes.enabled }}
+  Read-only is the default. Approved writes use durable StorageOperation records.
 
 Next:
 {{- if .Values.embeddedLonghorn.enabled }}

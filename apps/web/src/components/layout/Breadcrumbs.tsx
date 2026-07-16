@@ -8,7 +8,7 @@ type BreadcrumbsProps = {
 export function Breadcrumbs({ pathname }: BreadcrumbsProps) {
   const { t } = useAppTranslation()
   const item = findNavItem(pathname)
-  const title = item ? t(item.labelKey) : t('app.name')
+  const title = item ? t(item.labelKey, { defaultValue: item.label }) : t('app.name')
 
   return (
     <nav aria-label="Breadcrumb" className="min-w-0 flex-1" data-testid="breadcrumbs">

@@ -15,6 +15,7 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/middleware"
 	"github.com/highland-io/highland/apps/api/internal/observability"
 	"github.com/highland-io/highland/apps/api/internal/ratelimit"
+	"github.com/highland-io/highland/apps/api/internal/storage"
 )
 
 // API groups HTTP handlers for Highland native endpoints.
@@ -27,6 +28,7 @@ type API struct {
 	OIDCRuntime *auth.OIDCRuntime  // runtime-configurable enterprise SSO
 	Limiter     *ratelimit.LoginLimiter
 	Obs         *observability.Metrics
+	Storage     *storage.HTTPAPI
 	Started     time.Time
 }
 
@@ -49,28 +51,56 @@ func (a *API) Healthz(w http.ResponseWriter, r *http.Request) {
 
 // Readyz returns readiness.
 func (a *API) Readyz(w http.ResponseWriter, r *http.Request) {
-	if a.Cfg == nil || a.Cfg.ManagerURL == "" {
+	if a.Cfg == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 			"status": "not_ready",
-			"reason": "manager url not configured",
+			"reason": "configuration unavailable",
 		})
 		return
 	}
-	// Fast, bounded reachability probe to the Longhorn manager. A configured
-	// URL is not enough — the manager must actually answer.
-	if err := a.managerReachable(r.Context()); err != nil {
+	if a.Cfg.StorageEnabled && (a.Storage == nil || !a.Storage.Ready()) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"status":     "not_ready",
-			"reason":     "manager unreachable: " + err.Error(),
-			"managerUrl": a.Cfg.ManagerURL,
+			"status": "not_ready", "reason": "storage core cache is not ready",
 		})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status":     "ready",
-		"managerUrl": a.Cfg.ManagerURL,
-		"uptime":     time.Since(a.Started).String(),
-	})
+	if a.Cfg.LonghornEnabled && a.Cfg.LonghornRequired && a.Cfg.ManagerURL == "" {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "not_ready", "reason": "required Longhorn manager url not configured"})
+		return
+	}
+	if a.Cfg.LonghornEnabled && a.Cfg.LonghornRequired {
+		if err := a.managerReachable(r.Context()); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"status": "not_ready", "reason": "required manager unreachable: " + err.Error(), "managerUrl": a.Cfg.ManagerURL,
+			})
+			return
+		}
+	}
+	for _, providerID := range a.Cfg.RequiredProviders {
+		if providerID == "longhorn" {
+			continue
+		}
+		if a.Storage == nil || !a.Storage.ProviderHealthy(r.Context(), providerID) {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"status": "not_ready", "reason": "required storage provider is unavailable", "providerId": providerID,
+			})
+			return
+		}
+	}
+	response := map[string]any{
+		"status": "ready", "uptime": time.Since(a.Started).String(),
+	}
+	if a.Cfg.LonghornEnabled {
+		response["managerUrl"] = a.Cfg.ManagerURL
+	}
+	if a.Storage != nil {
+		// Readiness must remain a constant-time cache check. Full provider
+		// descriptors may call several independent backends and belong on the
+		// status/provider endpoints; evaluating them here can make an optional
+		// slow provider remove the entire API from Service endpoints.
+		response["storage"] = map[string]any{"ready": a.Storage.Ready()}
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 // managerReachable performs a short GET against the manager /v1 API to confirm

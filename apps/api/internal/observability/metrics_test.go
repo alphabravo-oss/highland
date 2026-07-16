@@ -23,6 +23,7 @@ func TestNilMetricsIsSafe(t *testing.T) {
 	m.IncCSRFRejection()
 	m.IncWatchError()
 	m.ObserveManagerRequest("GET", 200, time.Millisecond)
+	m.OperationPostflightMismatch("rook-ceph", "CephBlockPool")
 	m.RegisterSSEClientSource(func() int { return 1 })
 
 	// Handler on nil serves 404 rather than dereferencing a nil registry.
@@ -50,6 +51,7 @@ func TestHandlerExposesRecordedMetrics(t *testing.T) {
 	m.IncManagerError("upstream_unavailable")
 	m.IncCSRFRejection()
 	m.ObserveManagerRequest("GET", 200, 5*time.Millisecond)
+	m.OperationPostflightMismatch("rook-ceph", "CephBlockPool")
 
 	rec := httptest.NewRecorder()
 	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
@@ -62,6 +64,7 @@ func TestHandlerExposesRecordedMetrics(t *testing.T) {
 		`highland_longhorn_proxy_errors_total{reason="upstream_unavailable"} 1`,
 		"highland_csrf_rejections_total 1",
 		`highland_longhorn_proxy_requests_total{method="GET",status_class="2xx"} 1`,
+		`highland_storage_postflight_mismatches_total{kind="CephBlockPool",provider="rook-ceph"} 1`,
 		"go_goroutines", // Go collector registered
 	} {
 		if !strings.Contains(body, want) {

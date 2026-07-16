@@ -13,7 +13,7 @@ import (
 
 // Status GET /api/v1/status — consolidated versions, component health, and
 // runtime facts for the About/Status page.
-func (h *HighlandAPI) Status(w http.ResponseWriter, _ *http.Request) {
+func (h *HighlandAPI) Status(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 
@@ -23,7 +23,9 @@ func (h *HighlandAPI) Status(w http.ResponseWriter, _ *http.Request) {
 		if v, err := h.K8s.Discovery().ServerVersion(); err == nil {
 			k8sVersion = v.GitVersion
 		}
-		longhornVersion = longhornManagerVersion(ctx, h.K8s, h.longhornNamespace())
+		if h.LonghornEnabled {
+			longhornVersion = longhornManagerVersion(ctx, h.K8s, h.longhornNamespace())
+		}
 	}
 
 	scrapeErr := ""
@@ -38,10 +40,11 @@ func (h *HighlandAPI) Status(w http.ResponseWriter, _ *http.Request) {
 			"benchmarkMode":  orUnknown(h.BenchmarkMode),
 		},
 		"longhorn": map[string]any{
+			"enabled":    h.LonghornEnabled,
 			"version":    orUnknown(longhornVersion),
 			"namespace":  h.longhornNamespace(),
 			"managerUrl": h.ManagerURL,
-			"reachable":  h.managerReachable(ctx),
+			"reachable":  h.LonghornEnabled && h.managerReachable(ctx),
 			"supported":  []string{"1.12.x", "1.11.x"},
 		},
 		"kubernetes": map[string]any{
@@ -49,8 +52,8 @@ func (h *HighlandAPI) Status(w http.ResponseWriter, _ *http.Request) {
 		},
 		"components": map[string]any{
 			"api":            "ok",
-			"managerProxy":   boolStatus(h.managerReachable(ctx)),
-			"metricsScraper": boolStatus(scrapeErr == ""),
+			"managerProxy":   componentStatus(h.LonghornEnabled, h.LonghornEnabled && h.managerReachable(ctx)),
+			"metricsScraper": componentStatus(h.LonghornEnabled, scrapeErr == ""),
 			"scrapeError":    scrapeErr,
 		},
 		"vendor": map[string]any{
@@ -59,7 +62,17 @@ func (h *HighlandAPI) Status(w http.ResponseWriter, _ *http.Request) {
 			"tagline": "Highland is an alternative Longhorn Enterprise Grade UI developed by AlphaBravo.",
 		},
 	}
+	if h.Storage != nil {
+		resp["storage"] = h.Storage.Status(r.Context())
+	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func componentStatus(enabled, healthy bool) string {
+	if !enabled {
+		return "disabled"
+	}
+	return boolStatus(healthy)
 }
 
 func orUnknown(s string) string {

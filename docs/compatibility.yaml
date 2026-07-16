@@ -1,0 +1,88 @@
+schemaVersion: 1
+lastUpdated: "2026-07-16"
+releaseLine: "0.2.x-storage-preview"
+
+kubernetes:
+  clientLibrary: "k8s.io/client-go v0.36.2"
+  snapshotClientLibrary: "github.com/kubernetes-csi/external-snapshotter/client/v8 v8.6.0"
+  testedApiRange:
+    minimum: "1.34"
+    maximum: "1.36"
+  requiredApis:
+    - apiVersion: v1
+      resources: [persistentvolumes, persistentvolumeclaims, pods, events]
+    - apiVersion: storage.k8s.io/v1
+      resources: [storageclasses, csidrivers, csinodes, csistoragecapacities, volumeattachments]
+  optionalApis:
+    - apiVersion: storage.k8s.io/v1
+      resources: [volumeattributesclasses]
+      degradation: "StorageClass attribute detail is omitted."
+    - apiVersion: snapshot.storage.k8s.io/v1
+      resources: [volumesnapshots, volumesnapshotclasses, volumesnapshotcontents]
+      degradation: "Snapshot inventory/actions are unavailable with an explicit condition."
+
+providers:
+  longhorn:
+    supportLevel: managed
+    supportedMinors: ["1.12.x", "1.11.x"]
+    embeddedChart: "1.12.0"
+    driverNames: [driver.longhorn.io]
+    validation:
+      unitContract: required
+      mockManagerRegression: required
+      liveVmK3s: release-gate
+  rookCeph:
+    supportLevel: managed
+    releaseStage: preview
+    rookApi: ceph.rook.io/v1
+    targetMatrix:
+      - profile: current
+        kubernetes: ["1.34.x", "1.35.x"]
+        rook: "1.20.2"
+        ceph: ["19.2.3", "20.2.1"]
+        cephCsi: "3.16.2"
+      - profile: previous
+        kubernetes: ["1.34.x", "1.35.x"]
+        rook: "1.19.6"
+        ceph: ["19.2.3", "20.2.1"]
+        cephCsi: "3.16.2"
+    driverPatterns:
+      - "<rook-namespace>.rbd.csi.ceph.com"
+      - "<rook-namespace>.cephfs.csi.ceph.com"
+    validation:
+      sanitizedFixtureContract: required
+      disposableThreeNodeLab: release-gate
+    note: "Versions are pinned to the current and previous maintained Rook lines as of 2026-07-15. Ceph 20.2.0 is excluded because of its documented read-affinity data-corruption issue. The preview is not promoted until every live release gate passes."
+  openebs:
+    supportLevel: managed
+    releaseStage: preview
+    tested:
+      kubernetes: "1.35.x"
+      openebs: "4.5.1"
+      engines:
+        hostpath: live-single-node
+        lvm: contract-fixtures
+        zfs: contract-fixtures
+        mayastor: discovery-and-diskpool-contract
+        rawfile: detected-only
+    driverNames:
+      - openebs.io/local
+      - local.csi.openebs.io
+      - zfs.csi.openebs.io
+      - io.openebs.csi-mayastor
+      - rawfile.csi.openebs.io
+    validation:
+      normalizedResourceContract: required
+      hostpathK3sLab: required
+      mayastorThreeNodeLab: phase-2-release-gate
+    note: "Phase 1 is read-only. HostPath is explicitly non-replicated; Mayastor runtime detail and every OpenEBS infrastructure write remain gated."
+
+genericCsi:
+  supportLevel: detected
+  contract: "Kubernetes common inventory only; capabilities are advertised only when discovered."
+
+formats:
+  timestamps: RFC3339Nano-UTC
+  quantities: Kubernetes-resource-quantity-string
+  pagination: opaque-v1-continuation-token
+  errorEnvelope: highland-storage-v1

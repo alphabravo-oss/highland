@@ -15,7 +15,7 @@ import {
   useVolumes,
 } from '@/api/hooks'
 import { useAuth } from '@/auth/AuthContext'
-import { formatBytes, hasAction, parseSizeToBytes, type Volume } from '@/api/longhorn'
+import { formatBytes, hasAction, parseSizeToBytes, type LonghornVolume } from '@/api/longhorn'
 import { ColumnPicker } from '@/components/data/ColumnPicker'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { DataTable } from '@/components/data/DataTable'
@@ -93,7 +93,7 @@ function formatTimestamp(value?: string): string {
 }
 
 /** The node a volume is currently attached to (engine controller host). */
-function attachedNode(v: Volume): string {
+function attachedNode(v: LonghornVolume): string {
   return v.controllers?.[0]?.hostId ?? ''
 }
 
@@ -167,14 +167,14 @@ export function VolumesPage() {
   const [revisionCounterDisabled, setRevisionCounterDisabled] = useState(false)
   const [unmapMarkSnapChainRemoved, setUnmapMarkSnapChainRemoved] = useState('ignored')
   const [formError, setFormError] = useState<string | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<Volume | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<LonghornVolume | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [selected, setSelected] = useState<RowSelectionState>({})
   const [bulkKey, setBulkKey] = useState<string | null>(null)
   const [bulkValue, setBulkValue] = useState('')
   const [bulkHost, setBulkHost] = useState('')
   const [actionDef, setActionDef] = useState<VolumeActionDef | null>(null)
-  const [actionVol, setActionVol] = useState<Volume | null>(null)
+  const [actionVol, setActionVol] = useState<LonghornVolume | null>(null)
 
   // Dialog-only data: fetch engine/backing images and tag lists only when the
   // dialog that needs them is open, instead of on every volumes-page load.
@@ -248,7 +248,7 @@ export function VolumesPage() {
 
   const selectedVols = data.filter((v) => selected[v.name])
 
-  const columns = useMemo<ColumnDef<Volume, any>[]>(
+  const columns = useMemo<ColumnDef<LonghornVolume, any>[]>(
     () => [
       {
         id: 'name',

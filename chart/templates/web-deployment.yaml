@@ -35,6 +35,12 @@ spec:
             # nginx template: proxy SPA /auth /api → in-cluster API Service
             - name: HIGHLAND_API_UPSTREAM
               value: {{ printf "%s-api:%v" (include "highland.fullname" .) .Values.service.api.port | quote }}
+            - name: HIGHLAND_CEPH_DASHBOARD_UPSTREAM
+              value: {{ if and .Values.providers.rookCeph.enabled .Values.providers.rookCeph.dashboard.url }}{{ printf "rook-ceph-mgr-dashboard.%s.svc:%v" .Values.providers.rookCeph.namespace .Values.providers.rookCeph.dashboard.port | quote }}{{ else }}"127.0.0.1:9"{{ end }}
+            - name: HIGHLAND_CEPH_DASHBOARD_TLS_NAME
+              value: {{ if and .Values.providers.rookCeph.enabled .Values.providers.rookCeph.dashboard.url }}{{ printf "rook-ceph-mgr-dashboard.%s.svc" .Values.providers.rookCeph.namespace | quote }}{{ else }}"localhost"{{ end }}
+            - name: HIGHLAND_CEPH_DASHBOARD_CA_FILE
+              value: {{ if and .Values.providers.rookCeph.enabled .Values.providers.rookCeph.dashboard.caSecret }}"/etc/highland/ceph-ca/ca.crt"{{ else }}"/etc/ssl/certs/ca-certificates.crt"{{ end }}
           ports:
             - name: http
               containerPort: 8080
@@ -53,6 +59,21 @@ spec:
             periodSeconds: 5
           resources:
             {{- toYaml .Values.resources.web | nindent 12 }}
+          {{- if and .Values.providers.rookCeph.enabled .Values.providers.rookCeph.dashboard.caSecret }}
+          volumeMounts:
+            - name: ceph-dashboard-ca
+              mountPath: /etc/highland/ceph-ca
+              readOnly: true
+          {{- end }}
+      {{- if and .Values.providers.rookCeph.enabled .Values.providers.rookCeph.dashboard.caSecret }}
+      volumes:
+        - name: ceph-dashboard-ca
+          secret:
+            secretName: {{ .Values.providers.rookCeph.dashboard.caSecret | quote }}
+            items:
+              - key: ca.crt
+                path: ca.crt
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

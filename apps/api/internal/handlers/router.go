@@ -17,6 +17,8 @@ import (
 	mw "github.com/highland-io/highland/apps/api/internal/middleware"
 	"github.com/highland-io/highland/apps/api/internal/observability"
 	"github.com/highland-io/highland/apps/api/internal/ratelimit"
+	"github.com/highland-io/highland/apps/api/internal/storage"
+	storageoperations "github.com/highland-io/highland/apps/api/internal/storage/operations"
 	"github.com/highland-io/highland/apps/api/internal/watch"
 	"k8s.io/client-go/kubernetes"
 	"log/slog"
@@ -24,15 +26,17 @@ import (
 
 // Deps bundles runtime dependencies for the router.
 type Deps struct {
-	Cfg         *config.Config
-	Auth        *auth.Authenticator
-	OIDC        *auth.OIDCProvider // optional static provider (tests / legacy)
-	OIDCRuntime *auth.OIDCRuntime  // runtime-configurable enterprise SSO
-	Proxy       *longhorn.Proxy
-	Stream      *longhorn.StreamProxy
-	Audit       *audit.Store
-	Metrics     *metrics.Scraper
-	Benchmarks  *benchmark.Store
+	Cfg               *config.Config
+	Auth              *auth.Authenticator
+	OIDC              *auth.OIDCProvider // optional static provider (tests / legacy)
+	OIDCRuntime       *auth.OIDCRuntime  // runtime-configurable enterprise SSO
+	Proxy             *longhorn.Proxy
+	Stream            *longhorn.StreamProxy
+	Audit             *audit.Store
+	Metrics           *metrics.Scraper
+	Benchmarks        *benchmark.Store
+	Storage           *storage.HTTPAPI
+	StorageOperations *storageoperations.API
 	// Optional cluster/runtime facts for the status page.
 	K8s               kubernetes.Interface
 	LonghornNamespace string
@@ -73,19 +77,26 @@ func NewRouter(d Deps) http.Handler {
 		OIDCRuntime: d.OIDCRuntime,
 		Limiter:     limiter,
 		Obs:         d.Obs,
+		Storage:     d.Storage,
 		Started:     time.Now(),
 	}
 	hapi := &HighlandAPI{
-		Audit:             d.Audit,
-		Metrics:           d.Metrics,
-		Benchmarks:        d.Benchmarks,
-		Users:             d.Auth.Users(),
-		Version:           d.Cfg.Version,
-		ManagerURL:        d.Cfg.ManagerURL,
-		K8s:               d.K8s,
-		LonghornNamespace: d.LonghornNamespace,
-		SessionBackend:    d.SessionBackend,
-		BenchmarkMode:     d.BenchmarkMode,
+		Audit:                           d.Audit,
+		Metrics:                         d.Metrics,
+		Benchmarks:                      d.Benchmarks,
+		Users:                           d.Auth.Users(),
+		Version:                         d.Cfg.Version,
+		ManagerURL:                      d.Cfg.ManagerURL,
+		LonghornEnabled:                 d.Cfg.LonghornEnabled,
+		K8s:                             d.K8s,
+		LonghornNamespace:               d.LonghornNamespace,
+		RookCephNamespace:               d.Cfg.RookCephNamespace,
+		RookCephCredentialRevealEnabled: d.Cfg.RookCephCredentialRevealEnabled,
+		RookCephDashboardAdminUsername:  d.Cfg.RookCephDashboardAdminUsername,
+		RookCephDashboardAdminSecret:    d.Cfg.RookCephDashboardAdminSecret,
+		SessionBackend:                  d.SessionBackend,
+		BenchmarkMode:                   d.BenchmarkMode,
+		Storage:                         d.Storage,
 	}
 
 	r := chi.NewRouter()
@@ -124,6 +135,15 @@ func NewRouter(d Deps) http.Handler {
 		}
 		r.Use(mw.RequireRole(d.Audit, d.Obs))
 
+		// Provider-neutral Kubernetes/CSI inventory. The API remains mounted when
+		// Kubernetes is unavailable so callers receive a typed 503 condition.
+		if d.Storage != nil {
+			d.Storage.Mount(r)
+		}
+		if d.StorageOperations != nil {
+			d.StorageOperations.Mount(r)
+		}
+
 		// Streaming path for large backing-image upload/download (no full buffer)
 		if d.Stream != nil {
 			r.HandleFunc("/api/v1/lh/backingimages/*", func(w http.ResponseWriter, req *http.Request) {
@@ -139,15 +159,18 @@ func NewRouter(d Deps) http.Handler {
 		// Real Longhorn (unlike the bundled mock) has no /v1/dashboard endpoint.
 		// The UI treats this as an optional overlay and computes the dashboard from
 		// collections, so serve an empty 200 here instead of proxying a 404 upstream.
-		r.Get("/api/v1/lh/dashboard", func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{}`))
-		})
+		if d.Proxy != nil {
+			r.Get("/api/v1/lh/dashboard", func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{}`))
+			})
 
-		r.Handle("/api/v1/lh/*", d.Proxy)
-		r.Handle("/api/v1/lh", d.Proxy)
+			r.Handle("/api/v1/lh/*", d.Proxy)
+			r.Handle("/api/v1/lh", d.Proxy)
+		}
 
 		r.Get("/api/v1/audit", hapi.ListAudit)
+		r.Post("/api/v1/admin/providers/rook-ceph/dashboard-credential/reveal", hapi.RevealCephDashboardCredential)
 		r.Get("/api/v1/users", hapi.ListUsers)
 		r.Post("/api/v1/users", hapi.CreateUser)
 		r.Put("/api/v1/users/{username}", hapi.UpdateUser)

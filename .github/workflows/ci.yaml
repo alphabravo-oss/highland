@@ -25,6 +25,9 @@ jobs:
         run: |
           go build -o /tmp/highland-api ./cmd/highland-api
           go build -o /tmp/mock-longhorn-manager ./cmd/mock-longhorn-manager
+      - name: Disabled-provider process smoke
+        working-directory: .
+        run: ./hack/test-api-disabled-providers.sh
 
   web:
     name: Web (typecheck, unit, build, storybook)
@@ -41,8 +44,12 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm test
       - run: npm run build
+      - name: Lint storage OpenAPI contract
+        working-directory: .
+        run: npx --yes @redocly/cli@2.18.0 lint docs/openapi/storage-v1.yaml --config redocly.yaml
       - name: Build Storybook
         run: npm run build-storybook
       - uses: actions/upload-artifact@v7

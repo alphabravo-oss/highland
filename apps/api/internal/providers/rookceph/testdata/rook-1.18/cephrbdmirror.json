@@ -1,0 +1,7 @@
+{
+  "apiVersion": "ceph.rook.io/v1",
+  "kind": "CephRBDMirror",
+  "metadata": {"name": "mirror", "namespace": "rook-ceph", "uid": "[redacted-uid]"},
+  "spec": {"count": 1},
+  "status": {"phase": "Connected"}
+}

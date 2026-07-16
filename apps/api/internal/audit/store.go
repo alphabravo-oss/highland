@@ -1,7 +1,9 @@
 package audit
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -9,17 +11,91 @@ import (
 
 // Event is an audit log entry.
 type Event struct {
-	ID        string    `json:"id"`
-	Timestamp time.Time `json:"timestamp"`
-	Username  string    `json:"username"`
-	Role      string    `json:"role"`
-	Action    string    `json:"action"`
-	Target    string    `json:"target"`
-	Method    string    `json:"method"`
-	Path      string    `json:"path"`
-	Result    string    `json:"result"` // ok | denied | error
-	SourceIP  string    `json:"sourceIp"`
-	Message   string    `json:"message,omitempty"`
+	ID                      string    `json:"id"`
+	Timestamp               time.Time `json:"timestamp"`
+	Username                string    `json:"username"`
+	Role                    string    `json:"role"`
+	Action                  string    `json:"action"`
+	Target                  string    `json:"target"`
+	Method                  string    `json:"method"`
+	Path                    string    `json:"path"`
+	Result                  string    `json:"result"` // ok | denied | error
+	SourceIP                string    `json:"sourceIp"`
+	Message                 string    `json:"message,omitempty"`
+	OperationID             string    `json:"operationId,omitempty"`
+	ActionID                string    `json:"actionId,omitempty"`
+	ProviderID              string    `json:"providerId,omitempty"`
+	ProviderKind            string    `json:"providerKind,omitempty"`
+	TargetKind              string    `json:"targetKind,omitempty"`
+	TargetNamespace         string    `json:"targetNamespace,omitempty"`
+	TargetName              string    `json:"targetName,omitempty"`
+	TargetUID               string    `json:"targetUid,omitempty"`
+	PlanHash                string    `json:"planHash,omitempty"`
+	CorrelationID           string    `json:"correlationId,omitempty"`
+	HTTPCorrelationID       string    `json:"httpCorrelationId,omitempty"`
+	KubernetesCorrelationID string    `json:"kubernetesCorrelationId,omitempty"`
+	CephCorrelationID       string    `json:"cephCorrelationId,omitempty"`
+}
+
+// Durable reports whether the append-only audit stream is configured and
+// writable now. When it is false, durable StorageOperation objects must not be
+// garbage-collected because they are the only persistent operation record.
+func (s *Store) Durable() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.durableUnlocked()
+}
+
+func (s *Store) durableUnlocked() bool {
+	if s == nil || s.filePath == "" {
+		return false
+	}
+	f, err := os.OpenFile(s.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return false
+	}
+	return f.Close() == nil
+}
+
+// DurableTerminalOperationIDs returns the operation IDs whose terminal event
+// is actually present in the append-only JSONL stream. A malformed or
+// unreadable stream fails closed so callers retain the StorageOperation CR.
+func (s *Store) DurableTerminalOperationIDs() (map[string]bool, error) {
+	if s == nil {
+		return nil, fmt.Errorf("audit store is unavailable")
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.durableUnlocked() {
+		return nil, fmt.Errorf("durable audit stream is not writable")
+	}
+	file, err := os.Open(s.filePath)
+	if err != nil {
+		return nil, fmt.Errorf("open durable audit stream: %w", err)
+	}
+	defer file.Close()
+	result := map[string]bool{}
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 2<<20)
+	for scanner.Scan() {
+		if len(scanner.Bytes()) == 0 {
+			continue
+		}
+		var event Event
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			return nil, fmt.Errorf("decode durable audit stream: %w", err)
+		}
+		if event.OperationID != "" && (event.Action == "storage_operation_succeeded" || event.Action == "storage_operation_failed" || event.Action == "storage_operation_cancelled") {
+			result[event.OperationID] = true
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read durable audit stream: %w", err)
+	}
+	return result, nil
 }
 
 // Store is an in-memory ring buffer with optional append-only file.

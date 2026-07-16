@@ -1,0 +1,3 @@
+[
+  {"name": "csi-vol-[redacted-id]", "pool_name": "replicapool", "size": 1073741824, "features_name": ["layering"]}
+]

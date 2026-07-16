@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { LogOut, Palette } from 'lucide-react'
 import {
   CommandDialog,
@@ -13,8 +13,9 @@ import {
 } from '@/components/ui/command'
 import { useTheme, type ThemeMode } from '@/features/theme/useTheme'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
-import { filterNavForRole, navGroups } from '@/lib/nav'
+import { navigationForWorkspace, providerWorkspaceFromLocation } from '@/lib/nav'
 import { useUIStore } from '@/store/ui'
+import { useStorageProviders } from '@/api/storage/hooks'
 
 export type CommandPaletteProps = {
   /** Current user role for nav filtering (admin | operator | viewer). */
@@ -30,9 +31,14 @@ export function CommandPalette({ role, onLogout }: CommandPaletteProps) {
   const toggle = useUIStore((s) => s.toggleCommandPalette)
 
   const navigate = useNavigate()
+  const location = useLocation()
   const { theme, cycleTheme } = useTheme()
-
-  const groups = useMemo(() => filterNavForRole(navGroups, role), [role])
+  const providers = useStorageProviders()
+  const workspace = useMemo(
+    () => providerWorkspaceFromLocation(location.pathname, location.search, providers.data?.data),
+    [location.pathname, location.search, providers.data?.data],
+  )
+  const groups = useMemo(() => navigationForWorkspace(workspace, role), [role, workspace])
 
   const themeLabels: Record<ThemeMode, string> = {
     light: t('theme.light'),
@@ -66,12 +72,12 @@ export function CommandPalette({ role, onLogout }: CommandPaletteProps) {
         <CommandEmpty>{t('common.empty')}</CommandEmpty>
 
         {groups.map((group) => {
-          const groupLabel = t(group.labelKey)
+          const groupLabel = t(group.labelKey, { defaultValue: group.label })
           return (
             <CommandGroup key={group.id} heading={groupLabel}>
               {group.items.map((item) => {
                 const Icon = item.icon
-                const label = t(item.labelKey)
+                const label = t(item.labelKey, { defaultValue: item.label })
                 return (
                   <CommandItem
                     key={item.id}

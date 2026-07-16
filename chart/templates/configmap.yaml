@@ -20,5 +20,47 @@ data:
       "oidcIssuer": {{ .Values.auth.oidc.issuerURL | quote }},
       "oidcClientId": {{ .Values.auth.oidc.clientID | quote }},
       "oidcRedirectUrl": {{ .Values.auth.oidc.redirectURL | quote }},
-      "allowedOrigins": {{ .Values.config.allowedOrigins | quote }}
+      "allowedOrigins": {{ .Values.config.allowedOrigins | quote }},
+      "storage": {
+        "enabled": {{ .Values.storage.enabled }},
+        "scope": {
+          "mode": {{ .Values.storage.scope.mode | quote }},
+          "namespaces": {{ .Values.storage.scope.namespaces | toJson }}
+        },
+        "writes": {
+          "enabled": {{ .Values.storage.writes.enabled }},
+          "recoveryEnabled": {{ .Values.storage.writes.recoveryEnabled }}
+        },
+        "requiredProviders": {{ .Values.storage.requiredProviders | toJson }}
+      },
+      "providers": {
+        "longhorn": {
+          "enabled": {{ include "highland.longhornEnabled" . }},
+          "required": {{ .Values.providers.longhorn.required }},
+          "managerUrl": {{ include "highland.managerUrl" . | quote }},
+          "namespace": {{ include "highland.longhornNamespace" . | quote }}
+        },
+        "openebs": {
+          "enabled": {{ .Values.providers.openebs.enabled }},
+          "namespace": {{ .Values.providers.openebs.namespace | quote }}
+        },
+        "rookCeph": {
+          "enabled": {{ .Values.providers.rookCeph.enabled }},
+          "namespace": {{ .Values.providers.rookCeph.namespace | quote }},
+          "clusterName": {{ .Values.providers.rookCeph.clusterName | quote }},
+          "dashboard": {
+            "url": {{ .Values.providers.rookCeph.dashboard.url | quote }},
+            "publicUrl": {{ .Values.providers.rookCeph.dashboard.publicUrl | quote }},
+            "allowHttp": {{ if .Values.providers.rookCeph.dashboard.allowHttp }}true{{ else }}false{{ end }},
+            "caFile": {{ ternary "/etc/highland/ceph-ca/ca.crt" "" (ne .Values.providers.rookCeph.dashboard.caSecret "") | quote }},
+            "insecureSkipVerify": {{ .Values.providers.rookCeph.dashboard.insecureSkipVerify }}
+          },
+          "prometheus": { "url": {{ .Values.providers.rookCeph.prometheus.url | quote }} },
+          "writes": {
+            "enabled": {{ .Values.providers.rookCeph.writes.enabled }},
+            "allowStorageClassDelete": {{ if .Values.providers.rookCeph.writes.allowStorageClassDelete }}true{{ else }}false{{ end }},
+            "allowPoolDelete": {{ .Values.providers.rookCeph.writes.allowPoolDelete }}
+          }
+        }
+      }
     }

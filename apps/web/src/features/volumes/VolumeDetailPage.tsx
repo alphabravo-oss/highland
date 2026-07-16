@@ -18,7 +18,7 @@ import {
   hasAction,
   toConditionArray,
   type LHResource,
-  type Volume,
+  type LonghornVolume,
   volumeAttachmentsApi,
 } from '@/api/longhorn'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
@@ -147,7 +147,7 @@ export function VolumeDetailPage() {
   const hosts = (nodesQ.data ?? []).map((n) => n.name)
   const images = (imagesQ.data ?? []).map((i) => i.image ?? i.name).filter(Boolean) as string[]
 
-  const refreshSnapshots = useCallback(async (volume: Volume) => {
+  const refreshSnapshots = useCallback(async (volume: LonghornVolume) => {
     // Modern Longhorn exposes the CRD-backed snapshotCRList; older managers use
     // the legacy snapshotList. Prefer CR, fall back to legacy, then to inline.
     const listAction = hasAction(volume, 'snapshotCRList')
@@ -207,7 +207,7 @@ export function VolumeDetailPage() {
     }
   }, [volName])
 
-  async function runAction(volume: Volume, action: string, params: Record<string, unknown> = {}) {
+  async function runAction(volume: LonghornVolume, action: string, params: Record<string, unknown> = {}) {
     setError(null)
     setSuccess(null)
     try {

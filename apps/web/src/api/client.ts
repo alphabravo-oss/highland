@@ -38,9 +38,13 @@ export function csrfHeaders(): Record<string, string> {
 export async function parseError(res: Response): Promise<string> {
   try {
     const body = (await res.json()) as {
-      error?: string
+      error?: string | { code?: string; message?: string; requestId?: string }
       message?: string
       status?: string
+    }
+    if (typeof body.error === 'object') {
+      const id = body.error.requestId ? ` (${body.error.requestId})` : ''
+      return `${body.error.message ?? body.error.code ?? res.statusText}${id}`
     }
     return body.error ?? body.message ?? body.status ?? res.statusText
   } catch {
@@ -184,6 +188,16 @@ export async function highlandPut<T = unknown>(path: string, body?: unknown): Pr
     method: 'PUT',
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+}
+
+export async function highlandPatch<T = unknown>(path: string, body?: unknown): Promise<T> {
+  const clean = path.startsWith('/') ? path : `/${path}`
+  return highlandFetch<T>(`/api/v1${clean}`, { method: 'PATCH', body: body === undefined ? undefined : JSON.stringify(body) })
+}
+
+export async function highlandRequest<T = unknown>(path: string, method: string, body?: unknown): Promise<T> {
+  const clean = path.startsWith('/') ? path : `/${path}`
+  return highlandFetch<T>(`/api/v1${clean}`, { method, body: body === undefined ? undefined : JSON.stringify(body) })
 }
 
 export async function highlandDelete<T = unknown>(path: string): Promise<T> {
