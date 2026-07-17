@@ -11,7 +11,7 @@ import {
   useNodes,
   useVolumes,
 } from '@/api/hooks'
-import { formatBytes, type Event, type Volume } from '@/api/longhorn'
+import { formatBytes, type Event, type LonghornVolume } from '@/api/longhorn'
 import { DataTable } from '@/components/data/DataTable'
 import { Donut, LegendRow, MetricLine, UsageBar } from '@/components/data/dashcharts'
 import { ClusterWarnings } from '@/components/data/ClusterWarnings'
@@ -125,7 +125,7 @@ export function DashboardPage() {
   const writeAgg = aggregateSeries(metricSeries, 'write_throughput')
   const readAgg = aggregateSeries(metricSeries, 'read_throughput')
 
-  const volHealthColumns = useMemo<ColumnDef<Volume, any>[]>(
+  const volHealthColumns = useMemo<ColumnDef<LonghornVolume, any>[]>(
     () => [
       {
         id: 'name',

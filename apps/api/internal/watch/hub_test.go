@@ -63,9 +63,10 @@ func waitUntil(t *testing.T, cond func() bool) {
 
 func newTestHub() *Hub {
 	return &Hub{
-		clients: map[*sseClient]struct{}{},
-		pending: map[string]struct{}{},
-		ns:      "longhorn-system",
+		clients:   map[*sseClient]struct{}{},
+		pending:   map[string]frame{},
+		ns:        "longhorn-system",
+		clusterID: "local",
 	}
 }
 
@@ -196,6 +197,56 @@ func TestServeSSEWritesReadyThenChange(t *testing.T) {
 	}
 }
 
+func TestServeSSEPublishesHighlandLifecycleEntity(t *testing.T) {
+	h := newTestHub()
+	rec := newSafeRec()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/stream", nil)
+	ctx, cancel := contextWithCancel()
+	req = req.WithContext(ctx)
+
+	done := make(chan struct{})
+	go func() {
+		h.ServeSSE(rec, req)
+		close(done)
+	}()
+
+	waitForClients(t, h, 1)
+	h.PublishHighlandChange(
+		"benchmark.running",
+		[]string{"benchmarks"},
+		"benchmarks",
+		"bench-1",
+		map[string]any{"name": "bench-1", "phase": "Running"},
+	)
+	h.flushOnce()
+	waitUntil(t, func() bool { return strings.Contains(rec.body(), `"eventType":"benchmark.running"`) })
+	h.PublishHighlandChange(
+		"storage.operation.updated",
+		[]string{"storage", "operations"},
+		"operations",
+		"storage-1",
+		map[string]any{"name": "storage-1", "status": map[string]any{"phase": "Running"}},
+	)
+	h.flushOnce()
+	waitUntil(t, func() bool { return strings.Contains(rec.body(), `"eventType":"storage.operation.updated"`) })
+	cancel()
+	<-done
+
+	body := rec.body()
+	for _, expected := range []string{
+		`event: change`,
+		`"keys":["benchmarks"]`,
+		`"name":"bench-1"`,
+		`"entity":{"name":"bench-1","phase":"Running"}`,
+		`"eventType":"storage.operation.updated"`,
+		`"name":"storage-1"`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("expected %q in lifecycle frame, got:\n%q", expected, body)
+		}
+	}
+}
+
 func TestWatchedEntriesMappingIsSane(t *testing.T) {
 	for _, e := range watchedEntries() {
 		if e.gvr.Resource == "" || len(e.keys) == 0 {
@@ -204,6 +255,17 @@ func TestWatchedEntriesMappingIsSane(t *testing.T) {
 		if e.gvr.Resource != "events" && e.gvr.Group != "longhorn.io" {
 			t.Fatalf("unexpected group for %s: %q", e.gvr.Resource, e.gvr.Group)
 		}
+	}
+}
+
+func TestScopedStorageFrame(t *testing.T) {
+	h := newTestHub()
+	c, _ := h.subscribe()
+	h.PublishStorageChange("rook-ceph", "tenant-a", "claims", "data")
+	h.flushOnce()
+	fr := <-c.ch
+	if fr.version != 2 || fr.cluster != "local" || fr.providerID != "rook-ceph" || fr.namespace != "tenant-a" || fr.kind != "claims" || fr.name != "data" {
+		t.Fatalf("unexpected scoped frame: %#v", fr)
 	}
 }
 

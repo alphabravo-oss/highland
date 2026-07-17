@@ -1,0 +1,8 @@
+extends:
+  - recommended
+
+rules:
+  # Every operation uses the same documented error envelope via a default
+  # response. Requiring a duplicated literal 4XX response adds no contract
+  # information and makes additions easier to get inconsistent.
+  operation-4xx-response: off

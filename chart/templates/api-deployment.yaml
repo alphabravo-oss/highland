@@ -1,4 +1,7 @@
 {{- $adminSecret := .Values.auth.local.existingSecret -}}
+{{- if and .Values.persistence.audit.enabled (gt (int .Values.replicaCount.api) 1) (ne .Values.persistence.audit.accessMode "ReadWriteMany") }}
+{{- fail "persistence.audit.accessMode must be ReadWriteMany when replicaCount.api is greater than one" }}
+{{- end }}
 {{- if and .Values.auth.local.createSecret (eq $adminSecret "") }}
 {{- $adminSecret = printf "%s-admin" (include "highland.fullname" .) -}}
 {{- end }}
@@ -98,12 +101,32 @@ spec:
                   fieldPath: metadata.namespace
             - name: HIGHLAND_LONGHORN_NAMESPACE
               value: {{ include "highland.longhornNamespace" . | quote }}
+            {{- if and .Values.providers.rookCeph.enabled .Values.providers.rookCeph.dashboard.existingSecret }}
+            - name: HIGHLAND_ROOK_CEPH_DASHBOARD_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.providers.rookCeph.dashboard.existingSecret | quote }}
+                  key: username
+            - name: HIGHLAND_ROOK_CEPH_DASHBOARD_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.providers.rookCeph.dashboard.existingSecret | quote }}
+                  key: password
+            {{- end }}
+            - name: HIGHLAND_ROOK_CEPH_CREDENTIAL_REVEAL_ENABLED
+              value: {{ .Values.providers.rookCeph.dashboard.credentialReveal.enabled | quote }}
+            - name: HIGHLAND_ROOK_CEPH_DASHBOARD_ADMIN_USERNAME
+              value: {{ default "admin" .Values.providers.rookCeph.dashboard.credentialReveal.username | quote }}
+            - name: HIGHLAND_ROOK_CEPH_DASHBOARD_ADMIN_SECRET
+              value: {{ default "rook-ceph-dashboard-password" .Values.providers.rookCeph.dashboard.credentialReveal.secretName | quote }}
             - name: HIGHLAND_TRUSTED_PROXIES
               value: {{ .Values.config.trustedProxies | quote }}
             - name: HIGHLAND_FIO_IMAGE
               value: {{ .Values.benchmark.fioImage | default "ghcr.io/aksakalli/fio:latest" | quote }}
+            - name: HIGHLAND_KUBERNETES_BENCHMARK_ENABLED
+              value: {{ .Values.benchmark.kubernetesJobEnabled | quote }}
             - name: HIGHLAND_FIO_STORAGECLASS
-              value: {{ .Values.benchmark.storageClass | default "longhorn" | quote }}
+              value: {{ .Values.benchmark.storageClass | quote }}
             - name: HIGHLAND_FIO_SIZE
               value: {{ .Values.benchmark.size | default "10Gi" | quote }}
             # Disable dev convenience accounts in-cluster
@@ -113,6 +136,11 @@ spec:
             - name: config
               mountPath: /etc/highland
               readOnly: true
+            {{- if and .Values.providers.rookCeph.enabled .Values.providers.rookCeph.dashboard.caSecret }}
+            - name: ceph-dashboard-ca
+              mountPath: /etc/highland/ceph-ca
+              readOnly: true
+            {{- end }}
             {{- if .Values.persistence.audit.enabled }}
             - name: audit
               mountPath: /var/log/highland
@@ -138,6 +166,14 @@ spec:
         - name: config
           configMap:
             name: {{ include "highland.fullname" . }}-config
+        {{- if and .Values.providers.rookCeph.enabled .Values.providers.rookCeph.dashboard.caSecret }}
+        - name: ceph-dashboard-ca
+          secret:
+            secretName: {{ .Values.providers.rookCeph.dashboard.caSecret | quote }}
+            items:
+              - key: ca.crt
+                path: ca.crt
+        {{- end }}
         {{- if .Values.persistence.audit.enabled }}
         - name: audit
           persistentVolumeClaim:

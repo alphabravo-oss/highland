@@ -12,6 +12,10 @@ export function QueryState({
   emptyAction,
   onRetry,
   skeleton,
+  isFetching,
+  observedAt,
+  stale,
+  partial,
   children,
 }: {
   isLoading: boolean
@@ -22,6 +26,10 @@ export function QueryState({
   emptyAction?: ReactNode
   onRetry?: () => void
   skeleton?: ReactNode
+  isFetching?: boolean
+  observedAt?: string
+  stale?: boolean
+  partial?: boolean
   children: ReactNode
 }) {
   const { t } = useAppTranslation()
@@ -65,5 +73,17 @@ export function QueryState({
       </div>
     )
   }
-  return <>{children}</>
+  return (
+    <>
+      {(isFetching || observedAt || stale || partial) ? (
+        <div className="mb-2 flex min-h-5 flex-wrap items-center justify-end gap-2 text-xs text-[var(--color-muted-foreground)]" role="status" aria-live="polite">
+          {partial ? <span className="text-amber-700 dark:text-amber-300">Partial results</span> : null}
+          {stale ? <span className="text-amber-700 dark:text-amber-300">Cached data may be stale</span> : null}
+          {observedAt ? <span>Observed {new Date(observedAt).toLocaleString()}</span> : null}
+          {isFetching ? <span className="inline-flex items-center gap-1"><span className="h-2 w-2 animate-pulse rounded-full bg-[var(--color-primary)]" />Updating</span> : null}
+        </div>
+      ) : null}
+      {children}
+    </>
+  )
 }

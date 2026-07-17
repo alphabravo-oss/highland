@@ -7,6 +7,7 @@ import {
 import { highlandDelete, highlandGet, highlandPost, highlandPut } from './client'
 import { optimisticPatch, optimisticRemove, pick } from './optimistic'
 import { useSseConnected } from './realtime'
+import { storagePolicyClient, type PolicyChangeRequest } from './policy'
 import {
   backupTargetsApi,
   backupVolumesApi,
@@ -35,7 +36,7 @@ import {
   type RecurringJob,
   type Setting,
   type SystemBackup,
-  type Volume,
+  type LonghornVolume,
 } from './longhorn'
 
 // Adaptive polling: when the SSE change stream is healthy, fall back to a slow
@@ -44,6 +45,41 @@ import {
 // (see internal/watch/hub.go) — never for Highland-native / Prometheus data.
 function usePoll(fast = 10_000, slow = 60_000): { refetchInterval: number } {
   return { refetchInterval: useSseConnected() ? slow : fast }
+}
+
+export function useStoragePolicy(enabled = true) {
+  return useQuery({
+    queryKey: ['admin-storage-policy'],
+    queryFn: ({ signal }) => storagePolicyClient.get(signal),
+    enabled,
+    refetchInterval: useSseConnected() ? 60_000 : 15_000,
+  })
+}
+
+export function useStoragePolicyHistory(enabled = true) {
+  return useQuery({
+    queryKey: ['admin-storage-policy-history'],
+    queryFn: ({ signal }) => storagePolicyClient.history(signal),
+    enabled,
+  })
+}
+
+export function usePlanStoragePolicy() {
+  return useMutation({ mutationFn: (request: PolicyChangeRequest) => storagePolicyClient.plan(request) })
+}
+
+export function useApplyStoragePolicy() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (request: PolicyChangeRequest) => storagePolicyClient.apply(request),
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['admin-storage-policy'] }),
+        client.invalidateQueries({ queryKey: ['admin-storage-policy-history'] }),
+        client.invalidateQueries({ queryKey: ['storage'] }),
+      ])
+    },
+  })
 }
 
 export function useDashboard() {
@@ -62,10 +98,11 @@ export function useEvents() {
   })
 }
 
-export function useVolumes() {
+export function useVolumes(enabled = true) {
   return useQuery({
     queryKey: ['volumes'],
     queryFn: () => volumesApi.list(),
+    enabled,
     ...usePoll(),
   })
 }
@@ -88,26 +125,28 @@ export function useNode(name: string | undefined) {
   })
 }
 
-export function useNodes() {
+export function useNodes(enabled = true) {
   return useQuery({
     queryKey: ['nodes'],
     queryFn: () => nodesApi.list(),
+    enabled,
     ...usePoll(),
   })
 }
 
 export type StatusResponse = {
   highland: { version: string; sessionBackend: string; benchmarkMode: string }
-  longhorn: { version: string; namespace: string; managerUrl: string; reachable: boolean; supported: string[] }
+  longhorn: { enabled: boolean; version: string; namespace: string; managerUrl: string; reachable: boolean; supported: string[] }
   kubernetes: { version: string }
   components: { api: string; managerProxy: string; metricsScraper: string; scrapeError: string }
   vendor: { name: string; url: string; tagline: string }
+  storage?: { ready: boolean; lastSync?: string; snapshotApi?: boolean; providers?: Array<{ id: string; displayName: string; supportLevel: string; health: { status: string } }> }
 }
 
 export function useStatus() {
   return useQuery({
     queryKey: ['status'],
-    queryFn: () => highlandGet<StatusResponse>('/status'),
+    queryFn: ({ signal }) => highlandGet<StatusResponse>('/status', { signal }),
     refetchInterval: 30_000,
   })
 }
@@ -211,10 +250,18 @@ export function useSystemRestores() {
 }
 
 export function useSupportBundles() {
+  const connected = useSseConnected()
   return useQuery({
     queryKey: ['supportbundles'],
     queryFn: () => supportBundlesApi.list(),
-    refetchInterval: 3_000,
+    refetchInterval: (query) => {
+      const active = query.state.data?.some((bundle) => {
+        const state = (bundle.state ?? '').toLowerCase()
+        return state !== '' && !['readyfordownload', 'error', 'failed'].includes(state)
+      })
+      if (active && !connected) return 3_000
+      return connected ? 60_000 : 15_000
+    },
   })
 }
 
@@ -239,8 +286,8 @@ export function useCreateVolume() {
 export function useDeleteVolume() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (vol: Volume) => volumesApi.remove(vol),
-    ...optimisticRemove<Volume, Volume>(qc, 'volumes', (v) => v.name, ['volumes', 'dashboard'], {
+    mutationFn: (vol: LonghornVolume) => volumesApi.remove(vol),
+    ...optimisticRemove<LonghornVolume, LonghornVolume>(qc, 'volumes', (v) => v.name, ['volumes', 'dashboard'], {
       refetchOnSuccess: false,
     }),
   })
@@ -254,7 +301,7 @@ export function useVolumeAction() {
       action,
       params,
     }: {
-      vol: Volume
+      vol: LonghornVolume
       action: string
       params?: Record<string, unknown>
     }) => volumesApi.action(vol, action, params),
@@ -492,16 +539,15 @@ export type { UseQueryOptions }
 export function useAuditLog() {
   return useQuery({
     queryKey: ['audit'],
-    queryFn: () => highlandGet<{ data: Array<Record<string, unknown>> }>('/audit'),
-    // Highland-native (not a Longhorn CRD) — no SSE signal, so keep a fixed poll.
-    refetchInterval: 5_000,
+    queryFn: ({ signal }) => highlandGet<{ data: Array<Record<string, unknown>> }>('/audit', { signal }),
+    refetchInterval: 15_000,
   })
 }
 
 export function useHighlandUsers() {
   return useQuery({
     queryKey: ['users'],
-    queryFn: () => highlandGet<{ data: Array<{ username: string; role: string }> }>('/users'),
+    queryFn: ({ signal }) => highlandGet<{ data: Array<{ username: string; role: string }> }>('/users', { signal }),
   })
 }
 
@@ -517,7 +563,7 @@ export function useUpdateHighlandUser() {
 export function useHealthNarrative() {
   return useQuery({
     queryKey: ['health-narrative'],
-    queryFn: () => highlandGet<{ items: Array<{ severity: string; code: string; message: string }> }>('/health'),
+    queryFn: ({ signal }) => highlandGet<{ items: Array<{ severity: string; code: string; message: string }> }>('/health', { signal }),
     refetchInterval: 20_000,
   })
 }
@@ -525,14 +571,15 @@ export function useHealthNarrative() {
 export function usePreflight() {
   return useQuery({
     queryKey: ['preflight'],
-    queryFn: () => highlandGet<{ checks: Array<{ id: string; name: string; status: string; detail: string }> }>('/preflight'),
+    queryFn: ({ signal }) => highlandGet<{ checks: Array<{ id: string; name: string; status: string; detail: string }> }>('/preflight', { signal }),
   })
 }
 
-export function useCapacity() {
+export function useCapacity(enabled = true) {
   return useQuery({
     queryKey: ['capacity'],
-    queryFn: () => highlandGet<{ usedBytes: number; totalBytes: number; note: string; seriesCount: number }>('/capacity'),
+    queryFn: ({ signal }) => highlandGet<{ usedBytes: number; totalBytes: number; note: string; seriesCount: number }>('/capacity', { signal }),
+    enabled,
     refetchInterval: 15_000,
   })
 }
@@ -540,11 +587,11 @@ export function useCapacity() {
 export function useVolumeMetrics(name: string | undefined) {
   return useQuery({
     queryKey: ['volume-metrics', name],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       highlandGet<{
         series: Array<{ name: string; labels?: Record<string, string>; points: Array<{ t: string; v: number }> }>
         scrapeError?: string
-      }>(`/volumes/${encodeURIComponent(name!)}/metrics`),
+      }>(`/volumes/${encodeURIComponent(name!)}/metrics`, { signal }),
     enabled: Boolean(name),
     refetchInterval: 10_000,
   })
@@ -553,20 +600,57 @@ export function useVolumeMetrics(name: string | undefined) {
 export function useClusterMetrics() {
   return useQuery({
     queryKey: ['metrics'],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       highlandGet<{
         series: Array<{ name: string; labels?: Record<string, string>; points: Array<{ t: string; v: number }> }>
         scrapeError?: string
-      }>('/metrics'),
+      }>('/metrics', { signal }),
     refetchInterval: 10_000,
   })
 }
 
-export function useBenchmarks() {
+export type BenchmarkPhase = 'Pending' | 'Running' | 'Succeeded' | 'Failed'
+export type Benchmark = {
+  name: string
+  type: string
+  nodeName?: string
+  profile: string
+  storageClass?: string
+  size?: string
+  pvcName?: string
+  pvName?: string
+  csiDriver?: string
+  providerId?: string
+  accessMode?: string
+  volumeMode?: string
+  topology?: Record<string, string>
+  retainFailedPvc?: boolean
+  phase: BenchmarkPhase
+  message?: string
+  createdAt: string
+  completedAt?: string
+  results?: Record<string, number>
+  fioCmd?: string
+  mode?: string
+}
+export type BenchmarkPage = {
+  data: Benchmark[]
+  page: { limit: number; continue?: string; total: number }
+  meta: { observedAt: string; stale: boolean; partial: boolean; benchmarkMode: string }
+}
+
+export function useBenchmarks(cursor = '') {
+  const sseConnected = useSseConnected()
   return useQuery({
-    queryKey: ['benchmarks'],
-    queryFn: () => highlandGet<{ data: Array<Record<string, unknown>> }>('/benchmarks'),
-    refetchInterval: 2_000,
+    queryKey: ['benchmarks', cursor],
+    queryFn: ({ signal }) => highlandGet<BenchmarkPage>(`/benchmarks?fields=summary&limit=50${cursor ? `&continue=${encodeURIComponent(cursor)}` : ''}`, { signal }),
+    placeholderData: (previous) => previous,
+    refetchInterval: (query) => {
+      const benchmarks = Array.isArray(query.state.data?.data) ? query.state.data.data : []
+      const active = benchmarks.some((benchmark) => benchmark.phase === 'Pending' || benchmark.phase === 'Running')
+      if (active && !sseConnected) return 2_000
+      return sseConnected ? 60_000 : 30_000
+    },
   })
 }
 
@@ -589,6 +673,6 @@ export function useDeleteBenchmark() {
 export function useCompatibility() {
   return useQuery({
     queryKey: ['compatibility'],
-    queryFn: () => highlandGet<Record<string, unknown>>('/compatibility'),
+    queryFn: ({ signal }) => highlandGet<Record<string, unknown>>('/compatibility', { signal }),
   })
 }

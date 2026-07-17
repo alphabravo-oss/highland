@@ -52,13 +52,14 @@ test.describe('Phase 1 parity smoke', () => {
     // consolidated into an "Actions" dropdown menu.
     await page.getByTestId('volume-actions').getByRole('button').click()
     await page.getByRole('menuitem', { name: 'Attach', exact: true }).click()
-    await expect(page.getByTestId('action-form-submit')).toBeVisible()
+    const actionDialog = page.getByRole('dialog')
+    await expect(actionDialog.getByTestId('action-form-submit')).toBeVisible()
     // host select if present
-    const hostSelect = page.locator('select').first()
+    const hostSelect = actionDialog.locator('select').first()
     if (await hostSelect.count()) {
       await hostSelect.selectOption({ index: 0 })
     }
-    await page.getByTestId('action-form-submit').click()
+    await actionDialog.getByTestId('action-form-submit').click()
 
     // Events panel present
     await expect(page.getByTestId('volume-events')).toBeVisible()
@@ -101,6 +102,51 @@ test.describe('Phase 1 parity smoke', () => {
   })
 
   test('viewer cannot mutate volumes; admin can run benchmark', async ({ page }) => {
+    let benchmarkCreated = false
+    await page.route('**/api/v1/benchmarks**', async (route) => {
+      const benchmark = {
+        name: 'bench-e2e',
+        phase: 'Succeeded',
+        profile: 'quick',
+        storageClass: 'e2e-storage',
+        providerId: 'e2e-csi',
+        createdAt: new Date().toISOString(),
+        results: { seqReadMBps: 100 },
+      }
+      const created = route.request().method() === 'POST'
+      if (created) benchmarkCreated = true
+      await route.fulfill({
+        status: created ? 201 : 200,
+        contentType: 'application/json',
+        body: JSON.stringify(created
+          ? benchmark
+          : {
+              data: benchmarkCreated ? [benchmark] : [],
+              page: { limit: 50, total: benchmarkCreated ? 1 : 0 },
+              meta: {
+                benchmarkMode: 'kubernetes-job',
+                observedAt: new Date().toISOString(),
+                stale: false,
+                partial: false,
+              },
+            }),
+      })
+    })
+    await page.route('**/api/v1/storage/classes**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [{
+            name: 'e2e-storage',
+            providerId: 'e2e-csi',
+            provisioner: 'e2e.csi.example.com',
+            default: true,
+          }],
+          page: { limit: 500, total: 1 },
+        }),
+      })
+    })
     await page.goto('/login')
     await page.locator('#username').fill('viewer')
     await page.locator('#password').fill('viewer')

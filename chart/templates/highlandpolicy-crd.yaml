@@ -1,0 +1,119 @@
+# Keep a tracked copy for upgrades from early Highland builds that rendered
+# this CRD from templates/. The crds/ copy remains the fresh-install bootstrap;
+# this copy upgrades the schema and prevents Helm from treating the CRD as
+# removed from an existing release.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: highlandpolicies.highland.io
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+spec:
+  group: highland.io
+  scope: Namespaced
+  names:
+    plural: highlandpolicies
+    singular: highlandpolicy
+    kind: HighlandPolicy
+    shortNames: [hlpolicy]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Accepting
+          type: boolean
+          jsonPath: .status.effective.acceptNewOperations
+        - name: Longhorn
+          type: boolean
+          jsonPath: .status.effective.longhornWrites
+        - name: Ceph
+          type: boolean
+          jsonPath: .status.effective.rookCephWrites
+        - name: Generation
+          type: integer
+          jsonPath: .metadata.generation
+        - name: Ready
+          type: string
+          jsonPath: .status.conditions[?(@.type=="Ready")].status
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [storage]
+              properties:
+                storage:
+                  type: object
+                  required:
+                    - acceptNewOperations
+                    - portableKubernetesWrites
+                    - longhornWrites
+                    - rookCephWrites
+                    - allowCephStorageClassDelete
+                    - allowCephPoolDelete
+                  properties:
+                    acceptNewOperations: { type: boolean }
+                    portableKubernetesWrites: { type: boolean }
+                    portableKubernetesProviderIds:
+                      type: array
+                      maxItems: 64
+                      x-kubernetes-list-type: set
+                      items:
+                        type: string
+                        maxLength: 253
+                        pattern: '^(\*|[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)$'
+                    longhornWrites: { type: boolean }
+                    rookCephWrites: { type: boolean }
+                    allowCephStorageClassDelete: { type: boolean }
+                    allowCephPoolDelete: { type: boolean }
+                  x-kubernetes-validations:
+                    - rule: "self.acceptNewOperations || (!self.portableKubernetesWrites && !self.longhornWrites && !self.rookCephWrites && !self.allowCephStorageClassDelete && !self.allowCephPoolDelete)"
+                      message: provider writes require acceptNewOperations
+                    - rule: "!self.allowCephStorageClassDelete || self.rookCephWrites"
+                      message: Ceph StorageClass deletion requires rookCephWrites
+                    - rule: "!self.allowCephPoolDelete || self.rookCephWrites"
+                      message: Ceph pool deletion requires rookCephWrites
+                    - rule: "!has(self.portableKubernetesProviderIds) || (self.portableKubernetesWrites ? self.portableKubernetesProviderIds.size() > 0 : self.portableKubernetesProviderIds.size() == 0)"
+                      message: portable provider scopes require portableKubernetesWrites, and enabled portable writes require at least one provider
+                    - rule: "!has(self.portableKubernetesProviderIds) || !(self.portableKubernetesProviderIds.exists(id, id == '*')) || (self.portableKubernetesProviderIds.size() == 1 && self.portableKubernetesProviderIds[0] == '*')"
+                      message: the legacy wildcard must be the only portable provider scope
+            status:
+              type: object
+              properties:
+                observedGeneration: { type: integer, format: int64 }
+                effective:
+                  type: object
+                  required:
+                    - acceptNewOperations
+                    - portableKubernetesWrites
+                    - portableKubernetesProviderIds
+                    - longhornWrites
+                    - rookCephWrites
+                    - allowCephStorageClassDelete
+                    - allowCephPoolDelete
+                  properties:
+                    acceptNewOperations: { type: boolean }
+                    portableKubernetesWrites: { type: boolean }
+                    portableKubernetesProviderIds:
+                      type: array
+                      maxItems: 64
+                      x-kubernetes-list-type: set
+                      items:
+                        type: string
+                        maxLength: 253
+                    longhornWrites: { type: boolean }
+                    rookCephWrites: { type: boolean }
+                    allowCephStorageClassDelete: { type: boolean }
+                    allowCephPoolDelete: { type: boolean }
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true

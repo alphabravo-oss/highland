@@ -70,6 +70,8 @@ export type DataTableProps<T> = {
   bulkActions?: (rows: T[]) => ReactNode
   /** Extra controls placed in the toolbar (e.g. a Create button). */
   toolbarExtra?: ReactNode
+  /** Replaces the generic no-results message when the current data set is empty. */
+  emptyState?: ReactNode
   /** Notified with the selected row originals whenever selection changes. */
   onSelectionChange?: (rows: T[]) => void
   /** Controlled selection state (keyed by getRowId). Falls back to internal state. */
@@ -131,6 +133,7 @@ export function DataTable<T>({
   enableSelection = false,
   bulkActions,
   toolbarExtra,
+  emptyState,
   onSelectionChange,
   rowSelection,
   onRowSelectionChange,
@@ -391,7 +394,7 @@ export function DataTable<T>({
                 colSpan={visibleColCount}
                 className="py-8 text-center text-[var(--color-muted-foreground)]"
               >
-                {t('table.noResults')}
+                {emptyState ?? t('table.noResults')}
               </TD>
             </TR>
           ) : (

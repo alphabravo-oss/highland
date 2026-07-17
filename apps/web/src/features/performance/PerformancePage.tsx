@@ -1,25 +1,24 @@
-import { useState } from 'react'
-import { Activity, Gauge } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { AlertTriangle, CheckCircle2, Database, Gauge, Layers3, LoaderCircle, Server } from 'lucide-react'
 import {
   useBenchmarks,
-  useClusterMetrics,
   useCreateBenchmark,
   useDeleteBenchmark,
   useNodes,
-  useVolumes,
 } from '@/api/hooks'
 import { useAuth } from '@/auth/AuthContext'
-import { formatBytes } from '@/api/longhorn'
-import { MetricLine } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
 import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { QueryState } from '@/components/data/QueryState'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge, stateTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
+import { useStorageList } from '@/api/storage/hooks'
+import type { StorageClassSummary } from '@/api/storage/types'
 
 // Human-readable rendering for the raw fio result keys.
 const BENCH_METRICS: Array<{ key: string; labelKey: string; fmt: (v: number) => string }> = [
@@ -31,112 +30,42 @@ const BENCH_METRICS: Array<{ key: string; labelKey: string; fmt: (v: number) => 
   { key: 'latWriteUs', labelKey: 'performance.benchWriteLat', fmt: (v) => `${(v / 1000).toFixed(2)} ms` },
 ]
 
-export function PerformancePage() {
-  const { t } = useAppTranslation()
-  const q = useVolumes()
-  const metrics = useClusterMetrics()
-  const attached = (q.data ?? []).filter((v) => (v.state ?? '').toLowerCase() === 'attached')
-  const series = metrics.data?.series ?? []
-
-  // Only show volumes that currently exist. The scraper retains a short ring of
-  // samples, so recently-deleted volumes (e.g. finished benchmark PVCs) can
-  // still have series until they age out — filter them against the live list.
-  const liveVolumes = new Set((q.data ?? []).map((v) => v.name))
-
-  const byVolume = new Map<string, typeof series>()
-  for (const s of series) {
-    const vol = s.labels?.volume
-    if (!vol || !liveVolumes.has(vol)) continue
-    if (!byVolume.has(vol)) byVolume.set(vol, [])
-    byVolume.get(vol)!.push(s)
-  }
-
-  return (
-    <div data-testid="performance-page">
-      <PageHeader
-        title={t('performance.liveIoTitle')}
-        description={t('performance.liveIoDescription')}
-      />
-      {metrics.data?.scrapeError ? (
-        <p className="mb-3 text-sm text-amber-700 dark:text-amber-300">
-          {t('performance.scrape', { error: metrics.data.scrapeError })}
-        </p>
-      ) : null}
-      <QueryState
-        isLoading={q.isLoading}
-        error={q.error as Error | null}
-        onRetry={() => void q.refetch()}
-      >
-        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[...byVolume.entries()].map(([vol, ss]) => {
-            const pv = (name: string) => (ss.find((s) => s.name.includes(name))?.points ?? []).map((p) => p.v)
-            const read = pv('read_throughput')
-            const write = pv('write_throughput')
-            const readIops = pv('read_iops')
-            const writeIops = pv('write_iops')
-            const mbps = (v: number) => `${formatBytes(v)}/s`
-            const iops = (v: number) => `${Math.round(v).toLocaleString()} IOPS`
-            const peak = t('performance.peak')
-            return (
-              <Card key={vol}>
-                <CardHeader className="flex-row items-center justify-between space-y-0">
-                  <CardTitle className="truncate">
-                    <Link
-                      to={`/volumes/${encodeURIComponent(vol)}`}
-                      className="hover:underline"
-                    >
-                      {vol}
-                    </Link>
-                  </CardTitle>
-                  <Activity size={16} className="text-[var(--color-primary)]" />
-                </CardHeader>
-                <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3">
-                  <MetricLine label={t('performance.readThroughput')} points={read} format={mbps} emptyLabel={t('performance.noSamples')} peakLabel={peak} />
-                  <MetricLine label={t('performance.writeThroughput')} points={write} format={mbps} emptyLabel={t('performance.noSamples')} peakLabel={peak} />
-                  <MetricLine label={t('performance.readIops')} points={readIops} format={iops} emptyLabel={t('performance.noSamples')} peakLabel={peak} />
-                  <MetricLine label={t('performance.writeIops')} points={writeIops} format={iops} emptyLabel={t('performance.noSamples')} peakLabel={peak} />
-                </CardContent>
-              </Card>
-            )
-          })}
-          {byVolume.size === 0 &&
-            (attached.length === 0 ? (
-              <Card>
-                <CardContent className="flex items-center gap-2 py-8 text-sm text-[var(--color-muted-foreground)]">
-                  <Activity size={18} /> {t('performance.noMetrics')}
-                </CardContent>
-              </Card>
-            ) : (
-              attached.map((v) => (
-                <Card key={v.id ?? v.name}>
-                  <CardHeader className="flex-row items-center justify-between space-y-0">
-                    <CardTitle>{v.name}</CardTitle>
-                    <Badge tone={stateTone(v.robustness)}>{v.robustness ?? v.state}</Badge>
-                  </CardHeader>
-                  <CardContent className="text-sm text-[var(--color-muted-foreground)]">
-                    {t('performance.waitingScrape')}
-                  </CardContent>
-                </Card>
-              ))
-            ))}
-        </div>
-      </QueryState>
-    </div>
-  )
+function benchmarkProviderLabel(providerId: unknown) {
+  const id = String(providerId ?? '')
+  if (id === 'longhorn') return 'Longhorn'
+  if (id === 'rook-ceph') return 'Rook / Ceph'
+  if (id === 'openebs') return 'OpenEBS'
+  return id || 'Unknown provider'
 }
 
 export function BenchmarksPage() {
   const { t } = useAppTranslation()
-  const { canMutate } = useAuth()
-  const q = useBenchmarks()
+  const { canMutate, isAdmin } = useAuth()
+  const [cursor, setCursor] = useState('')
+  const q = useBenchmarks(cursor)
   const create = useCreateBenchmark()
   const del = useDeleteBenchmark()
   const nodesQ = useNodes()
+  const classesQ = useStorageList<StorageClassSummary>('classes', { limit: 500 })
   const [profile, setProfile] = useState('quick')
   const [nodeName, setNodeName] = useState('')
+  const [storageClass, setStorageClass] = useState('')
+  const [retainFailedPvc, setRetainFailedPvc] = useState(false)
+  const [retainConfirmation, setRetainConfirmation] = useState('')
   const [deleteBench, setDeleteBench] = useState<string | null>(null)
 
   const nodeNames = (nodesQ.data ?? []).map((n) => n.name).filter(Boolean)
+  const storageClasses = classesQ.data?.data ?? []
+
+  useEffect(() => {
+    if (!storageClass && storageClasses.length > 0) {
+      setStorageClass(storageClasses.find((item) => item.default)?.name ?? storageClasses[0]?.name ?? '')
+    }
+  }, [storageClass, storageClasses])
+
+  const selectedClass = storageClasses.find((item) => item.name === storageClass)
+  const benchmarkMode = q.data?.meta.benchmarkMode
+  const realBenchmarksEnabled = benchmarkMode === 'kubernetes-job'
 
   function formatBenchResults(results: Record<string, number>) {
     const out: Array<{ key: string; label: string; value: string }> = []
@@ -159,57 +88,151 @@ export function BenchmarksPage() {
       <PageHeader
         title={t('performance.benchmarksTitle')}
         description={t('performance.benchmarksDescription')}
-        actions={
-          canMutate ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <Select
-                value={profile}
-                onChange={(e) => setProfile(e.target.value)}
-                className="h-8 w-auto"
-                aria-label={t('performance.profile')}
-                disabled={create.isPending}
-              >
-                <option value="quick">{t('performance.profileQuick')}</option>
-                <option value="standard">{t('performance.profileStandard')}</option>
-                <option value="thorough">{t('performance.profileThorough')}</option>
-              </Select>
-              <Select
-                value={nodeName}
-                onChange={(e) => setNodeName(e.target.value)}
-                className="h-8 w-auto"
-                aria-label={t('common.node')}
-                disabled={create.isPending}
-              >
-                <option value="">{t('performance.anyNode')}</option>
-                {nodeNames.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </Select>
+      />
+      {canMutate ? (
+        <Card className="mb-4" data-testid="benchmark-run-panel">
+          <CardHeader>
+            <CardTitle>{t('performance.runPanelTitle')}</CardTitle>
+            <p className="text-sm text-[var(--color-muted-foreground)]">{t('performance.runPanelDescription')}</p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(13rem,.8fr)_minmax(18rem,1.35fr)_minmax(11rem,.7fr)]">
+              <div className="space-y-1.5">
+                <Label htmlFor="benchmark-profile">{t('performance.profile')}</Label>
+                <Select
+                  id="benchmark-profile"
+                  value={profile}
+                  onChange={(e) => setProfile(e.target.value)}
+                  aria-label={t('performance.profile')}
+                  disabled={create.isPending}
+                >
+                  <option value="quick">{t('performance.profileQuick')}</option>
+                  <option value="standard">{t('performance.profileStandard')}</option>
+                  <option value="thorough">{t('performance.profileThorough')}</option>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="benchmark-storage-class">{t('performance.storageClass')}</Label>
+                <Select
+                  id="benchmark-storage-class"
+                  value={storageClass}
+                  onChange={(e) => setStorageClass(e.target.value)}
+                  aria-label={t('performance.storageClass')}
+                  disabled={create.isPending || classesQ.isLoading}
+                >
+                  <option value="">{t('performance.selectStorageClass')}</option>
+                  {storageClasses.map((item) => (
+                    <option key={item.name} value={item.name}>
+                      {item.name} · {item.provisioner}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="benchmark-node">{t('common.node')}</Label>
+                <Select
+                  id="benchmark-node"
+                  value={nodeName}
+                  onChange={(e) => setNodeName(e.target.value)}
+                  aria-label={t('common.node')}
+                  disabled={create.isPending}
+                >
+                  <option value="">{t('performance.anyNode')}</option>
+                  {nodeNames.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 border-t border-[var(--color-border)] pt-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-2">
+                {isAdmin ? (
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={retainFailedPvc}
+                      onChange={(event) => {
+                        setRetainFailedPvc(event.target.checked)
+                        if (!event.target.checked) setRetainConfirmation('')
+                      }}
+                    />
+                    <span>{t('performance.retainFailedPvc')}</span>
+                  </label>
+                ) : null}
+                {retainFailedPvc ? (
+                  <input
+                    className="h-9 w-full max-w-xs rounded-md border bg-transparent px-3 text-sm"
+                    aria-label="Retain failed PVC confirmation"
+                    placeholder="RETAIN FAILED PVC"
+                    value={retainConfirmation}
+                    onChange={(event) => setRetainConfirmation(event.target.value)}
+                  />
+                ) : null}
+                {selectedClass ? (
+                  <p className="text-xs text-[var(--color-muted-foreground)]">
+                    {t('performance.selectedProvider', {
+                      provider: selectedClass.providerId,
+                      provisioner: selectedClass.provisioner,
+                    })}
+                  </p>
+                ) : null}
+              </div>
+
               <Button
                 type="button"
-                size="sm"
                 data-testid="run-benchmark"
-                disabled={create.isPending}
+                className="w-full lg:w-auto"
+                disabled={!realBenchmarksEnabled || create.isPending || !storageClass || (retainFailedPvc && retainConfirmation !== 'RETAIN FAILED PVC')}
                 onClick={() =>
                   void create.mutateAsync({
                     profile,
                     type: 'Disk',
-                    // Omit nodeName for "any node" so the scheduler places it;
-                    // otherwise target the chosen node.
+                    storageClass,
+                    accessMode: 'ReadWriteOnce',
+                    volumeMode: 'Filesystem',
+                    retainFailedPvc,
+                    ...(retainFailedPvc ? { retainConfirmation } : {}),
                     ...(nodeName ? { nodeName } : {}),
                   })
                 }
               >
-                <Gauge size={14} /> {t('performance.runBenchmark')}
+                <Gauge size={15} /> {create.isPending ? t('performance.startingBenchmark') : t('performance.runBenchmark')}
               </Button>
             </div>
-          ) : null
-        }
-      />
+          </CardContent>
+        </Card>
+      ) : null}
+      {q.isLoading ? (
+        <Alert className="mb-4">
+          <AlertTitle>{t('performance.modeChecking')}</AlertTitle>
+          <AlertDescription>{t('performance.modeCheckingDescription')}</AlertDescription>
+        </Alert>
+      ) : realBenchmarksEnabled ? (
+        <Alert tone="success" className="mb-4" data-testid="benchmark-mode-enabled">
+          <AlertTitle className="flex items-center gap-2"><CheckCircle2 size={16} />{t('performance.realMode')}</AlertTitle>
+          <AlertDescription>{t('performance.realModeDescription')}</AlertDescription>
+        </Alert>
+      ) : (
+        <Alert tone="warning" className="mb-4" data-testid="benchmark-mode-disabled">
+          <AlertTitle className="flex items-center gap-2"><AlertTriangle size={16} />{t('performance.disabledMode')}</AlertTitle>
+          <AlertDescription>{t('performance.disabledModeDescription', { mode: benchmarkMode ?? 'unknown' })}</AlertDescription>
+        </Alert>
+      )}
+      {create.error ? (
+        <Alert tone="danger" className="mb-4">
+          <AlertTitle>{t('performance.startFailed')}</AlertTitle>
+          <AlertDescription>{create.error instanceof Error ? create.error.message : String(create.error)}</AlertDescription>
+        </Alert>
+      ) : null}
       <QueryState
         isLoading={q.isLoading}
+        isFetching={q.isFetching && !q.isLoading}
+        observedAt={q.data?.meta.observedAt}
+        stale={q.data?.meta.stale}
+        partial={q.data?.meta.partial}
         error={q.error as Error | null}
         isEmpty={!(q.data?.data ?? []).length}
         emptyTitle={t('performance.empty')}
@@ -219,11 +242,45 @@ export function BenchmarksPage() {
           {(q.data?.data ?? []).map((b) => (
           <Card key={String(b.name)}>
             <CardContent className="flex flex-wrap items-center justify-between gap-2 py-4 text-sm">
-              <div>
-                <div className="font-medium">{String(b.name)}</div>
-                <div className="text-xs text-[var(--color-muted-foreground)]">
-                  {String(b.profile)} · {String(b.phase)} · {String(b.message ?? '')}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="font-medium">{String(b.name)}</div>
+                  <Badge tone={stateTone(String(b.phase))}>
+                    {String(b.phase) === 'Pending' || String(b.phase) === 'Running' ? <LoaderCircle size={12} className="mr-1 inline animate-spin" /> : null}
+                    {String(b.phase)}
+                  </Badge>
+                  <Badge tone="info">{String(b.mode ?? 'unknown')}</Badge>
                 </div>
+                <div className="text-xs text-[var(--color-muted-foreground)]">
+                  {String(b.profile)} · {String(b.message ?? '')}
+                </div>
+                {b.storageClass ? (
+                  <div className="mt-3 grid gap-3 rounded-lg border border-[var(--color-primary)]/25 bg-[var(--color-primary)]/5 p-3 sm:grid-cols-2 xl:grid-cols-4" data-testid={`benchmark-target-${String(b.name)}`}>
+                    <div>
+                      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted-foreground)]"><Database size={13} />{t('performance.storageProvider')}</div>
+                      <Badge tone="primary" className="mt-1.5">{benchmarkProviderLabel(b.providerId)}</Badge>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted-foreground)]"><Layers3 size={13} />{t('performance.storageClass')}</div>
+                      <div className="mt-1.5 break-all font-semibold">{String(b.storageClass)}</div>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted-foreground)]"><Gauge size={13} />{t('performance.provisionerDriver')}</div>
+                      <div className="mt-1.5 break-all font-mono text-xs font-semibold text-[var(--color-primary)]">{String(b.csiDriver ?? 'Unknown')}</div>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted-foreground)]"><Server size={13} />{t('common.node')}</div>
+                      <div className="mt-1.5 font-semibold">{String(b.nodeName ?? t('performance.schedulerSelected'))}</div>
+                    </div>
+                    {(b.pvcName || b.pvName) ? (
+                      <div className="text-xs text-[var(--color-muted-foreground)] sm:col-span-2 xl:col-span-4">
+                        {b.pvcName ? `PVC ${String(b.pvcName)}` : ''}
+                        {b.pvcName && b.pvName ? ' · ' : ''}
+                        {b.pvName ? `PV ${String(b.pvName)}` : ''}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 {b.results && typeof b.results === 'object' ? (
                   <div className="mt-2 grid max-w-lg grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3">
                     {formatBenchResults(b.results as Record<string, number>).map((m) => (
@@ -256,6 +313,19 @@ export function BenchmarksPage() {
             </CardContent>
           </Card>
           ))}
+          {q.data?.page ? (
+            <div className="flex items-center justify-between gap-3 pt-2 text-sm text-[var(--color-muted-foreground)]">
+              <span>{q.data.page.total} benchmark runs</span>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" variant="outline" disabled={!cursor} onClick={() => setCursor('')}>
+                  First page
+                </Button>
+                <Button type="button" size="sm" variant="outline" disabled={!q.data.page.continue} onClick={() => setCursor(q.data?.page.continue ?? '')}>
+                  Next page
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </QueryState>
 

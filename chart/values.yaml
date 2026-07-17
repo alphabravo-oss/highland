@@ -4,6 +4,7 @@
 
 nameOverride: ""
 fullnameOverride: ""
+clusterIdentity: ""
 
 # Namespace is usually the release namespace (highland-system)
 namespaceOverride: ""
@@ -83,6 +84,78 @@ longhorn:
   managerService: longhorn-backend
   managerPort: 9500
 
+# Provider-neutral Kubernetes storage inventory. Read-only is the default.
+storage:
+  enabled: true
+  scope:
+    # cluster renders read-only cluster RBAC. namespaces omits PV/driver metadata
+    # and renders namespaced Roles for only the listed namespaces.
+    mode: cluster # cluster | namespaces
+    namespaces: []
+  writes:
+    enabled: false
+    # Keeps already-approved operations reconciling, including their writer
+    # RBAC, while new submissions are disabled. False on fresh installations.
+    recoveryEnabled: false
+  requiredProviders: []
+
+# Optional runtime-administered storage policy. Kubernetes permissions remain
+# an installation-time ceiling; the Admin UI can never expand this ceiling.
+adminPolicyControl:
+  enabled: false
+  installStorageWriterPermissions: false
+  ceiling:
+    portableKubernetesWrites: false
+    longhornWrites: false
+    rookCephWrites: false
+    allowCephStorageClassDelete: false
+    allowCephPoolDelete: false
+
+providers:
+  longhorn:
+    # null preserves the legacy longhorn.enabled value. Set true/false to use
+    # the provider-native switch explicitly.
+    enabled: null
+    # The legacy top-level longhorn settings remain the connection source.
+    required: false
+  openebs:
+    # Read-only engine-aware OpenEBS provider. Highland does not install or
+    # mutate OpenEBS through this switch.
+    enabled: false
+    namespace: openebs
+  rookCeph:
+    enabled: false
+    namespace: rook-ceph
+    clusterName: rook-ceph
+    dashboard:
+      url: ""
+      # Optional operator-facing URL shown as a browser link. Kept separate
+      # from the private server-to-server API URL and never used for requests.
+      publicUrl: ""
+      # Disposable labs only. Production public dashboard links must use HTTPS.
+      allowHttp: false
+      port: 8443
+      existingSecret: "" # keys: username, password
+      caSecret: ""       # key: ca.crt
+      insecureSkipVerify: false
+      # Explicitly opt in to an audited, admin-only reveal of Rook's generated
+      # dashboard administrator credential. The Secret is read only on demand.
+      credentialReveal:
+        enabled: false
+        username: admin
+        secretName: rook-ceph-dashboard-password
+    prometheus:
+      url: ""
+      port: 9090
+      # Blank uses the Rook namespace; set when Prometheus runs elsewhere.
+      namespace: ""
+    writes:
+      enabled: false
+      # StorageClass deletion is a separate destructive gate so create-only
+      # Ceph workflows can be enabled without granting delete.
+      allowStorageClassDelete: false
+      allowPoolDelete: false
+
 # Opt-in Longhorn subchart. The dependency is aliased to avoid colliding with the
 # longhorn connection settings above. Embedded Longhorn is installed in the same
 # namespace as Highland; use longhorn-system for this deployment mode.
@@ -101,10 +174,14 @@ embeddedLonghorn:
   #   defaultDataPath: /var/lib/longhorn
 
 benchmark:
+  # Opt in to real fio Job/PVC execution. Keeping this false ensures a default
+  # chart render has no PVC/Job/ConfigMap write permissions. The UI remains
+  # available in an explicitly disabled, read-only state.
+  kubernetesJobEnabled: false
   # Used when API can reach the Kubernetes API (in-cluster ServiceAccount)
   fioImage: xridge/fio:latest
-  # Longhorn StorageClass the benchmark provisions its PVC from
-  storageClass: longhorn
+  # CSI StorageClass the benchmark provisions from. Blank requires selection per run.
+  storageClass: ""
   # Size of the PVC created for each benchmark run
   size: 10Gi
 
@@ -117,12 +194,16 @@ redis:
   passwordKey: password
   db: 0
 
-# Optional PVC for audit log file
+# Optional PVC for the append-only audit log. When disabled, terminal
+# StorageOperation CRs are retained indefinitely as the durable operation
+# record. Enabling this volume permits the controller's documented 30-day CR
+# retention policy while preserving audit history in audit.jsonl.
 persistence:
   audit:
     enabled: false
     size: 1Gi
     storageClass: ""
+    # Use ReadWriteMany with multiple API replicas, or set replicaCount.api=1.
     accessMode: ReadWriteOnce
 
 # Prometheus scraping of the BFF's own /metrics endpoint (self-observability).
@@ -141,6 +222,19 @@ metrics:
     scrapeTimeout: 10s
     # Extra labels so a Prometheus instance's serviceMonitorSelector can match it.
     labels: {}
+  prometheusRule:
+    # Requires monitoring.coreos.com/v1 PrometheusRule. Alerts cover storage
+    # cache freshness, provider availability, watches, and durable workflows.
+    enabled: false
+    namespace: ""
+    labels: {}
+  grafanaDashboard:
+    # Creates a labeled ConfigMap consumable by the common Grafana dashboard
+    # sidecar. It contains only bounded Highland metrics and no tenant names.
+    enabled: false
+    namespace: ""
+    labels:
+      grafana_dashboard: "1"
   # When true, add a NetworkPolicy that makes the API pods' allowed ingress
   # explicit (port 8080 only) so Prometheus scrapes, the web sidecar, and kubelet
   # probes all keep working once the pods are policy-selected. Restrict *which*
@@ -153,7 +247,10 @@ metrics:
 
 networkPolicy:
   enabled: true
-  # Egress from highland-api to Longhorn manager + DNS + kube-api
+  # Egress from highland-api to providers, DNS, and the Kubernetes API. These
+  # private defaults avoid opening arbitrary internet :443; override for a
+  # cluster whose API Service uses another address range.
+  kubernetesApiCIDRs: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
 
 ingress:
   enabled: false

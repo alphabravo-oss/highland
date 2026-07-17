@@ -1,13 +1,16 @@
-import { PanelLeft, PanelLeftClose } from 'lucide-react'
+import { Database, PanelLeft, PanelLeftClose } from 'lucide-react'
 import { HighlandLogo } from '@/components/layout/HighlandLogo'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { CompatibilityBadge } from '@/components/layout/CompatibilityBadge'
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import { useAuth } from '@/auth/AuthContext'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
-import { filterNavForRole, navGroups } from '@/lib/nav'
+import { navigationForWorkspace, providerWorkspaceFromLocation, workspaceLanding } from '@/lib/nav'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/ui'
+import { useStorageProviders } from '@/api/storage/hooks'
+import { prefetchRoute } from '@/lib/routePrefetch'
 
 type SidebarProps = {
   className?: string
@@ -19,7 +22,20 @@ export function Sidebar({ className }: SidebarProps) {
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
   const setMobileSidebarOpen = useUIStore((s) => s.setMobileSidebarOpen)
-  const groups = filterNavForRole(navGroups, user?.role)
+  const providers = useStorageProviders()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const discoveredProviders = providers.data?.data
+  const workspace = providerWorkspaceFromLocation(location.pathname, location.search, discoveredProviders)
+  const groups = navigationForWorkspace(workspace, user?.role)
+  const workspaceOptions = discoveredProviders ? [...discoveredProviders] : workspace ? [workspace] : []
+  if (workspace && !workspaceOptions.some((provider) => provider.id === workspace.id)) workspaceOptions.push(workspace)
+
+  const changeWorkspace = (id: string) => {
+    const provider = id === '__all__' ? undefined : workspaceOptions.find((candidate) => candidate.id === id)
+    navigate(workspaceLanding(provider))
+    setMobileSidebarOpen(false)
+  }
 
   return (
     <aside
@@ -67,9 +83,45 @@ export function Sidebar({ className }: SidebarProps) {
         </Button>
       </div>
 
+      <div className={cn('border-b border-[var(--color-border)]', collapsed ? 'p-2' : 'p-3')}>
+        {collapsed ? (
+          <button
+            type="button"
+            className="flex h-10 w-full items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-primary)] hover:bg-[var(--color-accent)]"
+            title={workspace?.displayName ?? t('nav.allStorage', { defaultValue: 'All storage' })}
+            aria-label={`${t('nav.workspace', { defaultValue: 'Workspace' })}: ${workspace?.displayName ?? t('nav.allStorage', { defaultValue: 'All storage' })}`}
+            onClick={() => navigate(workspaceLanding(workspace))}
+          >
+            <Database size={18} strokeWidth={1.75} />
+          </button>
+        ) : (
+          <div className="space-y-1.5">
+            <label htmlFor="storage-workspace" className="block px-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+              {t('nav.workspace', { defaultValue: 'Workspace' })}
+            </label>
+            <Select
+              id="storage-workspace"
+              aria-label={t('nav.storageWorkspace', { defaultValue: 'Storage workspace' })}
+              value={workspace?.id ?? '__all__'}
+              onChange={(event) => changeWorkspace(event.target.value)}
+              className="h-10 bg-[var(--color-sidebar)]"
+            >
+              <option value="__all__">{t('nav.allStorage', { defaultValue: 'All storage' })}</option>
+              {workspaceOptions.map((provider) => (
+                <option key={provider.id} value={provider.id}>{provider.displayName}</option>
+              ))}
+            </Select>
+            <div className="flex items-center justify-between px-0.5 text-[10px] text-[var(--color-muted-foreground)]">
+              <span>{workspace ? workspace.kind : t('nav.crossProvider', { defaultValue: 'Cross-provider' })}</span>
+              {workspace ? <span>{workspace.supportLevel}</span> : null}
+            </div>
+          </div>
+        )}
+      </div>
+
       <nav className="flex-1 overflow-y-auto px-2 py-3" aria-label={t('nav.main')}>
         {groups.map((group) => {
-          const groupLabel = t(group.labelKey)
+          const groupLabel = t(group.labelKey, { defaultValue: group.label })
           return (
             <div key={group.id} className="mb-4">
               {!collapsed && (
@@ -80,12 +132,15 @@ export function Sidebar({ className }: SidebarProps) {
               <ul className="space-y-0.5">
                 {group.items.map((item) => {
                   const Icon = item.icon
-                  const label = t(item.labelKey)
+                  const label = t(item.labelKey, { defaultValue: item.label })
                   return (
                     <li key={item.id}>
                       <NavLink
                         to={item.path}
+                        end={item.end}
                         title={label}
+                        onPointerEnter={() => prefetchRoute(item.path)}
+                        onFocus={() => prefetchRoute(item.path)}
                         onClick={() => setMobileSidebarOpen(false)}
                         className={({ isActive }) =>
                           cn(

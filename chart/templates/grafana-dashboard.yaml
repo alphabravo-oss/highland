@@ -1,0 +1,40 @@
+{{- if and .Values.metrics.enabled .Values.metrics.grafanaDashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "highland.fullname" . }}-storage-dashboard
+  {{- with .Values.metrics.grafanaDashboard.namespace }}
+  namespace: {{ . }}
+  {{- end }}
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+    app.kubernetes.io/component: observability
+    {{- with .Values.metrics.grafanaDashboard.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+data:
+  highland-storage.json: |-
+    {
+      "annotations":{"list":[]},
+      "editable":false,
+      "graphTooltip":1,
+      "panels":[
+        {"type":"stat","title":"Provider availability","id":1,"gridPos":{"h":6,"w":8,"x":0,"y":0},"targets":[{"expr":"min(highland_storage_provider_up)","legendFormat":"minimum"}]},
+        {"type":"stat","title":"Inventory cache age","id":2,"gridPos":{"h":6,"w":8,"x":8,"y":0},"fieldConfig":{"defaults":{"unit":"s"}},"targets":[{"expr":"max(time() - highland_storage_sync_timestamp_seconds)","legendFormat":"oldest"}]},
+        {"type":"stat","title":"Operations in progress","id":3,"gridPos":{"h":6,"w":8,"x":16,"y":0},"targets":[{"expr":"sum(highland_storage_operations_in_progress)","legendFormat":"operations"}]},
+        {"type":"timeseries","title":"Watch errors","id":4,"gridPos":{"h":8,"w":12,"x":0,"y":6},"targets":[{"expr":"sum by (source) (rate(highland_storage_watch_errors_total[5m]))","legendFormat":"{{ "{{" }}source{{ "}}" }}"}]},
+        {"type":"timeseries","title":"Provider request failures","id":5,"gridPos":{"h":8,"w":12,"x":12,"y":6},"targets":[{"expr":"sum by (provider, reason) (rate(highland_storage_provider_errors_total[5m]))","legendFormat":"{{ "{{" }}provider{{ "}}" }} / {{ "{{" }}reason{{ "}}" }}"}]},
+        {"type":"timeseries","title":"Operation retries","id":6,"gridPos":{"h":8,"w":12,"x":0,"y":14},"targets":[{"expr":"sum by (provider, reason) (rate(highland_storage_operation_retries_total[5m]))","legendFormat":"{{ "{{" }}provider{{ "}}" }} / {{ "{{" }}reason{{ "}}" }}"}]},
+        {"type":"stat","title":"Elected operation controller","id":7,"gridPos":{"h":8,"w":12,"x":12,"y":14},"targets":[{"expr":"sum(highland_storage_operation_controller_leader)","legendFormat":"leaders"}]}
+      ],
+      "refresh":"30s",
+      "schemaVersion":39,
+      "tags":["highland","storage","csi"],
+      "templating":{"list":[]},
+      "time":{"from":"now-6h","to":"now"},
+      "timezone":"browser",
+      "title":"Highland storage control plane",
+      "uid":"highland-storage",
+      "version":1
+    }
+{{- end }}

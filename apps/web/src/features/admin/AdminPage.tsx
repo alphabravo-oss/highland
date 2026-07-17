@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Plus, Shield, Trash2, UserPlus } from 'lucide-react'
+import { ArrowRight, KeyRound, Plus, ScrollText, Shield, ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
+import { Link } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
 import {
   useAuditLog,
@@ -30,6 +31,80 @@ import { useAppTranslation } from '@/i18n/useAppTranslation'
 type HighlandUser = { username: string; role: string }
 
 export function AdminPage() {
+  const { t } = useAppTranslation()
+  const { isAdmin } = useAuth()
+
+  if (!isAdmin) {
+    return (
+      <div data-testid="admin-page">
+        <PageHeader title={t('admin.overviewTitle')} description={t('admin.adminRequired')} />
+        <EmptyState
+          icon={Shield}
+          title={t('admin.adminsOnly')}
+          description={t('admin.adminsOnlyDescription')}
+        />
+      </div>
+    )
+  }
+
+  const destinations = [
+    {
+      path: '/admin/users',
+      title: t('admin.usersTitle'),
+      description: t('admin.usersDescription'),
+      icon: Users,
+    },
+    {
+      path: '/admin/sso',
+      title: t('admin.sso.title'),
+      description: t('admin.ssoSummary'),
+      icon: KeyRound,
+    },
+    {
+      path: '/admin/audit',
+      title: t('audit.title'),
+      description: t('admin.auditSummary'),
+      icon: ScrollText,
+    },
+    {
+      path: '/admin/storage-policy',
+      title: 'Storage change policy',
+      description: 'Enable or disable bounded storage workflow families with audited confirmation.',
+      icon: ShieldCheck,
+    },
+  ]
+
+  return (
+    <div data-testid="admin-page">
+      <PageHeader title={t('admin.overviewTitle')} description={t('admin.overviewDescription')} />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {destinations.map((destination) => {
+          const Icon = destination.icon
+          return (
+            <Link key={destination.path} to={destination.path} className="group rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ring)]">
+              <Card className="h-full shadow-[var(--shadow-sm)] transition-colors group-hover:border-[var(--color-primary)]">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--color-accent)] text-[var(--color-primary)]">
+                      <Icon size={18} strokeWidth={1.75} aria-hidden />
+                    </span>
+                    <ArrowRight size={18} className="text-[var(--color-muted-foreground)] transition-transform group-hover:translate-x-0.5" aria-hidden />
+                  </div>
+                  <CardTitle className="pt-2">{destination.title}</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-[var(--color-muted-foreground)]">
+                  {destination.description}
+                </CardContent>
+              </Card>
+            </Link>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+export function AdminUsersPage() {
   const { t } = useAppTranslation()
   const { user, isAdmin } = useAuth()
   const users = useHighlandUsers()
@@ -145,7 +220,7 @@ export function AdminPage() {
 
   if (!isAdmin) {
     return (
-      <div data-testid="admin-page">
+      <div data-testid="admin-users-page">
         <PageHeader title={t('admin.usersTitle')} description={t('admin.adminRequired')} />
         <EmptyState
           icon={Shield}
@@ -157,7 +232,7 @@ export function AdminPage() {
   }
 
   return (
-    <div data-testid="admin-page">
+    <div data-testid="admin-users-page">
       <PageHeader
         title={t('admin.title')}
         description={t('admin.description')}

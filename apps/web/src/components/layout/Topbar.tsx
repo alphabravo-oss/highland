@@ -1,4 +1,4 @@
-import { LifeBuoy, Menu, Search } from 'lucide-react'
+import { Info, LifeBuoy, Menu, Search } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { LocaleSwitcher } from '@/components/layout/LocaleSwitcher'
@@ -13,17 +13,29 @@ import {
 import type { HighlandUser } from '@/api/client'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 import { useUIStore } from '@/store/ui'
+import { useStorageProviders } from '@/api/storage/hooks'
+import { providerWorkspaceFromLocation } from '@/lib/nav'
+import { useIsFetching, useIsMutating } from '@tanstack/react-query'
 
 type TopbarProps = {
   pathname: string
+  search: string
   user: HighlandUser | null
   onLogout: () => void
 }
 
-export function Topbar({ pathname, user, onLogout }: TopbarProps) {
+export function Topbar({ pathname, search, user, onLogout }: TopbarProps) {
   const { t } = useAppTranslation()
   const setMobileSidebarOpen = useUIStore((s) => s.setMobileSidebarOpen)
   const setCommandPaletteOpen = useUIStore((s) => s.setCommandPaletteOpen)
+  const providers = useStorageProviders()
+  const fetching = useIsFetching()
+  const mutating = useIsMutating()
+  const workspace = providerWorkspaceFromLocation(pathname, search, providers.data?.data)
+  const longhornWorkspace = workspace?.kind === 'longhorn' || workspace?.id === 'longhorn'
+  const supportPath = longhornWorkspace ? '/support-bundle' : '/status'
+  const supportLabel = longhornWorkspace ? t('nav.supportBundle') : t('nav.status')
+  const SupportIcon = longhornWorkspace ? LifeBuoy : Info
 
   return (
     <header
@@ -45,6 +57,12 @@ export function Topbar({ pathname, user, onLogout }: TopbarProps) {
       <Breadcrumbs pathname={pathname} />
 
       <div className="ml-auto flex items-center gap-1">
+        {fetching || mutating ? (
+          <div className="mr-1 hidden items-center gap-1.5 text-xs text-[var(--color-muted-foreground)] sm:flex" role="status" aria-live="polite">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--color-primary)]" />
+            {mutating ? 'Applying changes' : 'Updating'}
+          </div>
+        ) : null}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -69,14 +87,14 @@ export function Topbar({ pathname, user, onLogout }: TopbarProps) {
         <Tooltip>
           <TooltipTrigger asChild>
             <Link
-              to="/support-bundle"
-              aria-label={t('nav.supportBundle')}
+              to={supportPath}
+              aria-label={supportLabel}
               className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ring)]"
             >
-              <LifeBuoy size={18} strokeWidth={1.75} />
+              <SupportIcon size={18} strokeWidth={1.75} />
             </Link>
           </TooltipTrigger>
-          <TooltipContent>{t('nav.supportBundle')}</TooltipContent>
+          <TooltipContent>{supportLabel}</TooltipContent>
         </Tooltip>
         <LocaleSwitcher />
         <ThemeToggle />

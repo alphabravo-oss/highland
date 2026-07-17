@@ -1,0 +1,6 @@
+{
+  "health": {"status": "HEALTH_OK", "checks": {}},
+  "mon_status": {"quorum": [0, 1, 2], "monmap": {"mons": [{"name": "[redacted-host]"}]}},
+  "mgr_map": {"active_name": "[redacted-host]"},
+  "fsid": "[redacted-fsid]"
+}

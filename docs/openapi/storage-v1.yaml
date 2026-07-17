@@ -1,0 +1,1205 @@
+openapi: 3.1.0
+info:
+  title: Highland Storage Control Plane API
+  version: 0.2.0-preview
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+  description: >-
+    Provider-neutral Kubernetes storage inventory and typed durable workflows. Kubernetes is the
+    orchestration source of truth; this API never exposes a raw CSI or Ceph administrative proxy.
+servers:
+  - url: /
+security:
+  - cookieAuth: []
+tags:
+  - name: Inventory
+    description: Provider-neutral Kubernetes and CSI inventory.
+  - name: Providers
+    description: Managed-provider health and bounded typed resources.
+  - name: Context
+    description: Bounded resource relationships, workload impact, and desired/runtime drift.
+  - name: Operations
+    description: Planned, durable, authorized storage workflows.
+  - name: Policy
+    description: Admin-controlled runtime storage policy bounded by install-time Kubernetes permissions.
+
+paths:
+  /api/v1/admin/storage-policy:
+    get:
+      tags: [Policy]
+      operationId: getStoragePolicy
+      summary: Read requested, effective, and installed storage policy
+      responses:
+        "200":
+          description: Effective policy is readable by every authenticated Highland role.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoragePolicyResponse" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      tags: [Policy]
+      operationId: applyStoragePolicy
+      summary: Apply a freshly planned runtime storage policy change
+      parameters:
+        - $ref: "#/components/parameters/Csrf"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StoragePolicyChangeRequest" }
+      responses:
+        "200":
+          description: Persisted policy generation observed by the API.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoragePolicyResponse" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/admin/storage-policy/plans:
+    post:
+      tags: [Policy]
+      operationId: planStoragePolicy
+      summary: Plan an admin storage policy change and issue a five-minute challenge
+      parameters:
+        - $ref: "#/components/parameters/Csrf"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StoragePolicyChangeRequest" }
+      responses:
+        "200":
+          description: Current/requested/effective comparison and signed confirmation challenge.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoragePolicyPlan" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/admin/storage-policy/history:
+    get:
+      tags: [Policy]
+      operationId: listStoragePolicyHistory
+      summary: List bounded policy audit events
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Policy planning, denial, error, and apply audit events.
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/providers:
+    get:
+      tags: [Providers]
+      operationId: listStorageProviders
+      summary: List discovered and configured storage providers
+      responses:
+        "200":
+          description: Configured managed and automatically detected CSI providers.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderList" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/providers/{providerId}:
+    get:
+      tags: [Providers]
+      operationId: getStorageProvider
+      summary: Get one storage provider descriptor
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+      responses:
+        "200":
+          description: Provider descriptor.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderDescriptor" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/drivers:
+    get:
+      tags: [Inventory]
+      operationId: listStorageDrivers
+      summary: List discovered CSI drivers
+      parameters: &listParameters
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Continue"
+        - $ref: "#/components/parameters/Search"
+        - { name: provider, in: query, schema: { type: string, maxLength: 253 } }
+        - { name: driver, in: query, schema: { type: string, maxLength: 253 } }
+        - { name: namespace, in: query, schema: { type: string, maxLength: 253 } }
+        - { name: status, in: query, schema: { type: string, maxLength: 253 } }
+      responses:
+        "200": { $ref: "#/components/responses/DriverPage" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/classes:
+    get:
+      tags: [Inventory]
+      operationId: listStorageClasses
+      summary: List Kubernetes StorageClasses
+      parameters: *listParameters
+      responses:
+        "200": { $ref: "#/components/responses/ClassPage" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/claims:
+    get:
+      tags: [Inventory]
+      operationId: listStorageClaims
+      summary: List persistent volume claims
+      parameters: *listParameters
+      responses:
+        "200": { $ref: "#/components/responses/ClaimPage" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      tags: [Operations]
+      operationId: createStorageClaim
+      summary: Submit an approved PVC creation
+      parameters:
+        - $ref: "#/components/parameters/Csrf"
+      requestBody: { $ref: "#/components/requestBodies/OperationRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/OperationAccepted" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/claims/{namespace}/{name}:
+    get:
+      tags: [Inventory]
+      operationId: getStorageClaim
+      summary: Get one persistent volume claim
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/Name"
+      responses:
+        "200":
+          description: Claim summary.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClaimSummary" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [Operations]
+      operationId: deleteStorageClaim
+      summary: Submit an approved PVC deletion
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/Name"
+        - $ref: "#/components/parameters/Csrf"
+      requestBody: { $ref: "#/components/requestBodies/OperationApproval" }
+      responses:
+        "202": { $ref: "#/components/responses/OperationAccepted" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/claims/{namespace}/{name}/size:
+    patch:
+      tags: [Operations]
+      operationId: expandStorageClaim
+      summary: Submit an approved PVC expansion
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/Name"
+        - $ref: "#/components/parameters/Csrf"
+      requestBody: { $ref: "#/components/requestBodies/OperationApproval" }
+      responses:
+        "202": { $ref: "#/components/responses/OperationAccepted" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/volumes:
+    get:
+      tags: [Inventory]
+      operationId: listPersistentVolumes
+      summary: List Kubernetes persistent volumes
+      parameters: *listParameters
+      responses:
+        "200": { $ref: "#/components/responses/VolumePage" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/volumes/{name}:
+    get:
+      tags: [Inventory]
+      operationId: getPersistentVolume
+      summary: Get one Kubernetes persistent volume
+      parameters:
+        - $ref: "#/components/parameters/Name"
+      responses:
+        "200":
+          description: PersistentVolume summary.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PersistentVolumeSummary" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/snapshots:
+    get:
+      tags: [Inventory]
+      operationId: listVolumeSnapshots
+      summary: List CSI volume snapshots
+      parameters: *listParameters
+      responses:
+        "200": { $ref: "#/components/responses/SnapshotPage" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      tags: [Operations]
+      operationId: createVolumeSnapshot
+      summary: Submit an approved volume snapshot creation
+      parameters:
+        - $ref: "#/components/parameters/Csrf"
+      requestBody: { $ref: "#/components/requestBodies/OperationRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/OperationAccepted" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/snapshots/{namespace}/{name}:
+    delete:
+      tags: [Operations]
+      operationId: deleteVolumeSnapshot
+      summary: Submit an approved volume snapshot deletion
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/Name"
+        - $ref: "#/components/parameters/Csrf"
+      requestBody: { $ref: "#/components/requestBodies/OperationApproval" }
+      responses:
+        "202": { $ref: "#/components/responses/OperationAccepted" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/attachments:
+    get:
+      tags: [Inventory]
+      operationId: listVolumeAttachments
+      summary: List CSI volume attachments
+      parameters: *listParameters
+      responses:
+        "200": { $ref: "#/components/responses/AttachmentPage" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/capacity:
+    get:
+      tags: [Inventory]
+      operationId: listStorageCapacity
+      summary: List topology-aware CSI storage capacity
+      parameters: *listParameters
+      responses:
+        "200": { $ref: "#/components/responses/CapacityPage" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/events:
+    get:
+      tags: [Inventory]
+      operationId: listStorageEvents
+      summary: List storage-related Kubernetes events
+      parameters: *listParameters
+      responses:
+        "200": { $ref: "#/components/responses/EventPage" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/timeline:
+    get:
+      tags: [Context]
+      operationId: getStorageTimeline
+      summary: Get bounded, provider-attributed storage incident history
+      parameters:
+        - { name: provider, in: query, schema: { type: string } }
+        - { name: namespace, in: query, schema: { type: array, items: { type: string } } }
+        - { name: source, in: query, schema: { type: array, items: { type: string } } }
+        - { name: severity, in: query, schema: { type: array, items: { type: string } } }
+        - $ref: "#/components/parameters/ContextLimit"
+      responses:
+        "200":
+          description: Deduplicated storage timeline with attribution and ordering evidence.
+          content: { application/json: { schema: { type: object, additionalProperties: true } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/capacity/ownership:
+    get:
+      tags: [Context]
+      operationId: getStorageCapacityOwnership
+      summary: Attribute distinct storage capacity measures without combining unlike values
+      parameters:
+        - { name: provider, in: query, schema: { type: string } }
+        - { name: namespace, in: query, schema: { type: array, items: { type: string } } }
+        - { name: measure, in: query, schema: { type: array, items: { type: string } } }
+        - { name: authoritativeOnly, in: query, schema: { type: boolean } }
+        - $ref: "#/components/parameters/ContextLimit"
+      responses:
+        "200":
+          description: Separately labelled requested, provisioned, backend, usable, and raw measures.
+          content: { application/json: { schema: { type: object, additionalProperties: true } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/comparison:
+    get:
+      tags: [Context]
+      operationId: compareStorageCandidates
+      summary: Evaluate providers and StorageClasses against explicit placement requirements
+      parameters:
+        - { name: provider, in: query, schema: { type: array, items: { type: string } } }
+        - { name: storageClass, in: query, schema: { type: array, items: { type: string } } }
+        - { name: accessMode, in: query, schema: { type: string } }
+        - { name: healthy, in: query, schema: { type: boolean } }
+        - { name: minimumSupport, in: query, schema: { type: string } }
+        - $ref: "#/components/parameters/ContextLimit"
+      responses:
+        "200":
+          description: Evidence-labelled eligibility without an opaque provider score.
+          content: { application/json: { schema: { type: object, additionalProperties: true } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/remediations:
+    get:
+      tags: [Context]
+      operationId: getStorageRemediations
+      summary: Get read-only, evidence-backed remediation guidance
+      parameters:
+        - { name: provider, in: query, schema: { type: string } }
+        - { name: severity, in: query, schema: { type: array, items: { type: string } } }
+        - { name: condition, in: query, schema: { type: array, items: { type: string } } }
+        - $ref: "#/components/parameters/ContextLimit"
+      responses:
+        "200":
+          description: Guidance with explicit action surface, prerequisites, risks, and escalation.
+          content: { application/json: { schema: { type: object, additionalProperties: true } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/relationships:
+    get:
+      tags: [Context]
+      operationId: listStorageRelationships
+      summary: Expand a bounded provider storage relationship graph
+      parameters:
+        - { name: provider, in: query, required: true, schema: { type: string, maxLength: 253 } }
+        - { name: kind, in: query, required: true, schema: { type: string, maxLength: 64 } }
+        - { name: namespace, in: query, schema: { type: string, maxLength: 253 } }
+        - $ref: "#/components/parameters/Depth"
+        - $ref: "#/components/parameters/ContextLimit"
+        - $ref: "#/components/parameters/Continue"
+      responses:
+        "200":
+          description: Nodes and edges selected from one provider snapshot.
+          content: { application/json: { schema: { $ref: "#/components/schemas/RelationshipGraph" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/resources/{kind}/{id}/relationships:
+    get:
+      tags: [Context]
+      operationId: getStorageResourceRelationships
+      summary: Expand relationships around one exact canonical resource ID
+      parameters:
+        - { name: kind, in: path, required: true, schema: { type: string, maxLength: 64 } }
+        - { name: id, in: path, required: true, description: URL-safe canonical graph ID returned by a relationship API., schema: { type: string, maxLength: 1024 } }
+        - { name: provider, in: query, required: true, schema: { type: string, maxLength: 253 } }
+        - $ref: "#/components/parameters/Depth"
+        - $ref: "#/components/parameters/ContextLimit"
+        - $ref: "#/components/parameters/Continue"
+      responses:
+        "200":
+          description: Bounded subgraph containing the exact target.
+          content: { application/json: { schema: { $ref: "#/components/schemas/RelationshipGraph" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/impact:
+    get:
+      tags: [Context]
+      operationId: getStorageImpact
+      summary: Determine confirmed, potential, and unknown workload impact
+      parameters:
+        - { name: provider, in: query, required: true, schema: { type: string, maxLength: 253 } }
+        - { name: kind, in: query, required: true, schema: { type: string, maxLength: 64 } }
+        - { name: id, in: query, required: true, description: Exact canonical graph ID., schema: { type: string, maxLength: 1024 } }
+        - $ref: "#/components/parameters/Depth"
+      responses:
+        "200":
+          description: Read-only workload impact with source freshness and incomplete-source conditions.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ImpactResult" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/providers/{providerId}/summary:
+    get:
+      tags: [Providers]
+      operationId: getProviderSummary
+      summary: Get a managed provider summary
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+      responses:
+        "200":
+          description: Typed, bounded provider summary.
+          content: { application/json: { schema: { type: object, additionalProperties: true } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/providers/{providerId}/relationships:
+    get:
+      tags: [Context]
+      operationId: getProviderRelationships
+      summary: Expand a bounded relationship graph for one provider
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+        - { name: kind, in: query, required: true, schema: { type: string, maxLength: 64 } }
+        - { name: namespace, in: query, schema: { type: string, maxLength: 253 } }
+        - $ref: "#/components/parameters/Depth"
+        - $ref: "#/components/parameters/ContextLimit"
+        - $ref: "#/components/parameters/Continue"
+      responses:
+        "200":
+          description: Provider-scoped relationship graph.
+          content: { application/json: { schema: { $ref: "#/components/schemas/RelationshipGraph" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/providers/{providerId}/drift:
+    get:
+      tags: [Context]
+      operationId: getProviderDrift
+      summary: Compare supported Rook desired state with bounded Ceph runtime evidence
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+        - $ref: "#/components/parameters/ContextLimit"
+        - $ref: "#/components/parameters/Continue"
+      responses:
+        "200":
+          description: Desired and runtime authorities remain separate in every drift record.
+          content: { application/json: { schema: { $ref: "#/components/schemas/DriftReport" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/providers/{providerId}/capacity/forecast:
+    get:
+      tags: [Context]
+      operationId: getProviderCapacityForecast
+      summary: Project one explicit capacity measure when sufficient fresh history exists
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+        - { name: measure, in: query, required: true, schema: { type: string } }
+        - { name: horizon, in: query, schema: { type: string, example: 720h } }
+      responses:
+        "200":
+          description: Bounded trend forecast or an explicit unavailable result.
+          content: { application/json: { schema: { type: object, additionalProperties: true } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/providers/{providerId}/health:
+    get:
+      tags: [Providers]
+      operationId: getProviderHealth
+      summary: Get provider health independently of readiness
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+      responses:
+        "200":
+          description: Provider health independent from global readiness.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderHealth" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/providers/{providerId}/resources/{kind}:
+    get:
+      tags: [Providers]
+      operationId: listProviderResources
+      summary: List bounded typed resources for a provider
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+        - $ref: "#/components/parameters/Kind"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Continue"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200": { $ref: "#/components/responses/ProviderResourcePage" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/providers/{providerId}/resources/{kind}/{id}:
+    get:
+      tags: [Providers]
+      operationId: getProviderResource
+      summary: Get one bounded typed provider resource
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+        - $ref: "#/components/parameters/Kind"
+        - { name: id, in: path, required: true, schema: { type: string, maxLength: 253 } }
+      responses:
+        "200":
+          description: Bounded typed provider resource.
+          content: { application/json: { schema: { type: object, additionalProperties: true } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/storage/actions:
+    get:
+      tags: [Operations]
+      operationId: listStorageActions
+      summary: List approved storage actions and availability
+      responses:
+        "200":
+          description: Machine-readable approved action and current availability matrix.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, writesEnabled, portableProviderIds]
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/ActionAvailability" } }
+                  writesEnabled: { type: boolean }
+                  portableProviderIds:
+                    type: array
+                    description: Provider IDs currently authorized for portable PVC and snapshot workflows. A legacy wildcard is represented by `*`.
+                    items: { type: string }
+                  policySource: { type: string }
+                  policyGeneration: { type: integer, format: int64 }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/plans:
+    post:
+      tags: [Operations]
+      operationId: planStorageOperation
+      summary: Plan and preflight a storage action without mutation
+      parameters:
+        - $ref: "#/components/parameters/Csrf"
+      requestBody: { $ref: "#/components/requestBodies/OperationRequest" }
+      responses:
+        "200":
+          description: Fresh server plan and short-lived confirmation challenge; no mutation occurred.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationPlan" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/operations:
+    get:
+      tags: [Operations]
+      operationId: listStorageOperations
+      summary: List durable storage operations
+      parameters:
+        - { name: provider, in: query, schema: { type: string, maxLength: 128 } }
+        - { name: action, in: query, schema: { type: string, maxLength: 128 } }
+        - { name: state, in: query, schema: { type: string, maxLength: 128 } }
+        - { name: user, in: query, schema: { type: string, maxLength: 128 } }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Durable operation history; non-admins see only their operations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/StorageOperation" } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/operations/{operationId}:
+    get:
+      tags: [Operations]
+      operationId: getStorageOperation
+      summary: Get one durable storage operation
+      parameters:
+        - { name: operationId, in: path, required: true, schema: { type: string, maxLength: 253 } }
+      responses:
+        "200":
+          description: Durable operation detail and timeline.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StorageOperation" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/restores:
+    post:
+      tags: [Operations]
+      operationId: restoreStorageSnapshot
+      summary: Submit an approved snapshot restore
+      parameters: [{ $ref: "#/components/parameters/Csrf" }]
+      requestBody: { $ref: "#/components/requestBodies/OperationRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/OperationAccepted" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/storage/clones:
+    post:
+      tags: [Operations]
+      operationId: cloneStorageClaim
+      summary: Submit an approved PVC clone
+      parameters: [{ $ref: "#/components/parameters/Csrf" }]
+      requestBody: { $ref: "#/components/requestBodies/OperationRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/OperationAccepted" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/providers/{providerId}/ceph/block-pools:
+    post:
+      tags: [Operations]
+      operationId: createCephBlockPool
+      summary: Submit an approved replicated Ceph pool creation
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+        - $ref: "#/components/parameters/Csrf"
+      requestBody: { $ref: "#/components/requestBodies/OperationRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/OperationAccepted" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/providers/{providerId}/ceph/block-pools/{namespace}/{name}:
+    delete:
+      tags: [Operations]
+      operationId: deleteCephBlockPool
+      summary: Submit an approved proven-empty Ceph pool deletion
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/Name"
+        - $ref: "#/components/parameters/Csrf"
+      requestBody: { $ref: "#/components/requestBodies/OperationApproval" }
+      responses:
+        "202": { $ref: "#/components/responses/OperationAccepted" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/providers/{providerId}/ceph/storage-classes:
+    post:
+      tags: [Operations]
+      operationId: createCephStorageClass
+      summary: Submit an approved Ceph StorageClass creation
+      description: "actionId selects the approved RBD or CephFS StorageClass workflow."
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+        - $ref: "#/components/parameters/Csrf"
+      requestBody: { $ref: "#/components/requestBodies/OperationRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/OperationAccepted" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/providers/{providerId}/ceph/storage-classes/{name}:
+    delete:
+      tags: [Operations]
+      operationId: deleteCephStorageClass
+      summary: Submit an approved Ceph StorageClass deletion
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+        - $ref: "#/components/parameters/Name"
+        - $ref: "#/components/parameters/Csrf"
+      requestBody: { $ref: "#/components/requestBodies/OperationApproval" }
+      responses:
+        "202": { $ref: "#/components/responses/OperationAccepted" }
+        default: { $ref: "#/components/responses/Error" }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: highland_session
+  parameters:
+    ProviderId: { name: providerId, in: path, required: true, schema: { type: string, maxLength: 128 } }
+    Namespace: { name: namespace, in: path, required: true, schema: { type: string, maxLength: 63, pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" } }
+    Name: { name: name, in: path, required: true, schema: { type: string, maxLength: 253 } }
+    Kind: { name: kind, in: path, required: true, schema: { type: string, maxLength: 128 } }
+    Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+    ContextLimit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 100 } }
+    Depth: { name: depth, in: query, schema: { type: integer, minimum: 1, maximum: 6, default: 2 } }
+    Continue: { name: continue, in: query, description: "Opaque v1 continuation-token returned by the previous page.", schema: { type: string, maxLength: 128 } }
+    Search: { name: search, in: query, schema: { type: string, maxLength: 256 } }
+    Csrf:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema: { type: string }
+      description: Double-submit token paired with the signed session's CSRF cookie.
+  requestBodies:
+    OperationRequest:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/OperationRequest" }
+    OperationApproval:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/OperationRequest" }
+  responses:
+    Error:
+      description: Stable machine-readable error.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    DriverPage: { description: Paginated drivers, content: { application/json: { schema: { $ref: "#/components/schemas/DriverPage" } } } }
+    ClassPage: { description: Paginated classes, content: { application/json: { schema: { $ref: "#/components/schemas/ClassPage" } } } }
+    ClaimPage: { description: Paginated claims, content: { application/json: { schema: { $ref: "#/components/schemas/ClaimPage" } } } }
+    VolumePage: { description: Paginated volumes, content: { application/json: { schema: { $ref: "#/components/schemas/VolumePage" } } } }
+    SnapshotPage: { description: Paginated snapshots, content: { application/json: { schema: { $ref: "#/components/schemas/SnapshotPage" } } } }
+    AttachmentPage: { description: Paginated attachments, content: { application/json: { schema: { $ref: "#/components/schemas/AttachmentPage" } } } }
+    CapacityPage: { description: Paginated capacities, content: { application/json: { schema: { $ref: "#/components/schemas/CapacityPage" } } } }
+    EventPage: { description: Paginated events, content: { application/json: { schema: { $ref: "#/components/schemas/EventPage" } } } }
+    ProviderResourcePage:
+      description: Paginated bounded provider resources.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/PageBase"
+              - type: object
+                properties: { data: { type: array, items: { type: object, additionalProperties: true } } }
+    OperationAccepted:
+      description: Durable operation accepted. Replays of an equivalent active request return the same operation.
+      headers:
+        Location: { schema: { type: string } }
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [operation]
+            properties:
+              operation: { $ref: "#/components/schemas/StorageOperation" }
+              operationId: { type: string }
+              duplicate: { type: boolean }
+  schemas:
+    Condition:
+      type: object
+      required: [type, status, severity]
+      properties:
+        type: { type: string }
+        status: { type: string }
+        severity: { type: string, enum: [ok, info, warning, error, unknown] }
+        reason: { type: string }
+        message: { type: string }
+        lastTransitionTime: { type: string, format: date-time }
+        observedAt: { type: string, format: date-time }
+    ProviderHealth:
+      type: object
+      required: [status, conditions, observedAt]
+      properties:
+        status: { type: string, enum: [ok, info, warning, error, unknown] }
+        conditions: { type: array, items: { $ref: "#/components/schemas/Condition" } }
+        observedAt: { type: string, format: date-time }
+        stale: { type: boolean }
+    ProviderDescriptor:
+      type: object
+      required: [id, kind, displayName, supportLevel, drivers, capabilities, health]
+      properties:
+        id: { type: string }
+        kind: { type: string }
+        displayName: { type: string }
+        supportLevel: { type: string, enum: [detected, verified, managed] }
+        drivers: { type: array, items: { type: string } }
+        version: { type: string }
+        namespace: { type: string }
+        capabilities: { type: array, items: { type: string } }
+        health: { $ref: "#/components/schemas/ProviderHealth" }
+        metadata: { type: object, additionalProperties: { type: string }, maxProperties: 64 }
+    ProviderList:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/ProviderDescriptor" } }
+        meta:
+          type: object
+          required: [lastSync, snapshotApi]
+          properties:
+            lastSync: { type: string, format: date-time }
+            snapshotApi: { type: boolean }
+            conditions: { type: array, items: { $ref: "#/components/schemas/Condition" } }
+    DriverSummary:
+      type: object
+      required: [name, providerId, supportLevel, nodeCount, storageClassCount, persistentVolumeCount]
+      properties:
+        name: { type: string }
+        providerId: { type: string }
+        supportLevel: { type: string, enum: [detected, verified, managed] }
+        nodeCount: { type: integer }
+        storageClassCount: { type: integer }
+        persistentVolumeCount: { type: integer }
+    StorageClassSummary:
+      type: object
+      required: [name, providerId, provisioner]
+      properties:
+        name: { type: string }
+        kubernetesUid: { type: string }
+        providerId: { type: string }
+        provisioner: { type: string }
+        reclaimPolicy: { type: string }
+        volumeBindingMode: { type: string }
+        allowVolumeExpansion: { type: boolean }
+        default: { type: boolean }
+        parameters: { type: object, additionalProperties: { type: string } }
+        claimCount: { type: integer }
+        volumeCount: { type: integer }
+        snapshotClasses: { type: array, items: { type: string } }
+        conditions: { type: array, items: { $ref: "#/components/schemas/Condition" } }
+    ProviderReference:
+      type: object
+      required: [kind, id]
+      properties: { kind: { type: string }, id: { type: string } }
+    RelationshipEvidence:
+      type: object
+      required: [source, freshness, confidence]
+      properties:
+        source: { type: string }
+        ref: { type: string, description: "Exact Kubernetes UID, CSI handle, or provider-native identifier." }
+        observedAt: { type: string, format: date-time }
+        freshness: { type: string, enum: [fresh, aging, stale, unknown] }
+        confidence: { type: string, enum: [authoritative, derived, potential, unknown] }
+        message: { type: string }
+    GraphNode:
+      type: object
+      required: [apiVersion, id, kind, providerId, name, freshness]
+      properties:
+        apiVersion: { type: string, const: storage.highland.io/v1alpha1 }
+        id: { type: string, description: Stable URL-safe canonical identity. }
+        kind: { type: string }
+        providerId: { type: string }
+        namespace: { type: string }
+        name: { type: string }
+        kubernetesUid: { type: string }
+        providerRef: { $ref: "#/components/schemas/ProviderReference" }
+        observedAt: { type: string, format: date-time }
+        freshness: { type: string, enum: [fresh, aging, stale, unknown] }
+        attributes: { type: object, additionalProperties: true, maxProperties: 32 }
+        conditions: { type: array, items: { $ref: "#/components/schemas/Condition" } }
+    GraphEdge:
+      type: object
+      required: [apiVersion, id, type, from, to, confidence, evidence]
+      properties:
+        apiVersion: { type: string, const: storage.highland.io/v1alpha1 }
+        id: { type: string }
+        type: { type: string, enum: [uses, binds, provisions, attaches, mounted-by, owned-by, backed-by, belongs-to-pool, belongs-to-filesystem, managed-by, affected-by] }
+        from: { type: string }
+        to: { type: string }
+        confidence: { type: string, enum: [authoritative, derived, potential, unknown] }
+        evidence: { type: array, minItems: 1, items: { $ref: "#/components/schemas/RelationshipEvidence" } }
+    RelationshipGraph:
+      type: object
+      required: [apiVersion, providerId, nodes, edges, page, observedAt]
+      properties:
+        apiVersion: { type: string, const: storage.highland.io/v1alpha1 }
+        providerId: { type: string }
+        nodes: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/GraphNode" } }
+        edges: { type: array, items: { $ref: "#/components/schemas/GraphEdge" } }
+        page: { $ref: "#/components/schemas/PageMeta" }
+        observedAt: { type: string, format: date-time }
+        conditions: { type: array, items: { $ref: "#/components/schemas/Condition" } }
+        incomplete: { type: boolean }
+    ImpactResource:
+      type: object
+      required: [node, confidence]
+      properties:
+        node: { $ref: "#/components/schemas/GraphNode" }
+        confidence: { type: string, enum: [authoritative, derived, potential, unknown] }
+        path: { type: array, maxItems: 7, items: { type: string } }
+    ImpactResult:
+      type: object
+      required: [apiVersion, providerId, target, confirmed, potential, unknown, backedBy, summary, observedAt, freshness]
+      properties:
+        apiVersion: { type: string, const: storage.highland.io/v1alpha1 }
+        providerId: { type: string }
+        target: { $ref: "#/components/schemas/GraphNode" }
+        confirmed: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/ImpactResource" } }
+        potential: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/ImpactResource" } }
+        unknown: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/ImpactResource" } }
+        backedBy: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/ImpactResource" } }
+        summary: { type: object, additionalProperties: true }
+        observedAt: { type: string, format: date-time }
+        freshness: { type: string, enum: [fresh, aging, stale, unknown] }
+        conditions: { type: array, items: { $ref: "#/components/schemas/Condition" } }
+        incomplete: { type: boolean }
+    DriftAuthority:
+      type: object
+      required: [source, freshness]
+      properties:
+        source: { type: string }
+        observedAt: { type: string, format: date-time }
+        freshness: { type: string, enum: [fresh, aging, stale, unknown] }
+        fields: { type: object, additionalProperties: true, maxProperties: 100 }
+    DriftRecord:
+      type: object
+      required: [id, providerId, category, resource, firstObserved, lastObserved, duration, severity, actionable, actionSurface, message]
+      properties:
+        id: { type: string }
+        providerId: { type: string }
+        category: { type: string, enum: [missing-runtime-resource, unexpected-runtime-resource, rook-not-ready, spec-status-divergence, reconciliation-stalled, version-unsupported, runtime-stale, post-operation-verification-mismatch] }
+        resource: { $ref: "#/components/schemas/GraphNode" }
+        desired: { $ref: "#/components/schemas/DriftAuthority" }
+        runtime: { $ref: "#/components/schemas/DriftAuthority" }
+        firstObserved: { type: string, format: date-time }
+        lastObserved: { type: string, format: date-time }
+        duration: { type: string }
+        severity: { type: string, enum: [ok, info, warning, error, unknown] }
+        actionable: { type: boolean }
+        actionSurface: { type: string, enum: [highland, rook-ceph, ceph-dashboard, highland-configuration] }
+        suppressed: { type: boolean }
+        message: { type: string }
+    DriftReport:
+      type: object
+      required: [apiVersion, providerId, data, page, summary, observedAt]
+      properties:
+        apiVersion: { type: string, const: storage.highland.io/v1alpha1 }
+        providerId: { type: string }
+        data: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/DriftRecord" } }
+        page: { $ref: "#/components/schemas/PageMeta" }
+        summary: { type: object, additionalProperties: { type: integer } }
+        observedAt: { type: string, format: date-time }
+        conditions: { type: array, items: { $ref: "#/components/schemas/Condition" } }
+        incomplete: { type: boolean }
+    ClaimSummary:
+      type: object
+      required: [id, namespace, name, providerId, phase]
+      properties:
+        id: { type: string }
+        namespace: { type: string }
+        name: { type: string }
+        kubernetesUid: { type: string }
+        providerId: { type: string }
+        driver: { type: string }
+        storageClass: { type: string }
+        pvName: { type: string }
+        phase: { type: string }
+        requestedCapacity: { type: string, description: Exact Kubernetes quantity string. }
+        provisionedCapacity: { type: string, description: Exact Kubernetes quantity string. }
+        volumeHandle: { type: string }
+        volumeAttributes: { type: object, additionalProperties: { type: string }, maxProperties: 8, description: Allowlisted non-secret CSI correlation metadata. }
+        providerRef: { $ref: "#/components/schemas/ProviderReference" }
+        conditions: { type: array, items: { $ref: "#/components/schemas/Condition" } }
+    PersistentVolumeSummary:
+      type: object
+      required: [name, providerId, phase]
+      properties:
+        name: { type: string }
+        kubernetesUid: { type: string }
+        providerId: { type: string }
+        driver: { type: string }
+        volumeHandle: { type: string }
+        volumeAttributes: { type: object, additionalProperties: { type: string }, maxProperties: 8, description: Allowlisted non-secret CSI correlation metadata. }
+        storageClass: { type: string }
+        phase: { type: string }
+        capacity: { type: string }
+        reclaimPolicy: { type: string }
+        claimNamespace: { type: string }
+        claimName: { type: string }
+        providerRef: { $ref: "#/components/schemas/ProviderReference" }
+        backendAllocatedCapacity: { type: string }
+        backend: { type: object, additionalProperties: true, maxProperties: 64 }
+        conditions: { type: array, items: { $ref: "#/components/schemas/Condition" } }
+    SnapshotSummary:
+      type: object
+      required: [id, namespace, name, providerId]
+      properties:
+        id: { type: string }
+        namespace: { type: string }
+        name: { type: string }
+        providerId: { type: string }
+        driver: { type: string }
+        snapshotClass: { type: string }
+        sourcePvc: { type: string }
+        readyToUse: { type: boolean }
+        restoreSize: { type: string }
+        deletionPolicy: { type: string }
+        conditions: { type: array, items: { $ref: "#/components/schemas/Condition" } }
+    AttachmentSummary:
+      type: object
+      required: [name, providerId, driver, pvName, nodeName, attached]
+      properties:
+        name: { type: string }
+        providerId: { type: string }
+        driver: { type: string }
+        pvName: { type: string }
+        nodeName: { type: string }
+        attached: { type: boolean }
+        attachError: { type: string }
+        detachError: { type: string }
+    CapacitySummary:
+      type: object
+      required: [providerId, driver, storageClass, capacity, observedAt]
+      properties:
+        providerId: { type: string }
+        driver: { type: string }
+        storageClass: { type: string }
+        capacity: { type: string }
+        maximumVolumeSize: { type: string }
+        observedAt: { type: string, format: date-time }
+    StorageEvent:
+      type: object
+      required: [name]
+      properties:
+        namespace: { type: string }
+        name: { type: string }
+        type: { type: string }
+        reason: { type: string }
+        message: { type: string }
+        regardingKind: { type: string }
+        regardingName: { type: string }
+        count: { type: integer }
+        lastObservedAt: { type: string, format: date-time }
+    PageMeta:
+      type: object
+      required: [limit, total]
+      properties:
+        limit: { type: integer, minimum: 1, maximum: 500 }
+        continue: { type: string }
+        total: { type: integer, minimum: 0 }
+    PageBase:
+      type: object
+      required: [data, page]
+      properties:
+        data: { type: array }
+        page: { $ref: "#/components/schemas/PageMeta" }
+        conditions: { type: array, items: { $ref: "#/components/schemas/Condition" } }
+    DriverPage: { allOf: [{ $ref: "#/components/schemas/PageBase" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/DriverSummary" } } } }] }
+    ClassPage: { allOf: [{ $ref: "#/components/schemas/PageBase" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/StorageClassSummary" } } } }] }
+    ClaimPage: { allOf: [{ $ref: "#/components/schemas/PageBase" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/ClaimSummary" } } } }] }
+    VolumePage: { allOf: [{ $ref: "#/components/schemas/PageBase" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/PersistentVolumeSummary" } } } }] }
+    SnapshotPage: { allOf: [{ $ref: "#/components/schemas/PageBase" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/SnapshotSummary" } } } }] }
+    AttachmentPage: { allOf: [{ $ref: "#/components/schemas/PageBase" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/AttachmentSummary" } } } }] }
+    CapacityPage: { allOf: [{ $ref: "#/components/schemas/PageBase" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/CapacitySummary" } } } }] }
+    EventPage: { allOf: [{ $ref: "#/components/schemas/PageBase" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/StorageEvent" } } } }] }
+    ResourceTarget:
+      type: object
+      required: [kind, name]
+      properties:
+        apiVersion: { type: string }
+        kind: { type: string }
+        namespace: { type: string }
+        name: { type: string }
+        uid: { type: string }
+        resourceVersion: { type: string }
+    Confirmation:
+      type: object
+      properties:
+        challenge: { type: string }
+        typedName: { type: string }
+        warningsAcknowledged: { type: boolean, default: false }
+    OperationRequest:
+      type: object
+      required: [actionId, target]
+      properties:
+        actionId: { type: string, maxLength: 128 }
+        providerId: { type: string, maxLength: 128 }
+        target: { $ref: "#/components/schemas/ResourceTarget" }
+        parameters: { type: object, additionalProperties: true, maxProperties: 64 }
+        confirmation: { $ref: "#/components/schemas/Confirmation" }
+    Action:
+      type: object
+      required: [id, capability, minimumRole, risk, confirmation, featureFlag, preflightChecks, auditAction]
+      properties:
+        id: { type: string }
+        capability: { type: string }
+        minimumRole: { type: string, enum: [operator, admin] }
+        providerKind: { type: string }
+        risk: { type: string, enum: [low, medium, high, critical] }
+        confirmation: { type: string, enum: [summary, typed-name] }
+        featureFlag: { type: string }
+        preflightChecks: { type: array, items: { type: string } }
+        auditAction: { type: string }
+    ActionAvailability:
+      type: object
+      required: [action, enabled, available]
+      properties:
+        action: { $ref: "#/components/schemas/Action" }
+        enabled: { type: boolean }
+        available: { type: boolean }
+        unavailableReason: { type: string }
+    PlannedResource:
+      type: object
+      required: [apiVersion, kind, name, operation]
+      properties:
+        apiVersion: { type: string }
+        kind: { type: string }
+        namespace: { type: string }
+        name: { type: string }
+        operation: { type: string, enum: [server-side-apply, update, delete] }
+        manifest: { type: object, additionalProperties: true }
+    OperationPlan:
+      type: object
+      required: [action, target, resources, checks, blastRadius, hash, challenge, challengeExpiresAt, observedAt]
+      properties:
+        action: { $ref: "#/components/schemas/Action" }
+        providerId: { type: string }
+        target: { $ref: "#/components/schemas/ResourceTarget" }
+        resources: { type: array, items: { $ref: "#/components/schemas/PlannedResource" } }
+        dependencies: { type: array, items: { $ref: "#/components/schemas/ResourceTarget" } }
+        checks: { type: array, items: { type: object, additionalProperties: true } }
+        warnings: { type: array, items: { type: string } }
+        blastRadius: { type: string }
+        hash: { type: string, pattern: "^[a-f0-9]{64}$" }
+        policyVersion: { type: string, description: Observed runtime policy version bound into the challenge. }
+        challenge: { type: string }
+        challengeExpiresAt: { type: string, format: date-time }
+        observedAt: { type: string, format: date-time }
+    StorageOperation:
+      type: object
+      required: [apiVersion, kind, name, creationTimestamp, spec, status]
+      properties:
+        apiVersion: { const: highland.io/v1alpha1 }
+        kind: { const: StorageOperation }
+        name: { type: string }
+        uid: { type: string }
+        resourceVersion: { type: string }
+        creationTimestamp: { type: string, format: date-time }
+        spec:
+          type: object
+          description: Immutable; confirmation secrets and provider credentials are never stored.
+          additionalProperties: true
+        status:
+          type: object
+          required: [phase]
+          properties:
+            phase: { type: string, enum: [Pending, Running, Succeeded, Failed, Cancelled] }
+            step: { type: string }
+            retries: { type: integer }
+            errorCode: { type: string }
+            diagnostics: { type: string, maxLength: 1000 }
+            startedAt: { type: string, format: date-time }
+            finishedAt: { type: string, format: date-time }
+            lastAttemptAt: { type: string, format: date-time }
+    StorageWritePolicy:
+      type: object
+      additionalProperties: false
+      required: [acceptNewOperations, portableKubernetesWrites, portableKubernetesProviderIds, longhornWrites, rookCephWrites, allowCephStorageClassDelete, allowCephPoolDelete]
+      properties:
+        acceptNewOperations: { type: boolean }
+        portableKubernetesWrites: { type: boolean }
+        portableKubernetesProviderIds:
+          type: array
+          maxItems: 64
+          uniqueItems: true
+          description: Explicit provider IDs allowed to use portable PVC and snapshot workflows. A legacy wildcard may be returned for a pre-scoping policy but is never emitted by the current UI.
+          items: { type: string }
+        longhornWrites: { type: boolean }
+        rookCephWrites: { type: boolean }
+        allowCephStorageClassDelete: { type: boolean }
+        allowCephPoolDelete: { type: boolean }
+    StoragePolicyCeiling:
+      type: object
+      additionalProperties: false
+      properties:
+        portableKubernetesWrites: { type: boolean }
+        longhornWrites: { type: boolean }
+        rookCephWrites: { type: boolean }
+        allowCephStorageClassDelete: { type: boolean }
+        allowCephPoolDelete: { type: boolean }
+    StoragePolicyConfirmation:
+      type: object
+      additionalProperties: false
+      required: [challenge]
+      properties:
+        challenge: { type: string }
+        clusterIdentity: { type: string }
+        enablePhrase: { type: string, enum: [ENABLE STORAGE CHANGES] }
+        cephPoolPhrase: { type: string, enum: [ENABLE CEPH POOL DELETE] }
+        impactAcknowledged: { type: boolean }
+    StoragePolicyChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [policy, resourceVersion]
+      properties:
+        policy: { $ref: "#/components/schemas/StorageWritePolicy" }
+        resourceVersion: { type: string }
+        confirmation: { $ref: "#/components/schemas/StoragePolicyConfirmation" }
+    StoragePolicyResponse:
+      type: object
+      required: [requested, effective, ceiling, conditions, source, generation, resourceVersion, observedGeneration, inFlightOperations, meta]
+      properties:
+        requested: { $ref: "#/components/schemas/StorageWritePolicy" }
+        effective: { $ref: "#/components/schemas/StorageWritePolicy" }
+        ceiling: { $ref: "#/components/schemas/StoragePolicyCeiling" }
+        conditions: { type: array, items: { type: object, additionalProperties: true } }
+        source: { type: string, enum: [runtime-policy, static-helm, unavailable] }
+        generation: { type: integer, format: int64 }
+        resourceVersion: { type: string }
+        observedGeneration: { type: integer, format: int64 }
+        inFlightOperations: { type: integer, minimum: 0 }
+        lastChange: { type: object, additionalProperties: true }
+        meta: { type: object, additionalProperties: true }
+    StoragePolicyPlan:
+      type: object
+      required: [current, requested, effective, ceiling, resourceVersion, policyGeneration, broadening, impact, inFlightOperations, clusterIdentity, actor, requestId, hash, challenge, challengeExpiresAt]
+      properties:
+        current: { $ref: "#/components/schemas/StorageWritePolicy" }
+        requested: { $ref: "#/components/schemas/StorageWritePolicy" }
+        effective: { $ref: "#/components/schemas/StorageWritePolicy" }
+        ceiling: { $ref: "#/components/schemas/StoragePolicyCeiling" }
+        conditions: { type: array, items: { type: object, additionalProperties: true } }
+        resourceVersion: { type: string }
+        policyGeneration: { type: integer, format: int64 }
+        broadening: { type: boolean }
+        enablesCephPoolDelete: { type: boolean }
+        impact:
+          type: object
+          properties:
+            actionIds: { type: array, items: { type: string } }
+            roles: { type: array, items: { type: string } }
+        inFlightOperations: { type: integer, minimum: 0 }
+        clusterIdentity: { type: string }
+        actor: { type: string }
+        requestId: { type: string }
+        hash: { type: string, pattern: "^[a-f0-9]{64}$" }
+        challenge: { type: string }
+        challengeExpiresAt: { type: string, format: date-time }
+        observedAt: { type: string, format: date-time }
+    APIError:
+      type: object
+      required: [code, message, retryable]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details: { type: object, additionalProperties: true }
+        retryable: { type: boolean }
+        requestId: { type: string }
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error: { $ref: "#/components/schemas/APIError" }

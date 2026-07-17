@@ -33,6 +33,9 @@ func testDeps(t *testing.T, managerURL string) handlers.Deps {
 		OIDCMock:          true, // tests that need mock; production default is false
 		Version:           "0.1.0-test",
 		AllowedOrigins:    []string{"http://localhost:5173"},
+		StorageEnabled:    false,
+		LonghornEnabled:   true,
+		LonghornRequired:  true,
 	}
 	users := auth.NewUserStoreFromEnv(cfg.BootstrapUsername, cfg.BootstrapPassword)
 	store := auth.NewStore(cfg.SessionTTL)
@@ -43,13 +46,14 @@ func testDeps(t *testing.T, managerURL string) handlers.Deps {
 	}
 	oidcRuntime := auth.NewOIDCRuntime(authenticator, "")
 	return handlers.Deps{
-		Cfg:         cfg,
-		Auth:        authenticator,
-		OIDCRuntime: oidcRuntime,
-		Proxy:       proxy,
-		Audit:       audit.NewStore(100, ""),
-		Metrics:     metrics.NewScraper(managerURL, time.Hour, 10), // no auto poll in tests unless started
-		Benchmarks:  benchmark.NewStore(nil),
+		Cfg:           cfg,
+		Auth:          authenticator,
+		OIDCRuntime:   oidcRuntime,
+		Proxy:         proxy,
+		Audit:         audit.NewStore(100, ""),
+		Metrics:       metrics.NewScraper(managerURL, time.Hour, 10), // no auto poll in tests unless started
+		Benchmarks:    benchmark.NewStore(nil),
+		BenchmarkMode: "kubernetes-job",
 	}
 }
 
@@ -281,6 +285,25 @@ func TestBenchmarksAndAudit(t *testing.T) {
 	data, _ := auditBody["data"].([]any)
 	if len(data) == 0 {
 		t.Fatal("expected audit events from benchmark create")
+	}
+}
+
+func TestBenchmarkCreateRejectedWhenRealRunnerDisabled(t *testing.T) {
+	deps := testDeps(t, "http://manager.example:9500")
+	deps.BenchmarkMode = "synthetic-read-only"
+	h := handlers.NewRouter(deps)
+	c := loginCookie(t, h, "admin", "highland")
+
+	create := httptest.NewRequest(http.MethodPost, "/api/v1/benchmarks", strings.NewReader(`{"profile":"quick","type":"Disk","storageClass":"longhorn"}`))
+	create.Header.Set("Content-Type", "application/json")
+	create.AddCookie(c)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, create)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("create benchmark with runner disabled: want 503 got %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "benchmark.kubernetesJobEnabled") {
+		t.Fatalf("expected actionable disabled-mode error, got %s", rr.Body.String())
 	}
 }
 

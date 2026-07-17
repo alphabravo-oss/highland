@@ -92,4 +92,48 @@ describe('RealtimeProvider', () => {
     })
     expect(getByTestId('sig').textContent).toBe('true')
   })
+
+  it('updates benchmark cache directly from lifecycle events', () => {
+    vi.stubGlobal('EventSource', FakeEventSource as unknown as typeof EventSource)
+    const qc = new QueryClient()
+    qc.setQueryData(['benchmarks', ''], {
+      data: [],
+      page: { limit: 50, total: 0 },
+      meta: { observedAt: '2026-07-16T00:00:00Z', stale: false, partial: false, benchmarkMode: 'kubernetes-job' },
+    })
+    render(
+      <QueryClientProvider client={qc}>
+        <RealtimeProvider><div /></RealtimeProvider>
+      </QueryClientProvider>,
+    )
+    FakeEventSource.instances[0]!.emit('change', JSON.stringify({
+      version: 2,
+      eventType: 'benchmark.running',
+      resource: 'benchmarks',
+      name: 'bench-live',
+      entity: { name: 'bench-live', type: 'Disk', profile: 'quick', phase: 'Running', createdAt: '2026-07-16T00:00:00Z' },
+      keys: ['benchmarks'],
+    }))
+    const cached = qc.getQueryData<{ data: Array<{ name: string; phase: string }> }>(['benchmarks', ''])
+    expect(cached?.data).toEqual([expect.objectContaining({ name: 'bench-live', phase: 'Running' })])
+  })
+
+  it('scopes storage invalidation to the changed resource family', () => {
+    vi.stubGlobal('EventSource', FakeEventSource as unknown as typeof EventSource)
+    const qc = new QueryClient()
+    qc.setQueryData(['storage', 'providers'], { data: [] })
+    qc.setQueryData(['storage', 'claims', { provider: 'openebs' }], { data: [] })
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+    render(
+      <QueryClientProvider client={qc}>
+        <RealtimeProvider><div /></RealtimeProvider>
+      </QueryClientProvider>,
+    )
+    FakeEventSource.instances[0]!.emit('change', JSON.stringify({
+      version: 2, providerId: 'openebs', resource: 'claims', namespace: 'default', name: 'data',
+    }))
+    const predicate = invalidate.mock.calls.find((call) => typeof call[0] === 'object' && 'predicate' in (call[0] ?? {}))?.[0]?.predicate
+    expect(predicate?.(qc.getQueryCache().find({ queryKey: ['storage', 'claims', { provider: 'openebs' }] })!)).toBe(true)
+    expect(predicate?.(qc.getQueryCache().find({ queryKey: ['storage', 'providers'] })!)).toBe(false)
+  })
 })

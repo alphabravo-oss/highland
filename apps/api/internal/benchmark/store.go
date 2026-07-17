@@ -26,20 +26,27 @@ type Benchmark struct {
 	Type     string `json:"type"`
 	NodeName string `json:"nodeName,omitempty"`
 	Profile  string `json:"profile"`
-	// StorageClass targets a Longhorn StorageClass for a freshly-provisioned PVC
-	// (defaults to the runner's HIGHLAND_FIO_STORAGECLASS, commonly "longhorn").
+	// StorageClass selects the CSI provisioning profile for a new test PVC.
 	StorageClass string `json:"storageClass,omitempty"`
 	// Size is the requested PVC size (defaults to HIGHLAND_FIO_SIZE, e.g. 10Gi).
 	Size string `json:"size,omitempty"`
 	// PVCName references an existing PVC to benchmark instead of creating one.
-	PVCName   string             `json:"pvcName,omitempty"`
-	Phase     Phase              `json:"phase"`
-	Message   string             `json:"message,omitempty"`
-	CreatedAt time.Time          `json:"createdAt"`
-	Completed *time.Time         `json:"completedAt,omitempty"`
-	Results   map[string]float64 `json:"results,omitempty"`
-	FioCmd    string             `json:"fioCmd,omitempty"`
-	Mode      string             `json:"mode,omitempty"` // synthetic | kubernetes-job
+	PVCName            string             `json:"pvcName,omitempty"`
+	PVName             string             `json:"pvName,omitempty"`
+	CSIDriver          string             `json:"csiDriver,omitempty"`
+	ProviderID         string             `json:"providerId,omitempty"`
+	AccessMode         string             `json:"accessMode,omitempty"`
+	VolumeMode         string             `json:"volumeMode,omitempty"`
+	Topology           map[string]string  `json:"topology,omitempty"`
+	RetainFailedPVC    bool               `json:"retainFailedPvc,omitempty"`
+	RetainConfirmation string             `json:"-"`
+	Phase              Phase              `json:"phase"`
+	Message            string             `json:"message,omitempty"`
+	CreatedAt          time.Time          `json:"createdAt"`
+	Completed          *time.Time         `json:"completedAt,omitempty"`
+	Results            map[string]float64 `json:"results,omitempty"`
+	FioCmd             string             `json:"fioCmd,omitempty"`
+	Mode               string             `json:"mode,omitempty"` // synthetic | kubernetes-job
 }
 
 // Store manages benchmarks (synthetic and/or k8s Job).
@@ -48,6 +55,11 @@ type Store struct {
 	items   map[string]*Benchmark
 	runner  *K8sRunner
 	persist Persister
+	publish ChangePublisher
+}
+
+type ChangePublisher interface {
+	PublishHighlandChange(eventType string, keys []string, resource, name string, entity any)
 }
 
 // NewStore creates a store; runner may be nil (offline synthetic only).
@@ -60,6 +72,21 @@ func (s *Store) SetPersister(p Persister) {
 	s.mu.Lock()
 	s.persist = p
 	s.mu.Unlock()
+}
+
+func (s *Store) SetPublisher(p ChangePublisher) {
+	s.mu.Lock()
+	s.publish = p
+	s.mu.Unlock()
+}
+
+func (s *Store) publishItem(eventType, name string, entity any) {
+	s.mu.RLock()
+	p := s.publish
+	s.mu.RUnlock()
+	if p != nil {
+		p.PublishHighlandChange(eventType, []string{"benchmarks"}, "benchmarks", name, entity)
+	}
 }
 
 // Load hydrates in-memory items from the persister (call once at startup).
@@ -147,6 +174,9 @@ func (s *Store) Create(b Benchmark) (*Benchmark, error) {
 	b.FioCmd = fioCmdFor(b.Profile)
 	b.Results = map[string]float64{}
 	if s.runner != nil && s.runner.Available() {
+		if err := s.runner.Prepare(&b); err != nil {
+			return nil, err
+		}
 		b.Mode = "kubernetes-job"
 		b.Message = "queued fio Job"
 	} else {
@@ -159,17 +189,21 @@ func (s *Store) Create(b Benchmark) (*Benchmark, error) {
 	s.mu.Unlock()
 	s.persistItem(b.Name)
 
-	go s.run(b.Name)
 	cp := b
+	s.publishItem("benchmark.created", b.Name, &cp)
+	go s.run(b.Name)
 	return &cp, nil
 }
 
 func (s *Store) Delete(name string) bool {
 	s.mu.Lock()
-	_, ok := s.items[name]
+	deleted, ok := s.items[name]
 	delete(s.items, name)
 	s.mu.Unlock()
 	s.persistItem(name) // item gone -> removes the persisted record
+	if ok {
+		s.publishItem("benchmark.deleted", name, deleted)
+	}
 	if ok && s.runner != nil && s.runner.Available() {
 		// Tear down any cluster resources (Job + PVC we created) for this run.
 		go func() {
@@ -190,18 +224,13 @@ func (s *Store) run(name string) {
 	}
 	b.Phase = PhaseRunning
 	mode := b.Mode
-	req := Benchmark{
-		Name:         b.Name,
-		NodeName:     b.NodeName,
-		Profile:      b.Profile,
-		StorageClass: b.StorageClass,
-		Size:         b.Size,
-		PVCName:      b.PVCName,
-		FioCmd:       b.FioCmd,
-	}
+	req := executionRequest(b)
 	profile := b.Profile
 	s.mu.Unlock()
 	s.persistItem(name) // Running
+	if running, found := s.Get(name); found {
+		s.publishItem("benchmark.running", name, running)
+	}
 
 	if mode == "kubernetes-job" && s.runner != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
@@ -222,9 +251,18 @@ func (s *Store) run(name string) {
 			bb.Phase = PhaseSucceeded
 			bb.Message = msg
 			bb.Results = res
+			bb.StorageClass, bb.PVCName, bb.PVName = req.StorageClass, req.PVCName, req.PVName
+			bb.CSIDriver, bb.ProviderID, bb.NodeName, bb.Topology = req.CSIDriver, req.ProviderID, req.NodeName, req.Topology
 		}
 		s.mu.Unlock()
 		s.persistItem(name)
+		if completed, found := s.Get(name); found {
+			eventType := "benchmark.succeeded"
+			if completed.Phase == PhaseFailed {
+				eventType = "benchmark.failed"
+			}
+			s.publishItem(eventType, name, completed)
+		}
 		return
 	}
 
@@ -265,6 +303,26 @@ func (s *Store) run(name string) {
 	}
 	s.mu.Unlock()
 	s.persistItem(name)
+	if completed, found := s.Get(name); found {
+		s.publishItem("benchmark.succeeded", name, completed)
+	}
+}
+
+func executionRequest(b *Benchmark) Benchmark {
+	return Benchmark{
+		Name:            b.Name,
+		NodeName:        b.NodeName,
+		Profile:         b.Profile,
+		StorageClass:    b.StorageClass,
+		Size:            b.Size,
+		PVCName:         b.PVCName,
+		CSIDriver:       b.CSIDriver,
+		ProviderID:      b.ProviderID,
+		AccessMode:      b.AccessMode,
+		VolumeMode:      b.VolumeMode,
+		RetainFailedPVC: b.RetainFailedPVC,
+		FioCmd:          b.FioCmd,
+	}
 }
 
 // fioCmdFor builds an fio command that runs four sequential (stonewalled) jobs —

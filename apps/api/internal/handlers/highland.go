@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -8,27 +9,95 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/highland-io/highland/apps/api/internal/audit"
 	"github.com/highland-io/highland/apps/api/internal/auth"
 	"github.com/highland-io/highland/apps/api/internal/benchmark"
 	"github.com/highland-io/highland/apps/api/internal/metrics"
 	"github.com/highland-io/highland/apps/api/internal/middleware"
+	"github.com/highland-io/highland/apps/api/internal/policy"
+	"github.com/highland-io/highland/apps/api/internal/storage"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
 // HighlandAPI serves native Highland endpoints (not Longhorn proxy).
 type HighlandAPI struct {
-	Audit             *audit.Store
-	Metrics           *metrics.Scraper
-	Benchmarks        *benchmark.Store
-	Users             *auth.UserStore
-	Version           string
-	ManagerURL        string
-	K8s               kubernetes.Interface
-	LonghornNamespace string
-	SessionBackend    string
-	BenchmarkMode     string
+	Audit                           *audit.Store
+	Metrics                         *metrics.Scraper
+	Benchmarks                      *benchmark.Store
+	Users                           *auth.UserStore
+	Version                         string
+	ManagerURL                      string
+	LonghornEnabled                 bool
+	K8s                             kubernetes.Interface
+	LonghornNamespace               string
+	RookCephNamespace               string
+	RookCephCredentialRevealEnabled bool
+	RookCephDashboardAdminUsername  string
+	RookCephDashboardAdminSecret    string
+	SessionBackend                  string
+	BenchmarkMode                   string
+	Storage                         *storage.HTTPAPI
+	Policy                          interface{ Snapshot() policy.Snapshot }
+}
+
+// RevealCephDashboardCredential POST /api/v1/admin/providers/rook-ceph/dashboard-credential/reveal
+// returns Rook's generated dashboard administrator credential only after an
+// explicit admin action. The fixed, namespace-scoped Secret read is audited and
+// the response is never cacheable.
+func (h *HighlandAPI) RevealCephDashboardCredential(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.UserFromContext(r.Context())
+	result := "error"
+	message := ""
+	defer func() {
+		if h.Audit != nil {
+			h.Audit.Append(audit.Event{
+				Username: user.Username, Role: string(user.Role),
+				Action: "ceph_dashboard_credential_reveal", Target: "rook-ceph/dashboard-admin",
+				Method: r.Method, Path: r.URL.Path, Result: result, SourceIP: r.RemoteAddr,
+				ProviderID: "rook-ceph", ProviderKind: "rook-ceph", Message: message,
+			})
+		}
+	}()
+	if user.Role != auth.RoleAdmin {
+		message = "admin required"
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": message})
+		return
+	}
+	if !h.RookCephCredentialRevealEnabled {
+		message = "credential reveal is disabled"
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": message})
+		return
+	}
+	if h.K8s == nil {
+		message = "cluster access unavailable"
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": message})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	secret, err := h.K8s.CoreV1().Secrets(h.RookCephNamespace).Get(ctx, h.RookCephDashboardAdminSecret, metav1.GetOptions{})
+	if err != nil {
+		message = "dashboard credential unavailable"
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": message})
+		return
+	}
+	password := string(secret.Data["password"])
+	if password == "" || len(password) > 4096 {
+		message = "dashboard credential is invalid"
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": message})
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	result = "ok"
+	message = "administrator revealed the Ceph Dashboard credential"
+	writeJSON(w, http.StatusOK, map[string]string{
+		"username": h.RookCephDashboardAdminUsername,
+		"password": password,
+	})
 }
 
 // ListAudit GET /api/v1/audit
@@ -111,6 +180,7 @@ func (h *HighlandAPI) Compatibility(w http.ResponseWriter, r *http.Request) {
 		"managerUrl":      h.ManagerURL,
 		"longhornSupport": []string{"1.12.x", "1.11.x"},
 		"mode":            "bolt-on",
+		"enabled":         h.LonghornEnabled,
 		"notes":           "Point HIGHLAND_MANAGER_URL at longhorn-backend when on k3s/kind",
 	})
 }
@@ -177,20 +247,76 @@ func (h *HighlandAPI) AllMetrics(w http.ResponseWriter, r *http.Request) {
 
 // ListBenchmarks GET /api/v1/benchmarks
 func (h *HighlandAPI) ListBenchmarks(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"data": h.Benchmarks.List()})
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 200 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be between 1 and 200"})
+			return
+		}
+		limit = parsed
+	}
+	offset, err := storage.DecodePageOffset(r.URL.Query().Get("continue"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	all := h.Benchmarks.List()
+	if offset > len(all) {
+		offset = len(all)
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	data := append([]benchmark.Benchmark(nil), all[offset:end]...)
+	if r.URL.Query().Get("fields") == "summary" {
+		for index := range data {
+			data[index].FioCmd = ""
+		}
+	}
+	page := storage.PageMeta{Limit: limit, Total: len(all)}
+	if end < len(all) {
+		page.Continue = storage.EncodePageOffset(end)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data": data,
+		"page": page,
+		"meta": map[string]any{
+			"observedAt": time.Now().UTC(), "stale": false, "partial": false,
+			"benchmarkMode": orUnknown(h.BenchmarkMode), "requestId": chimw.GetReqID(r.Context()),
+		},
+	})
 }
 
 // CreateBenchmark POST /api/v1/benchmarks
 func (h *HighlandAPI) CreateBenchmark(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.UserFromContext(r.Context())
+	if h.BenchmarkMode != "kubernetes-job" {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": "real benchmark execution is disabled; enable benchmark.kubernetesJobEnabled to run fio Jobs",
+			"mode":  orUnknown(h.BenchmarkMode),
+		})
+		return
+	}
 	var body benchmark.Benchmark
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
+	if body.RetainFailedPVC {
+		if user.Role != auth.RoleAdmin {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required to retain a failed benchmark PVC"})
+			return
+		}
+		if body.RetainConfirmation != "RETAIN FAILED PVC" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "explicit retain confirmation is required"})
+			return
+		}
+	}
 	b, err := h.Benchmarks.Create(body)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	if h.Audit != nil {

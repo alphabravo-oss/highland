@@ -38,6 +38,16 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 http://{{ .Values.longhorn.managerService }}.{{ include "highland.longhornNamespace" . }}.svc.cluster.local:{{ .Values.longhorn.managerPort }}
 {{- end }}
 
+{{/* providers.longhorn.enabled overrides the legacy longhorn.enabled switch
+when explicitly set; null preserves upgrades from Longhorn-only values. */}}
+{{- define "highland.longhornEnabled" -}}
+{{- if kindIs "bool" .Values.providers.longhorn.enabled -}}
+{{- .Values.providers.longhorn.enabled -}}
+{{- else -}}
+{{- or .Values.longhorn.enabled .Values.embeddedLonghorn.enabled -}}
+{{- end -}}
+{{- end }}
+
 {{- define "highland.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
 {{- default (printf "%s" (include "highland.fullname" .)) .Values.serviceAccount.name }}

@@ -1,0 +1,13 @@
+apiVersion: highland.io/v1alpha1
+kind: HighlandPolicy
+metadata:
+  name: highland
+spec:
+  storage:
+    acceptNewOperations: true
+    portableKubernetesWrites: true
+    portableKubernetesProviderIds: [longhorn, openebs, rook-ceph]
+    longhornWrites: true
+    rookCephWrites: true
+    allowCephStorageClassDelete: true
+    allowCephPoolDelete: true

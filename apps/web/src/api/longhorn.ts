@@ -20,7 +20,7 @@ export type LHCollection<T extends LHResource = LHResource> = {
   actions?: Record<string, string>
 }
 
-export type Volume = LHResource & {
+export type LonghornVolume = LHResource & {
   name: string
   size?: string | number
   state?: string
@@ -303,11 +303,11 @@ export function hasAction(resource: LHResource | null | undefined, name: string)
 // ---- domain APIs ----
 
 export const volumesApi = {
-  list: () => listCollection<Volume>('volumes'),
-  get: (name: string) => getResource<Volume>('volumes', name),
-  create: (body: Record<string, unknown>) => createResource<Volume>('volumes', body),
-  remove: (vol: Volume) => deleteResource(vol),
-  action: (vol: Volume, name: string, params?: Record<string, unknown>) =>
+  list: () => listCollection<LonghornVolume>('volumes'),
+  get: (name: string) => getResource<LonghornVolume>('volumes', name),
+  create: (body: Record<string, unknown>) => createResource<LonghornVolume>('volumes', body),
+  remove: (vol: LonghornVolume) => deleteResource(vol),
+  action: (vol: LonghornVolume, name: string, params?: Record<string, unknown>) =>
     execAction(vol, name, params),
 }
 

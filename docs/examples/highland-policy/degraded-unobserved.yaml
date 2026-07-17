@@ -1,0 +1,21 @@
+apiVersion: highland.io/v1alpha1
+kind: HighlandPolicy
+metadata:
+  name: highland
+  generation: 3
+status:
+  observedGeneration: 2
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: ObservationStale
+      message: the current policy generation has not been observed
+spec:
+  storage:
+    acceptNewOperations: false
+    portableKubernetesWrites: false
+    portableKubernetesProviderIds: []
+    longhornWrites: false
+    rookCephWrites: false
+    allowCephStorageClassDelete: false
+    allowCephPoolDelete: false

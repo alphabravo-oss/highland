@@ -27,9 +27,9 @@ func main() {
 }
 
 type store struct {
-	mu      sync.Mutex
-	volumes map[string]resource
-	nodes   []resource
+	mu       sync.Mutex
+	volumes  map[string]resource
+	nodes    []resource
 	settings []resource
 }
 
@@ -122,33 +122,33 @@ func (s *store) withLinks(r resource, self string) resource {
 	}
 	if r["type"] == "volume" {
 		out["actions"] = map[string]string{
-			"attach":                           self + "?action=attach",
-			"detach":                           self + "?action=detach",
-			"snapshotCreate":                   self + "?action=snapshotCreate",
-			"snapshotList":                     self + "?action=snapshotList",
-			"snapshotDelete":                   self + "?action=snapshotDelete",
-			"snapshotRevert":                   self + "?action=snapshotRevert",
-			"snapshotBackup":                   self + "?action=snapshotBackup",
-			"salvage":                          self + "?action=salvage",
-			"expand":                           self + "?action=expand",
-			"cancelExpansion":                  self + "?action=cancelExpansion",
-			"cloneVolume":                      self + "?action=cloneVolume",
-			"pvCreate":                         self + "?action=pvCreate",
-			"pvcCreate":                        self + "?action=pvcCreate",
-			"activate":                         self + "?action=activate",
-			"trimFilesystem":                   self + "?action=trimFilesystem",
-			"engineUpgrade":                    self + "?action=engineUpgrade",
-			"recurringJobAdd":                  self + "?action=recurringJobAdd",
-			"recurringJobDelete":               self + "?action=recurringJobDelete",
-			"updateReplicaCount":               self + "?action=updateReplicaCount",
-			"updateDataLocality":               self + "?action=updateDataLocality",
-			"updateAccessMode":                 self + "?action=updateAccessMode",
-			"updateBackupTargetName":           self + "?action=updateBackupTargetName",
-			"updateReplicaAutoBalance":         self + "?action=updateReplicaAutoBalance",
-			"updateSnapshotMaxCount":           self + "?action=updateSnapshotMaxCount",
-			"updateSnapshotMaxSize":            self + "?action=updateSnapshotMaxSize",
-			"updateSnapshotDataIntegrity":      self + "?action=updateSnapshotDataIntegrity",
-			"offlineReplicaRebuilding":         self + "?action=offlineReplicaRebuilding",
+			"attach":                      self + "?action=attach",
+			"detach":                      self + "?action=detach",
+			"snapshotCreate":              self + "?action=snapshotCreate",
+			"snapshotList":                self + "?action=snapshotList",
+			"snapshotDelete":              self + "?action=snapshotDelete",
+			"snapshotRevert":              self + "?action=snapshotRevert",
+			"snapshotBackup":              self + "?action=snapshotBackup",
+			"salvage":                     self + "?action=salvage",
+			"expand":                      self + "?action=expand",
+			"cancelExpansion":             self + "?action=cancelExpansion",
+			"cloneVolume":                 self + "?action=cloneVolume",
+			"pvCreate":                    self + "?action=pvCreate",
+			"pvcCreate":                   self + "?action=pvcCreate",
+			"activate":                    self + "?action=activate",
+			"trimFilesystem":              self + "?action=trimFilesystem",
+			"engineUpgrade":               self + "?action=engineUpgrade",
+			"recurringJobAdd":             self + "?action=recurringJobAdd",
+			"recurringJobDelete":          self + "?action=recurringJobDelete",
+			"updateReplicaCount":          self + "?action=updateReplicaCount",
+			"updateDataLocality":          self + "?action=updateDataLocality",
+			"updateAccessMode":            self + "?action=updateAccessMode",
+			"updateBackupTargetName":      self + "?action=updateBackupTargetName",
+			"updateReplicaAutoBalance":    self + "?action=updateReplicaAutoBalance",
+			"updateSnapshotMaxCount":      self + "?action=updateSnapshotMaxCount",
+			"updateSnapshotMaxSize":       self + "?action=updateSnapshotMaxSize",
+			"updateSnapshotDataIntegrity": self + "?action=updateSnapshotDataIntegrity",
+			"offlineReplicaRebuilding":    self + "?action=offlineReplicaRebuilding",
 		}
 	}
 	return out

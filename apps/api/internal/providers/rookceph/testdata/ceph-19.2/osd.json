@@ -1,0 +1,4 @@
+[
+  {"id": 0, "host": "[redacted-host]", "up": 1, "in": 1, "device_class": "ssd", "utilization": 12.5},
+  {"id": 1, "host": "[redacted-host]", "up": 1, "in": 1, "device_class": "ssd", "utilization": 9.2}
+]

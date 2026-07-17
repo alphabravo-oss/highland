@@ -12,6 +12,8 @@ import { ThemeProvider } from '@/features/theme/ThemeProvider'
 import { AuthenticatedLayout } from '@/routes/ProtectedRoute'
 import { LoginPage } from '@/routes/LoginPage'
 import { NotFoundPage } from '@/routes/NotFoundPage'
+import { useStorageProviders } from '@/api/storage/hooks'
+import { BenchmarksPage } from '@/features/performance/PerformancePage'
 
 const DashboardPage = lazy(() =>
   import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })),
@@ -59,13 +61,13 @@ const OrphansPage = lazy(() =>
   import('@/features/orphans/OrphansPage').then((m) => ({ default: m.OrphansPage })),
 )
 const PerformancePage = lazy(() =>
-  import('@/features/performance/PerformancePage').then((m) => ({ default: m.PerformancePage })),
-)
-const BenchmarksPage = lazy(() =>
-  import('@/features/performance/PerformancePage').then((m) => ({ default: m.BenchmarksPage })),
+  import('@/features/performance/LiveIOPage').then((m) => ({ default: m.LiveIOPage })),
 )
 const AdminPage = lazy(() =>
   import('@/features/admin/AdminPage').then((m) => ({ default: m.AdminPage })),
+)
+const AdminUsersPage = lazy(() =>
+  import('@/features/admin/AdminPage').then((m) => ({ default: m.AdminUsersPage })),
 )
 const AuditPage = lazy(() =>
   import('@/features/admin/AdminPage').then((m) => ({ default: m.AuditPage })),
@@ -76,9 +78,34 @@ const PreflightPage = lazy(() =>
 const SSOConfigPage = lazy(() =>
   import('@/features/admin/SSOConfigPage').then((m) => ({ default: m.SSOConfigPage })),
 )
+const StoragePolicyPage = lazy(() =>
+  import('@/features/admin/StoragePolicyPage').then((m) => ({ default: m.StoragePolicyPage })),
+)
 const StatusPage = lazy(() =>
   import('@/features/status/StatusPage').then((m) => ({ default: m.StatusPage })),
 )
+const StorageProvidersPage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.StorageProvidersPage })))
+const StorageProviderPage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.StorageProviderPage })))
+const StorageInventoryPage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.StorageInventoryPage })))
+const StorageClassesPage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.StorageClassesPage })))
+const StorageClaimsPage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.StorageClaimsPage })))
+const StorageClaimDetailPage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.StorageClaimDetailPage })))
+const StorageVolumesPage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.StorageVolumesPage })))
+const StorageVolumeDetailPage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.StorageVolumeDetailPage })))
+const StorageSnapshotsPage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.StorageSnapshotsPage })))
+const StorageAttachmentsPage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.StorageAttachmentsPage })))
+const StorageCapacityPage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.StorageCapacityPage })))
+const StorageEventsPage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.StorageEventsPage })))
+const CephResourcePage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.CephResourcePage })))
+const CephResourceDetailPage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.CephResourceDetailPage })))
+const OpenEBSResourcePage = lazy(() => import('@/features/storage/OpenEBSStoragePages').then((m) => ({ default: m.OpenEBSResourcePage })))
+const OpenEBSResourceDetailPage = lazy(() => import('@/features/storage/OpenEBSStoragePages').then((m) => ({ default: m.OpenEBSResourceDetailPage })))
+const StorageOperationsPage = lazy(() => import('@/features/storage/StorageOperationsPage').then((m) => ({ default: m.StorageOperationsPage })))
+const StorageActionPage = lazy(() => import('@/features/storage/StorageOperationsPage').then((m) => ({ default: m.StorageActionPage })))
+const StorageOperationDetailPage = lazy(() => import('@/features/storage/StorageOperationsPage').then((m) => ({ default: m.StorageOperationDetailPage })))
+const StorageInsightsPage = lazy(() => import('@/features/storage/StorageContextPages').then((m) => ({ default: m.StorageInsightsPage })))
+const ProviderContextPage = lazy(() => import('@/features/storage/StorageContextPages').then((m) => ({ default: m.ProviderContextPage })))
+const ResourceRelationshipsPage = lazy(() => import('@/features/storage/StorageContextPages').then((m) => ({ default: m.ResourceRelationshipsPage })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -88,6 +115,17 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+function ProviderAwareDashboard() {
+  const providers = useStorageProviders()
+  if (providers.isLoading) {
+    return <div role="status" className="p-6 text-sm text-[var(--color-muted-foreground)]">Loading storage providers…</div>
+  }
+  if (providers.data && !providers.data.data.some((provider) => provider.id === 'longhorn')) {
+    return <StorageProvidersPage />
+  }
+  return <DashboardPage />
+}
 
 export default function App() {
   return (
@@ -102,7 +140,7 @@ export default function App() {
                   <Route path="/login" element={<LoginPage />} />
                   <Route element={<AuthenticatedLayout />}>
                     <Route index element={<Navigate to="/dashboard" replace />} />
-                    <Route path="dashboard" element={<DashboardPage />} />
+                    <Route path="dashboard" element={<ProviderAwareDashboard />} />
                     <Route path="volumes" element={<VolumesPage />} />
                     <Route path="volumes/:name" element={<VolumeDetailPage />} />
                     <Route path="nodes" element={<NodesPage />} />
@@ -120,10 +158,34 @@ export default function App() {
                     <Route path="performance" element={<PerformancePage />} />
                     <Route path="benchmarks" element={<BenchmarksPage />} />
                     <Route path="admin" element={<AdminPage />} />
+                    <Route path="admin/users" element={<AdminUsersPage />} />
                     <Route path="admin/sso" element={<SSOConfigPage />} />
                     <Route path="admin/audit" element={<AuditPage />} />
+                    <Route path="admin/storage-policy" element={<StoragePolicyPage />} />
                     <Route path="preflight" element={<PreflightPage />} />
                     <Route path="status" element={<StatusPage />} />
+                    <Route path="storage/providers" element={<StorageProvidersPage />} />
+                    <Route path="storage/providers/:providerId" element={<StorageProviderPage />} />
+                    <Route path="storage/providers/:providerId/context" element={<ProviderContextPage />} />
+                    <Route path="storage/providers/:providerId/ceph/:kind" element={<CephResourcePage />} />
+                    <Route path="storage/providers/:providerId/ceph/:kind/:resourceId" element={<CephResourceDetailPage />} />
+                    <Route path="storage/providers/:providerId/openebs/:kind" element={<OpenEBSResourcePage />} />
+                    <Route path="storage/providers/:providerId/openebs/:kind/:resourceId" element={<OpenEBSResourceDetailPage />} />
+                    <Route path="storage/inventory" element={<StorageInventoryPage />} />
+                    <Route path="storage/classes" element={<StorageClassesPage />} />
+                    <Route path="storage/claims" element={<StorageClaimsPage />} />
+                    <Route path="storage/claims/:namespace/:name" element={<StorageClaimDetailPage />} />
+                    <Route path="storage/volumes" element={<StorageVolumesPage />} />
+                    <Route path="storage/volumes/:name" element={<StorageVolumeDetailPage />} />
+                    <Route path="storage/snapshots" element={<StorageSnapshotsPage />} />
+                    <Route path="storage/attachments" element={<StorageAttachmentsPage />} />
+                    <Route path="storage/capacity" element={<StorageCapacityPage />} />
+                    <Route path="storage/events" element={<StorageEventsPage />} />
+                    <Route path="storage/insights" element={<StorageInsightsPage />} />
+                    <Route path="storage/relationships/:kind/:resourceId" element={<ResourceRelationshipsPage />} />
+                    <Route path="storage/operations" element={<StorageOperationsPage />} />
+                    <Route path="storage/operations/:operationId" element={<StorageOperationDetailPage />} />
+                    <Route path="storage/actions/:actionId" element={<StorageActionPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Route>
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />

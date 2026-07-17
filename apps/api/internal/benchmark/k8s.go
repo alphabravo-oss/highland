@@ -9,17 +9,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/highland-io/highland/apps/api/internal/kube"
+	"github.com/highland-io/highland/apps/api/internal/storage"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
-// mountPath is where the Longhorn PVC is mounted inside the fio pod; fio targets
-// a file under this directory so it exercises real Longhorn storage.
+// mountPath is where the selected CSI PVC is mounted inside the fio pod.
 const mountPath = "/data"
 
 // K8sRunner creates real fio Jobs when in-cluster (or kubeconfig) is available.
@@ -30,25 +30,22 @@ type K8sRunner struct {
 	fioImage     string
 	storageClass string
 	size         string
+	providerFor  func(string) string
 }
 
 // NewK8sRunnerFromEnv returns a runner if cluster is reachable, else nil.
 func NewK8sRunnerFromEnv() *K8sRunner {
-	cfg, err := rest.InClusterConfig()
+	clients, err := kube.NewFromEnvironment()
 	if err != nil {
-		// fall back to kubeconfig for dev from laptop against cluster
-		kube := os.Getenv("KUBECONFIG")
-		if kube == "" {
-			home, _ := os.UserHomeDir()
-			kube = home + "/.kube/config"
-		}
-		cfg, err = clientcmd.BuildConfigFromFlags("", kube)
-		if err != nil {
-			return nil
-		}
+		return nil
 	}
-	client, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
+	return NewK8sRunner(clients.Core, clients.RESTConfig)
+}
+
+// NewK8sRunner reuses Highland's shared Kubernetes clients and reads only the
+// benchmark-specific execution settings from the environment.
+func NewK8sRunner(client kubernetes.Interface, cfg *rest.Config) *K8sRunner {
+	if client == nil || cfg == nil {
 		return nil
 	}
 	ns := os.Getenv("HIGHLAND_NAMESPACE")
@@ -61,14 +58,81 @@ func NewK8sRunnerFromEnv() *K8sRunner {
 		img = "xridge/fio:latest"
 	}
 	sc := os.Getenv("HIGHLAND_FIO_STORAGECLASS")
-	if sc == "" {
-		sc = "longhorn"
-	}
 	size := os.Getenv("HIGHLAND_FIO_SIZE")
 	if size == "" {
 		size = "10Gi"
 	}
 	return &K8sRunner{client: client, restConfig: cfg, namespace: ns, fioImage: img, storageClass: sc, size: size}
+}
+
+// Prepare validates the selected StorageClass and portable PVC mode before a
+// benchmark is queued, and records its authoritative provisioner/provider.
+func (k *K8sRunner) Prepare(b *Benchmark) error {
+	if !k.Available() || b == nil {
+		return fmt.Errorf("kubernetes not available")
+	}
+	var existing *corev1.PersistentVolumeClaim
+	if b.PVCName != "" {
+		claim, err := k.client.CoreV1().PersistentVolumeClaims(k.namespace).Get(context.Background(), b.PVCName, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("get existing PVC %q: %w", b.PVCName, err)
+		}
+		existing = claim
+		if claim.Spec.StorageClassName == nil || *claim.Spec.StorageClassName == "" {
+			return fmt.Errorf("existing PVC %q has no StorageClass", b.PVCName)
+		}
+		if b.StorageClass != "" && b.StorageClass != *claim.Spec.StorageClassName {
+			return fmt.Errorf("existing PVC uses StorageClass %q, not %q", *claim.Spec.StorageClassName, b.StorageClass)
+		}
+		b.StorageClass = *claim.Spec.StorageClassName
+	}
+	if b.StorageClass == "" {
+		b.StorageClass = k.storageClass
+	}
+	if b.StorageClass == "" {
+		return fmt.Errorf("storageClass is required for a Kubernetes benchmark")
+	}
+	class, err := k.client.StorageV1().StorageClasses().Get(context.Background(), b.StorageClass, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("get storage class %q: %w", b.StorageClass, err)
+	}
+	if b.AccessMode == "" {
+		if existing != nil && len(existing.Spec.AccessModes) > 0 {
+			b.AccessMode = string(existing.Spec.AccessModes[0])
+		} else {
+			b.AccessMode = string(corev1.ReadWriteOnce)
+		}
+	}
+	validAccess := map[string]bool{string(corev1.ReadWriteOnce): true, string(corev1.ReadWriteMany): true, string(corev1.ReadOnlyMany): true, string(corev1.ReadWriteOncePod): true}
+	if !validAccess[b.AccessMode] {
+		return fmt.Errorf("unsupported accessMode %q", b.AccessMode)
+	}
+	if b.VolumeMode == "" {
+		if existing != nil && existing.Spec.VolumeMode != nil {
+			b.VolumeMode = string(*existing.Spec.VolumeMode)
+		} else {
+			b.VolumeMode = string(corev1.PersistentVolumeFilesystem)
+		}
+	}
+	if b.VolumeMode != string(corev1.PersistentVolumeFilesystem) && b.VolumeMode != string(corev1.PersistentVolumeBlock) {
+		return fmt.Errorf("unsupported volumeMode %q", b.VolumeMode)
+	}
+	if b.VolumeMode == string(corev1.PersistentVolumeBlock) {
+		return fmt.Errorf("fio file profiles currently require Filesystem volumeMode")
+	}
+	b.CSIDriver = class.Provisioner
+	b.ProviderID = k.resolveProvider(class.Provisioner)
+	return nil
+}
+
+// SetProviderResolver connects benchmark attribution to the provider registry.
+func (k *K8sRunner) SetProviderResolver(resolve func(string) string) { k.providerFor = resolve }
+
+func (k *K8sRunner) resolveProvider(driver string) string {
+	if k.providerFor != nil {
+		return k.providerFor(driver)
+	}
+	return storage.GenericProviderID(driver)
 }
 
 // Clientset exposes the k8s client so other components (e.g. the ConfigMap
@@ -99,7 +163,7 @@ func pvcName(bench string) string {
 	return jobName(bench) + "-pvc"
 }
 
-// RunJob provisions a Longhorn PVC (unless an existing PVC is referenced),
+// RunJob provisions a PVC from the selected StorageClass (unless an existing PVC is referenced),
 // launches an fio Job that benchmarks a file on that volume, waits for
 // completion (bounded), then parses the fio JSON logs into real results.
 // Any PVC it creates is cleaned up before returning.
@@ -124,6 +188,7 @@ func (k *K8sRunner) RunJob(ctx context.Context, b *Benchmark) (map[string]float6
 	// use it as-is and never delete it; otherwise we create one for this run.
 	claimName := b.PVCName
 	createdPVC := false
+	runSucceeded := false
 	if claimName == "" {
 		claimName = pvcName(b.Name)
 		qty, err := resource.ParseQuantity(size)
@@ -137,8 +202,9 @@ func (k *K8sRunner) RunJob(ctx context.Context, b *Benchmark) (map[string]float6
 				Labels: benchLabels(b.Name),
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
-				AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.PersistentVolumeAccessMode(b.AccessMode)},
 				StorageClassName: &scName,
+				VolumeMode:       ptrVolumeMode(corev1.PersistentVolumeMode(b.VolumeMode)),
 				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
 						corev1.ResourceStorage: qty,
@@ -154,6 +220,9 @@ func (k *K8sRunner) RunJob(ctx context.Context, b *Benchmark) (map[string]float6
 		createdPVC = true
 		// Ensure we do not leak the PVC we created, whatever the outcome.
 		defer func() {
+			if b.RetainFailedPVC && !runSucceeded {
+				return
+			}
 			delCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
 			bg := metav1.DeletePropagationBackground
@@ -225,6 +294,15 @@ func (k *K8sRunner) RunJob(ctx context.Context, b *Benchmark) (map[string]float6
 	if _, err := k.client.BatchV1().Jobs(k.namespace).Create(ctx, job, metav1.CreateOptions{}); err != nil {
 		return nil, "", fmt.Errorf("create job: %w", err)
 	}
+	// Results are captured from pod logs before RunJob returns, so the scratch
+	// Job does not need to remain for its full TTL. Removing it first lets
+	// Kubernetes release the pod's PVC reference and complete PVC/PV cleanup.
+	defer func() {
+		delCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		bg := metav1.DeletePropagationBackground
+		_ = k.client.BatchV1().Jobs(k.namespace).Delete(delCtx, name, metav1.DeleteOptions{PropagationPolicy: &bg})
+	}()
 
 	deadline := time.Now().Add(5 * time.Minute)
 	for time.Now().Before(deadline) {
@@ -245,9 +323,11 @@ func (k *K8sRunner) RunJob(ctx context.Context, b *Benchmark) (map[string]float6
 			if err != nil {
 				return nil, "", fmt.Errorf("parse fio output: %w", err)
 			}
+			k.populateMetadata(ctx, b, claimName)
+			runSucceeded = true
 			pvcNote := "existing PVC " + claimName
 			if createdPVC {
-				pvcNote = fmt.Sprintf("Longhorn PVC (%s, %s)", sc, size)
+				pvcNote = fmt.Sprintf("provisioned PVC (%s, %s; provisioner %s)", sc, size, b.CSIDriver)
 			}
 			return results, fmt.Sprintf("fio Job completed on %s", pvcNote), nil
 		}
@@ -258,6 +338,37 @@ func (k *K8sRunner) RunJob(ctx context.Context, b *Benchmark) (map[string]float6
 		time.Sleep(2 * time.Second)
 	}
 	return nil, "", fmt.Errorf("fio job timeout")
+}
+
+func ptrVolumeMode(mode corev1.PersistentVolumeMode) *corev1.PersistentVolumeMode { return &mode }
+
+func (k *K8sRunner) populateMetadata(ctx context.Context, b *Benchmark, claimName string) {
+	claim, err := k.client.CoreV1().PersistentVolumeClaims(k.namespace).Get(ctx, claimName, metav1.GetOptions{})
+	if err != nil {
+		return
+	}
+	b.PVCName, b.PVName = claim.Name, claim.Spec.VolumeName
+	if claim.Spec.VolumeName != "" {
+		if pv, getErr := k.client.CoreV1().PersistentVolumes().Get(ctx, claim.Spec.VolumeName, metav1.GetOptions{}); getErr == nil && pv.Spec.CSI != nil {
+			b.CSIDriver = pv.Spec.CSI.Driver
+			b.ProviderID = k.resolveProvider(pv.Spec.CSI.Driver)
+		}
+	}
+	pods, err := k.client.CoreV1().Pods(k.namespace).List(ctx, metav1.ListOptions{LabelSelector: "highland.io/benchmark=" + b.Name})
+	if err != nil || len(pods.Items) == 0 {
+		return
+	}
+	b.NodeName = pods.Items[0].Spec.NodeName
+	if b.NodeName != "" {
+		if node, getErr := k.client.CoreV1().Nodes().Get(ctx, b.NodeName, metav1.GetOptions{}); getErr == nil {
+			b.Topology = map[string]string{}
+			for key, value := range node.Labels {
+				if strings.HasPrefix(key, "topology.kubernetes.io/") || strings.HasPrefix(key, "topology.") {
+					b.Topology[key] = value
+				}
+			}
+		}
+	}
 }
 
 // Cleanup removes the Job (and any created PVC) for a benchmark. Safe to call

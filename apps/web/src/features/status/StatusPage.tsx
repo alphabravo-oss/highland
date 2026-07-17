@@ -35,11 +35,11 @@ export function StatusPage() {
   const { t } = useAppTranslation()
   const { user } = useAuth()
   const status = useStatus()
-  const nodes = useNodes()
-  const volumes = useVolumes()
-  const capacity = useCapacity()
-
   const s = status.data
+  const longhornEnabled = s?.longhorn.enabled ?? false
+  const nodes = useNodes(longhornEnabled)
+  const volumes = useVolumes(longhornEnabled)
+  const capacity = useCapacity(longhornEnabled)
   const nodeList = nodes.data ?? []
   const volList = volumes.data ?? []
   const healthy = volList.filter((v) => (v.robustness ?? '').toLowerCase() === 'healthy').length
@@ -59,11 +59,11 @@ export function StatusPage() {
             </CardHeader>
             <CardContent>
               <Row label={t('status.highlandVersion')} value={s?.highland.version ?? '—'} />
-              <Row label={t('status.longhornVersion')} value={s?.longhorn.version ?? '—'} />
+              <Row label={t('status.longhornVersion')} value={longhornEnabled ? (s?.longhorn.version ?? '—') : <Badge tone="default">Disabled</Badge>} />
               <Row label={t('status.kubernetesVersion')} value={s?.kubernetes.version ?? '—'} />
               <Row
                 label={t('status.longhornSupported')}
-                value={(s?.longhorn.supported ?? []).join(', ') || '—'}
+                value={longhornEnabled ? ((s?.longhorn.supported ?? []).join(', ') || '—') : 'Not configured'}
               />
             </CardContent>
           </Card>
@@ -77,11 +77,11 @@ export function StatusPage() {
               <Row label={t('status.componentApi')} value={<StatusPill ok okLabel={t('status.ok')} badLabel={t('status.error')} />} />
               <Row
                 label={t('status.componentManager')}
-                value={<StatusPill ok={Boolean(s?.longhorn.reachable)} okLabel={t('status.reachable')} badLabel={t('status.unreachable')} />}
+                value={longhornEnabled ? <StatusPill ok={Boolean(s?.longhorn.reachable)} okLabel={t('status.reachable')} badLabel={t('status.unreachable')} /> : <Badge tone="default">Disabled</Badge>}
               />
               <Row
                 label={t('status.componentScraper')}
-                value={<StatusPill ok={s?.components.metricsScraper === 'ok'} okLabel={t('status.ok')} badLabel={s?.components.scrapeError || t('status.error')} />}
+                value={longhornEnabled ? <StatusPill ok={s?.components.metricsScraper === 'ok'} okLabel={t('status.ok')} badLabel={s?.components.scrapeError || t('status.error')} /> : <Badge tone="default">Disabled</Badge>}
               />
               <Row label={t('status.sessionBackend')} value={<Badge tone="info">{s?.highland.sessionBackend ?? '—'}</Badge>} />
               <Row label={t('status.benchmarkMode')} value={<Badge tone="default">{s?.highland.benchmarkMode ?? '—'}</Badge>} />
@@ -94,8 +94,8 @@ export function StatusPage() {
               <CardTitle>{t('status.cluster')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <Row label={t('status.nodes')} value={t('status.nodesValue', { total: nodeList.length, schedulable })} />
-              <Row
+              {longhornEnabled ? <Row label={t('status.nodes')} value={t('status.nodesValue', { total: nodeList.length, schedulable })} /> : <Row label="Storage core" value={<StatusPill ok={Boolean(s?.storage?.ready)} okLabel="Ready" badLabel="Not ready" />} />}
+              {longhornEnabled ? <Row
                 label={t('status.volumes')}
                 value={
                   <span className="inline-flex gap-1">
@@ -104,15 +104,15 @@ export function StatusPage() {
                     <Badge tone="danger">{faulted}</Badge>
                   </span>
                 }
-              />
-              <Row
+              /> : <Row label="Providers" value={s?.storage?.providers?.length ?? 0} />}
+              {longhornEnabled ? <Row
                 label={t('status.capacity')}
                 value={
                   capacity.data && capacity.data.totalBytes > 0
                     ? `${formatBytes(capacity.data.usedBytes)} / ${formatBytes(capacity.data.totalBytes)}`
                     : '—'
                 }
-              />
+              /> : <Row label="Snapshot API" value={s?.storage?.snapshotApi ? 'Available' : 'Unavailable / partial'} />}
               <Row label={t('status.longhornNamespace')} value={s?.longhorn.namespace ?? '—'} />
               <Row
                 label={t('status.managerUrl')}

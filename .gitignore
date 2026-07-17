@@ -30,3 +30,6 @@ apps/web/storybook-static/
 
 # Helm dependencies are restored reproducibly from chart/Chart.lock.
 /chart/charts/*.tgz
+
+# Personal Claude Code overrides (machine-specific deploy perms)
+.claude/settings.local.json

@@ -1,0 +1,7 @@
+{
+  "apiVersion": "ceph.rook.io/v1",
+  "kind": "CephFilesystem",
+  "metadata": {"name": "myfs", "namespace": "rook-ceph", "uid": "[redacted-uid]"},
+  "spec": {"metadataPool": {"replicated": {"size": 3}}, "dataPools": [{"name": "replicated", "replicated": {"size": 3}}]},
+  "status": {"phase": "Ready"}
+}
