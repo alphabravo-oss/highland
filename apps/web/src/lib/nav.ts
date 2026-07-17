@@ -342,7 +342,7 @@ function genericProviderGroups(provider: WorkspaceProvider): NavGroup[] {
   ]
 }
 
-export function filterNavForRole(groups: NavGroup[], role: string | undefined): NavGroup[] {
+function filterNavForRole(groups: NavGroup[], role: string | undefined): NavGroup[] {
   const normalizedRole = (role ?? 'viewer') as 'admin' | 'operator' | 'viewer'
   return groups
     .filter((group) => !group.roles || group.roles.includes(normalizedRole))

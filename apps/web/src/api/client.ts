@@ -3,7 +3,7 @@ export type HighlandUser = {
   role: string
 }
 
-export type MeResponse = {
+type MeResponse = {
   user: HighlandUser
 }
 
@@ -49,7 +49,7 @@ export function csrfHeaders(): Record<string, string> {
   return { 'X-CSRF-Token': readCookie(CSRF_COOKIE) }
 }
 
-export async function parseError(res: Response): Promise<string> {
+async function parseError(res: Response): Promise<string> {
   try {
     const body = (await res.json()) as {
       error?: string | { code?: string; message?: string; requestId?: string }
@@ -201,11 +201,6 @@ export async function highlandPut<T = unknown>(path: string, body?: unknown): Pr
     method: 'PUT',
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-}
-
-export async function highlandPatch<T = unknown>(path: string, body?: unknown): Promise<T> {
-  const clean = path.startsWith('/') ? path : `/${path}`
-  return highlandFetch<T>(`/api/v1${clean}`, { method: 'PATCH', body: body === undefined ? undefined : JSON.stringify(body) })
 }
 
 export async function highlandRequest<T = unknown>(path: string, method: string, body?: unknown): Promise<T> {

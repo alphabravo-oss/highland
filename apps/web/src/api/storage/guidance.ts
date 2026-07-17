@@ -9,10 +9,10 @@ import type {
 } from './insights'
 import { buildInsightQuery } from './insights'
 
-export type ComparisonSupportLevel = 'detected' | 'verified' | 'managed'
-export type FactState = 'supported' | 'unsupported' | 'unknown'
+type ComparisonSupportLevel = 'detected' | 'verified' | 'managed'
+type FactState = 'supported' | 'unsupported' | 'unknown'
 
-export type ComparisonEvidence = {
+type ComparisonEvidence = {
   source: string
   strength: EvidenceStrength
   observedAt: string
@@ -20,14 +20,14 @@ export type ComparisonEvidence = {
   detail?: string
 }
 
-export type CapabilityFact = {
+type CapabilityFact = {
   id: string
   state: FactState
   verified?: boolean
   evidence: ComparisonEvidence
 }
 
-export type TestedProfile = {
+type TestedProfile = {
   providerKind: string
   providerVersion?: string
   driver: string
@@ -35,14 +35,14 @@ export type TestedProfile = {
   kubernetesVersion?: string
 }
 
-export type OperationalSurface = {
+type OperationalSurface = {
   capability: string
   surface: string
   readOnly?: boolean
   detail?: string
 }
 
-export type BenchmarkFact = {
+type BenchmarkFact = {
   semantic: string
   unit: string
   method: string
@@ -51,7 +51,7 @@ export type BenchmarkFact = {
   evidence: ComparisonEvidence
 }
 
-export type PlacementCandidate = {
+type PlacementCandidate = {
   providerId: string
   providerName: string
   storageClass: string
@@ -67,7 +67,7 @@ export type PlacementCandidate = {
   operations?: OperationalSurface[]
 }
 
-export type PlacementPolicy = {
+type PlacementPolicy = {
   requiredAccessMode?: string
   requiredTopology?: string[]
   requireSnapshot?: boolean
@@ -79,7 +79,7 @@ export type PlacementPolicy = {
   minimumSupportLevel?: ComparisonSupportLevel
 }
 
-export type CriterionResult = {
+type CriterionResult = {
   criterion: string
   state: FactState
   reason: string
@@ -113,9 +113,9 @@ export type ActionSurface =
   | 'ceph-cli'
   | 'runbook'
   | 'observe-only'
-export type EscalationLevel = 'operator' | 'admin' | 'storage-specialist' | 'vendor'
+type EscalationLevel = 'operator' | 'admin' | 'storage-specialist' | 'vendor'
 
-export type RemediationEvidence = {
+type RemediationEvidence = {
   source: string
   strength: EvidenceStrength
   observedAt: string
@@ -158,7 +158,7 @@ export type RemediationQuery = {
   limit?: number
 }
 
-export const storageGuidanceClient = {
+const storageGuidanceClient = {
   comparison: (query: ComparisonQuery = {}, signal?: AbortSignal) =>
     highlandGet<ProviderComparison>(
       `/storage/comparison${buildInsightQuery({

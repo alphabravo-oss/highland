@@ -88,17 +88,15 @@ export function OrphansPage() {
     [t, canMutate],
   )
 
-  const data = q.data ?? []
-
   const { replicaData, instances } = useMemo(() => {
     const replicaData: Orphan[] = []
     const instances: Orphan[] = []
-    for (const o of data) {
+    for (const o of q.data ?? []) {
       if (isInstanceOrphan(o)) instances.push(o)
       else replicaData.push(o)
     }
     return { replicaData, instances }
-  }, [data])
+  }, [q.data])
 
   const tabs: { id: OrphanTab; label: string; count: number }[] = [
     { id: 'replicaData', label: t('orphans.tabs.replicaData'), count: replicaData.length },
@@ -121,7 +119,7 @@ export function OrphansPage() {
       <QueryState
         isLoading={q.isLoading}
         error={q.error as Error | null}
-        isEmpty={!data.length}
+        isEmpty={!q.data?.length}
         emptyTitle={t('orphans.empty')}
         emptyDescription={t('orphans.emptyDescription')}
         skeleton={<TableSkeleton rows={6} cols={5} />}

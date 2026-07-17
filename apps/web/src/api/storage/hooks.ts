@@ -3,7 +3,7 @@ import { storageClient } from './client'
 import type { StorageFilters, StoragePage } from './types'
 import { useSseConnected } from '@/api/realtime'
 
-export const storageKeys = {
+const storageKeys = {
   root: ['storage'] as const,
   providers: () => [...storageKeys.root, 'providers'] as const,
   provider: (id: string) => [...storageKeys.providers(), id] as const,

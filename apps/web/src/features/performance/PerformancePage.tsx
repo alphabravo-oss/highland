@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Database, Gauge, Layers3, LoaderCircle, Server } from 'lucide-react'
 import {
   useBenchmarks,
@@ -55,7 +55,7 @@ export function BenchmarksPage() {
   const [deleteBench, setDeleteBench] = useState<string | null>(null)
 
   const nodeNames = (nodesQ.data ?? []).map((n) => n.name).filter(Boolean)
-  const storageClasses = classesQ.data?.data ?? []
+  const storageClasses = useMemo(() => classesQ.data?.data ?? [], [classesQ.data?.data])
 
   useEffect(() => {
     if (!storageClass && storageClasses.length > 0) {

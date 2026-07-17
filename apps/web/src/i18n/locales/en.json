@@ -209,11 +209,6 @@
     "description": "That route is not part of Highland’s navigation.",
     "backToDashboard": "Back to dashboard"
   },
-  "placeholder": {
-    "page": "Page",
-    "description": "Phase 0 placeholder — feature parity pages land in Phase 1+.",
-    "contentHint": "Content for {{heading}} will appear here once Longhorn manager data is wired through the Highland BFF."
-  },
   "auth": {
     "loginTitle": "Local administrator sign-in",
     "username": "Username",

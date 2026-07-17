@@ -14,7 +14,10 @@ keywords:
   - highland
 maintainers:
   - name: Highland
-home: https://github.com/highland-io/highland
+home: https://github.com/alphabravo-oss/highland
+icon: https://raw.githubusercontent.com/alphabravo-oss/highland/main/apps/web/public/favicon.svg
+sources:
+  - https://github.com/alphabravo-oss/highland
 dependencies:
   - name: longhorn
     alias: embeddedLonghorn

@@ -46,7 +46,7 @@ export type VolumeActionDef = (typeof VOLUME_ACTION_DEFS)[number]
  * labeled sections (Lifecycle, Snapshots, …) instead of one flat scroll.
  * Any action key not listed here falls into the trailing "advanced" bucket.
  */
-export const ACTION_GROUPS = [
+const ACTION_GROUPS = [
   {
     id: 'lifecycle',
     keys: ['attach', 'detach', 'salvage', 'activate', 'expand', 'cancelExpansion', 'cloneVolume', 'trimFilesystem', 'engineUpgrade'],
@@ -104,4 +104,3 @@ export function volumeActionLabel(
 ): string {
   return t(`volumeActions.${key}`, { defaultValue: fallback ?? key })
 }
-

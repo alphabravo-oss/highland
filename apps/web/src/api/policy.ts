@@ -41,9 +41,9 @@ export function updatePolicyField(current: StorageWritePolicy, key: StoragePolic
   return next
 }
 
-export type PolicyCeiling = Omit<StorageWritePolicy, 'acceptNewOperations' | 'portableKubernetesProviderIds'> & { portableKubernetesProviderIds?: string[] }
+type PolicyCeiling = Omit<StorageWritePolicy, 'acceptNewOperations' | 'portableKubernetesProviderIds'> & { portableKubernetesProviderIds?: string[] }
 
-export type PolicyCondition = {
+type PolicyCondition = {
   type: string
   status: string
   reason?: string

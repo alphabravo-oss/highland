@@ -12,7 +12,7 @@ export type LHResource = {
   [key: string]: unknown
 }
 
-export type LHCollection<T extends LHResource = LHResource> = {
+type LHCollection<T extends LHResource = LHResource> = {
   type?: string
   resourceType?: string
   data: T[]
@@ -229,7 +229,7 @@ export type Event = LHResource & {
 
 // ---- collection helpers ----
 
-export async function listCollection<T extends LHResource>(
+async function listCollection<T extends LHResource>(
   collection: string,
 ): Promise<T[]> {
   const path = collection.startsWith('/') ? collection : `/${collection}`
@@ -237,21 +237,21 @@ export async function listCollection<T extends LHResource>(
   return Array.isArray(res?.data) ? res.data : []
 }
 
-export async function getResource<T extends LHResource>(
+async function getResource<T extends LHResource>(
   collection: string,
   name: string,
 ): Promise<T> {
   return lhGet<T>(`/${collection}/${encodeURIComponent(name)}`)
 }
 
-export async function createResource<T extends LHResource>(
+async function createResource<T extends LHResource>(
   collection: string,
   body: Record<string, unknown>,
 ): Promise<T> {
   return lhPost<T>(`/${collection}`, body)
 }
 
-export async function deleteResource(
+async function deleteResource(
   resource: LHResource,
 ): Promise<void> {
   const self = resource.links?.self
@@ -266,7 +266,7 @@ export async function deleteResource(
   throw new Error('resource has no self link or id')
 }
 
-export async function updateResource<T extends LHResource>(
+async function updateResource<T extends LHResource>(
   resource: LHResource,
   body: Record<string, unknown>,
 ): Promise<T> {

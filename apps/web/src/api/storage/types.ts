@@ -1,6 +1,6 @@
-export type SupportLevel = 'detected' | 'verified' | 'managed'
-export type Severity = 'ok' | 'info' | 'warning' | 'error' | 'unknown'
-export type Capability = string
+type SupportLevel = 'detected' | 'verified' | 'managed'
+type Severity = 'ok' | 'info' | 'warning' | 'error' | 'unknown'
+type Capability = string
 
 export type StorageCondition = {
   type: string
@@ -59,7 +59,7 @@ export type StorageClassSummary = {
   conditions?: StorageCondition[]
 }
 
-export type WorkloadReference = {
+type WorkloadReference = {
   namespace: string
   kind: string
   name: string
@@ -157,8 +157,8 @@ export type StorageEvent = {
   lastObservedAt?: string
 }
 
-export type PageMeta = { limit: number; continue?: string; total: number }
-export type ResponseMeta = { observedAt: string; stale: boolean; partial: boolean; requestId?: string }
+type PageMeta = { limit: number; continue?: string; total: number }
+type ResponseMeta = { observedAt: string; stale: boolean; partial: boolean; requestId?: string }
 export type StoragePage<T> = { data: T[]; page: PageMeta; meta?: ResponseMeta; conditions?: StorageCondition[] }
 export type ProviderList = {
   data: ProviderDescriptor[]
@@ -175,7 +175,7 @@ export type StorageFilters = {
   continue?: string
 }
 
-export type StorageAction = {
+type StorageAction = {
   id: string
   capability: string
   minimumRole: 'operator' | 'admin'
@@ -187,7 +187,7 @@ export type StorageAction = {
   auditAction: string
 }
 export type ActionAvailability = { action: StorageAction; enabled: boolean; available: boolean; unavailableReason?: string }
-export type OperationTarget = { apiVersion?: string; kind: string; namespace?: string; name: string; uid?: string; resourceVersion?: string }
+type OperationTarget = { apiVersion?: string; kind: string; namespace?: string; name: string; uid?: string; resourceVersion?: string }
 export type OperationRequest = { actionId: string; providerId?: string; target: OperationTarget; parameters?: Record<string, unknown>; confirmation?: { challenge: string; typedName?: string; warningsAcknowledged?: boolean } }
 export type OperationPlan = {
   action: StorageAction

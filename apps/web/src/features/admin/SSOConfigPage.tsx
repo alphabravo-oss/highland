@@ -73,7 +73,7 @@ export function SSOConfigPage() {
     return () => {
       cancelled = true
     }
-  }, [isAdmin])
+  }, [isAdmin, t])
 
   async function onSave() {
     setSaving(true)

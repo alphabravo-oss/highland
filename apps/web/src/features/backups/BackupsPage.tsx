@@ -95,7 +95,7 @@ export function BackupsPage() {
       await lhPut('/backupvolumes', {})
       await q.refetch()
       toast.success(t('backups.syncAllToast'))
-    } catch (e) {
+    } catch {
       // try collection action
       try {
         for (const bv of q.data ?? []) {

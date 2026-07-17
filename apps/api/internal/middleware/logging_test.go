@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -90,3 +91,30 @@ func TestRequestLoggerSamplesInfoButNotErrors(t *testing.T) {
 		t.Errorf("expected 3 sampled info lines out of 30, got %d", info)
 	}
 }
+
+func TestRequestLoggerClassifiesCanceledRequestAsClientClosed(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	r := chi.NewRouter()
+	r.Use(RequestLogger(logger, 1))
+	r.Get("/cancel", func(w http.ResponseWriter, request *http.Request) {
+		cancel, ok := request.Context().Value(cancelContextKey{}).(context.CancelFunc)
+		if !ok {
+			t.Fatal("cancel function missing from request context")
+		}
+		cancel()
+		w.WriteHeader(http.StatusBadGateway)
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx = context.WithValue(ctx, cancelContextKey{}, context.CancelFunc(cancel))
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/cancel", nil).WithContext(ctx))
+
+	got := lines(&buf)
+	if len(got) != 1 || got[0]["level"] != "INFO" || got[0]["status"].(float64) != 499 || got[0]["client_canceled"] != true {
+		t.Fatalf("canceled request should be recorded as an informational 499: %v", got)
+	}
+}
+
+type cancelContextKey struct{}

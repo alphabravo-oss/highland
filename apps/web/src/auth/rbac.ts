@@ -7,7 +7,3 @@ export function canMutate(user: HighlandUser | null | undefined): boolean {
 export function isAdmin(user: HighlandUser | null | undefined): boolean {
   return user?.role === 'admin'
 }
-
-export function isViewer(user: HighlandUser | null | undefined): boolean {
-  return user?.role === 'viewer'
-}

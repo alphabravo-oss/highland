@@ -5,7 +5,7 @@ import { buildInsightQuery } from './insights'
 import type { StorageCondition } from './types'
 
 export type RelationshipConfidence = 'authoritative' | 'derived' | 'potential' | 'unknown'
-export type RelationshipFreshness = 'fresh' | 'aging' | 'stale' | 'unknown'
+type RelationshipFreshness = 'fresh' | 'aging' | 'stale' | 'unknown'
 
 export type GraphNode = {
   apiVersion: string
@@ -22,7 +22,7 @@ export type GraphNode = {
   conditions?: StorageCondition[]
 }
 
-export type GraphEdge = {
+type GraphEdge = {
   apiVersion: string
   id: string
   type: string
@@ -77,7 +77,7 @@ export type ImpactResult = {
   incomplete?: boolean
 }
 
-export type ImpactResource = {
+type ImpactResource = {
   node: GraphNode
   confidence: RelationshipConfidence
   path?: string[]
@@ -125,7 +125,7 @@ export function canonicalGraphId(kind: string, provider: string, namespace: stri
   return `v1:${kind}:${encode(provider)}:${encode(namespace)}:${encode(name)}`
 }
 
-export const storageContextClient = {
+const storageContextClient = {
   relationships: (query: RelationshipQuery, signal?: AbortSignal) =>
     highlandGet<RelationshipGraph>(
       `/storage/relationships${buildInsightQuery({

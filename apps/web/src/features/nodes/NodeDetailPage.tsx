@@ -91,7 +91,7 @@ export function NodeDetailPage() {
   const instanceManagersQ = useInstanceManagers()
   const engineImagesQ = useEngineImages()
   const node = q.data as NodeEx | undefined
-  const series = (metrics.data?.series ?? []) as Series[]
+  const series = useMemo(() => (metrics.data?.series ?? []) as Series[], [metrics.data?.series])
 
   const nodeInstanceManagers = useMemo(
     () => (instanceManagersQ.data ?? []).filter((im) => im.nodeID === name),

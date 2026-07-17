@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"log/slog"
 	"net"
 	"net/http"
@@ -41,9 +42,18 @@ func RequestLogger(logger *slog.Logger, sampleN int) func(http.Handler) http.Han
 			if status == 0 {
 				status = http.StatusOK
 			}
+			clientCanceled := requestWasCanceled(r.Context())
+			if clientCanceled {
+				// The downstream client has gone away, so any 5xx written while
+				// dependencies unwind is not a server-side failure. Use nginx's
+				// conventional 499 in telemetry to keep error-rate alerts honest.
+				status = 499
+			}
 
 			level := slog.LevelInfo
 			switch {
+			case clientCanceled:
+				level = slog.LevelInfo
 			case status >= 500:
 				level = slog.LevelError
 			case status >= 400:
@@ -61,9 +71,14 @@ func RequestLogger(logger *slog.Logger, sampleN int) func(http.Handler) http.Han
 				slog.String("request_id", chimw.GetReqID(r.Context())),
 				slog.String("remote_ip", clientHost(r.RemoteAddr)),
 				slog.Int("bytes", ww.BytesWritten()),
+				slog.Bool("client_canceled", clientCanceled),
 			)
 		})
 	}
+}
+
+func requestWasCanceled(ctx context.Context) bool {
+	return ctx != nil && (ctx.Err() == context.Canceled || ctx.Err() == context.DeadlineExceeded)
 }
 
 func chiRoutePattern(r *http.Request) string {

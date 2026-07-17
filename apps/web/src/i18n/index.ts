@@ -89,5 +89,3 @@ export const i18n = {
 }
 
 if (typeof document !== 'undefined') document.documentElement.lang = activeLocale
-
-export default i18n

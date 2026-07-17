@@ -2,7 +2,6 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
-  type UseQueryOptions,
 } from '@tanstack/react-query'
 import { highlandDelete, highlandGet, highlandPost, highlandPut } from './client'
 import { optimisticPatch, optimisticRemove, pick } from './optimistic'
@@ -265,7 +264,7 @@ export function useSupportBundles() {
   })
 }
 
-export function useInvalidate() {
+function useInvalidate() {
   const qc = useQueryClient()
   return (keys: string[]) => {
     for (const k of keys) {
@@ -532,8 +531,6 @@ export function useDeleteSystemBackup() {
   })
 }
 
-export type { UseQueryOptions }
-
 // --- Highland native ---
 
 export function useAuditLog() {
@@ -609,7 +606,7 @@ export function useClusterMetrics() {
   })
 }
 
-export type BenchmarkPhase = 'Pending' | 'Running' | 'Succeeded' | 'Failed'
+type BenchmarkPhase = 'Pending' | 'Running' | 'Succeeded' | 'Failed'
 export type Benchmark = {
   name: string
   type: string

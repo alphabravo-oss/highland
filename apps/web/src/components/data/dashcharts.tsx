@@ -67,7 +67,7 @@ export function UsageBar({ used, total }: { used: number; total: number }) {
 
 /** Filled area sparkline for a numeric series, with a hover tooltip. When
  * `axis` is set it becomes a fuller chart with a formatted Y-axis + gridlines. */
-export function AreaSparkline({
+function AreaSparkline({
   points,
   emptyLabel,
   height = 64,

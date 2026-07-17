@@ -3,7 +3,7 @@ import { highlandGet } from '@/api/client'
 import { useSseConnected } from '@/api/realtime'
 
 export type EvidenceStrength = 'authoritative' | 'derived' | 'potential' | 'unknown'
-export type TimelineSource =
+type TimelineSource =
   | 'kubernetes-event'
   | 'rook-condition'
   | 'ceph-health'
@@ -12,8 +12,8 @@ export type TimelineSource =
   | 'audit'
   | 'configuration'
 export type TimelineSeverity = 'info' | 'warning' | 'error' | 'critical' | 'unknown'
-export type TimelineOrdering = 'known' | 'clock-skew' | 'unknown'
-export type RetentionClass = 'transient' | 'durable' | 'audit'
+type TimelineOrdering = 'known' | 'clock-skew' | 'unknown'
+type RetentionClass = 'transient' | 'durable' | 'audit'
 
 export type InsightCondition = {
   code: string
@@ -28,14 +28,14 @@ export type ResourceIdentity = {
   uid?: string
 }
 
-export type WorkloadIdentity = {
+type WorkloadIdentity = {
   kind: string
   namespace: string
   name: string
   uid?: string
 }
 
-export type TimelineLink = {
+type TimelineLink = {
   kind: string
   href: string
 }
@@ -99,7 +99,7 @@ export type CapacityMeasure =
 /** Bytes may be encoded as a decimal string to preserve uint64 precision. */
 export type ByteValue = number | string
 
-export type CapacityDimensions = {
+type CapacityDimensions = {
   providerId: string
   driver?: string
   storageClass?: string
@@ -135,8 +135,8 @@ export type CapacityOwnershipQuery = {
   limit?: number
 }
 
-export type ForecastStatus = 'available' | 'unavailable'
-export type ForecastConfidence = 'low' | 'medium' | 'high'
+type ForecastStatus = 'available' | 'unavailable'
+type ForecastConfidence = 'low' | 'medium' | 'high'
 
 export type CapacityForecast = {
   providerId: string
@@ -178,7 +178,7 @@ export function buildInsightQuery(values: Record<string, QueryValue>): string {
   return encoded ? `?${encoded}` : ''
 }
 
-export const storageInsightClient = {
+const storageInsightClient = {
   timeline: (query: TimelineQuery = {}, signal?: AbortSignal) =>
     highlandGet<StorageTimeline>(
       `/storage/timeline${buildInsightQuery({

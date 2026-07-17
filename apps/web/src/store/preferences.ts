@@ -5,7 +5,7 @@ export const PREFS_STORAGE_KEY = 'highland-ui-prefs'
 
 export type Density = 'comfortable' | 'compact'
 
-export type SavedView = {
+type SavedView = {
   id: string
   name: string
   tableId: string

@@ -1,6 +1,6 @@
 module github.com/highland-io/highland/apps/api
 
-go 1.26.0
+go 1.26.5
 
 require (
 	github.com/coreos/go-oidc/v3 v3.20.0

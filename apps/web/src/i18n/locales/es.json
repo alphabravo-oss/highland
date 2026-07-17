@@ -209,11 +209,6 @@
     "description": "Esa ruta no forma parte de la navegación de Highland.",
     "backToDashboard": "Volver al panel"
   },
-  "placeholder": {
-    "page": "Página",
-    "description": "Marcador de fase 0 — las páginas de paridad llegan en la fase 1+.",
-    "contentHint": "El contenido de {{heading}} aparecerá aquí cuando los datos del manager de Longhorn se conecten a través del BFF de Highland."
-  },
   "auth": {
     "loginTitle": "Inicio de sesión de administrador local",
     "username": "Usuario",

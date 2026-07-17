@@ -16,7 +16,7 @@ export interface SnapshotNodeData {
   [k: string]: unknown
 }
 
-export interface SnapshotTreeLabels {
+interface SnapshotTreeLabels {
   volumeHead: string
   start: string
   systemTag: string

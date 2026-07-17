@@ -13,7 +13,6 @@ import { AuthenticatedLayout } from '@/routes/ProtectedRoute'
 import { LoginPage } from '@/routes/LoginPage'
 import { NotFoundPage } from '@/routes/NotFoundPage'
 import { useStorageProviders } from '@/api/storage/hooks'
-import { BenchmarksPage } from '@/features/performance/PerformancePage'
 
 const DashboardPage = lazy(() =>
   import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })),
@@ -62,6 +61,9 @@ const OrphansPage = lazy(() =>
 )
 const PerformancePage = lazy(() =>
   import('@/features/performance/LiveIOPage').then((m) => ({ default: m.LiveIOPage })),
+)
+const BenchmarksPage = lazy(() =>
+  import('@/features/performance/PerformancePage').then((m) => ({ default: m.BenchmarksPage })),
 )
 const AdminPage = lazy(() =>
   import('@/features/admin/AdminPage').then((m) => ({ default: m.AdminPage })),

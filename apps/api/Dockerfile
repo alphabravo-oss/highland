@@ -5,7 +5,7 @@
 # Go toolchain under QEMU emulation, so multi-arch (amd64 + arm64) builds are
 # near-native speed. The final distroless stage only COPYs the binary, so it
 # needs no emulation either.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache git ca-certificates
 COPY go.mod go.sum ./

@@ -211,7 +211,7 @@ export function VolumesPage() {
     >
   }, [columnPrefs])
 
-  const allVolumes = q.data ?? []
+  const allVolumes = useMemo(() => q.data ?? [], [q.data])
 
   // Distinct option lists derived from the current volume data (sorted).
   const stateOptions = useMemo(

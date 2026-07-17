@@ -46,5 +46,3 @@ export const useUIStore = create<UIState>((set, get) => ({
   setCommandPaletteOpen: (v) => set({ commandPaletteOpen: v }),
   toggleCommandPalette: () => set({ commandPaletteOpen: !get().commandPaletteOpen }),
 }))
-
-export { SIDEBAR_KEY }
