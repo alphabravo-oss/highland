@@ -1,6 +1,6 @@
 # Provider-Scoped Storage Policy and Release Plan
 
-Status: **Implementation and live qualification complete; release pending**
+Status: **Complete**
 
 Owner: Highland maintainers
 Started: 2026-07-17
@@ -296,42 +296,42 @@ Qualification notes:
 
 ### Phase 7 — Git, pull request, merge, and release checkpoint
 
-- [ ] Review the entire dirty worktree and exclude generated/local artifacts.
-- [ ] Confirm no credentials, challenge tokens, kubeconfigs, screenshots with
+- [x] Review the entire dirty worktree and exclude generated/local artifacts.
+- [x] Confirm no credentials, challenge tokens, kubeconfigs, screenshots with
       secrets, or disposable manifests are staged.
-- [ ] Rebase or merge current `main` without discarding user work.
-- [ ] Run the full final regression after integration with current `main`.
-- [ ] Update both implementation plans and validation evidence to final status.
-- [ ] Create a coherent commit covering the complete storage control plane and
+- [x] Rebase or merge current `main` without discarding user work.
+- [x] Run the full final regression after integration with current `main`.
+- [x] Update both implementation plans and validation evidence to final status.
+- [x] Create a coherent commit covering the complete storage control plane and
       provider-scoped policy work.
-- [ ] Push the feature branch.
-- [ ] Open or update a GitHub pull request with architecture, security, tests,
+- [x] Push the feature branch.
+- [x] Open or update a GitHub pull request with architecture, security, tests,
       live evidence, migration, rollback, and known-boundary sections.
-- [ ] Verify required checks and review the PR diff from GitHub.
-- [ ] Merge the PR to `main` using repository policy.
-- [ ] Pull and verify local `main` matches the merged remote.
-- [ ] Create and push an immutable annotated release tag.
-- [ ] Verify the tag and merged commit are visible on GitHub.
-- [ ] Record commit, PR, merge, and tag links in the validation report.
+- [x] Verify required checks and review the PR diff from GitHub.
+- [x] Merge the PR to `main` using repository policy.
+- [x] Pull and verify local `main` matches the merged remote.
+- [x] Create and push an immutable annotated release tag.
+- [x] Verify the tag and merged commit are visible on GitHub.
+- [x] Record commit, PR, merge, and tag links in the validation report.
 
 Phase 7 definition of done:
 
-- [ ] The implementation is reproducible from merged `main`.
-- [ ] The release checkpoint is traceable to complete automated and live
+- [x] The implementation is reproducible from merged `main`.
+- [x] The release checkpoint is traceable to complete automated and live
       evidence.
 
 ## 5. Global completion gate
 
 The objective is complete only when:
 
-- [ ] Every phase definition of done is checked.
-- [ ] Every implementation and validation task is checked or has a specific,
+- [x] Every phase definition of done is checked.
+- [x] Every implementation and validation task is checked or has a specific,
       evidence-backed accepted limitation that does not weaken provider
       authorization correctness.
-- [ ] The live policy is disabled, all disposable resources are removed, and no
+- [x] The live policy is disabled, all disposable resources are removed, and no
       operation remains nonterminal.
-- [ ] The CRD, Helm chart, API, UI, OpenAPI, security docs, and runbooks agree.
-- [ ] Merged `main` and the release tag contain the exact validated source.
+- [x] The CRD, Helm chart, API, UI, OpenAPI, security docs, and runbooks agree.
+- [x] Merged `main` and the release tag contain the exact validated source.
 
 ## 6. Evidence ledger
 
