@@ -412,13 +412,11 @@ function RookCephClusterPage({ provider, isLoading, error, onRetry }: {
         </div> : null}
       </section>
 
-      <section aria-labelledby="cluster-signals-heading">
+      <section aria-labelledby="rook-operational-signals-heading">
         <div className="mb-3 flex items-end justify-between gap-3">
-          <div><h2 id="cluster-signals-heading" className="text-base font-semibold">Cluster signals</h2><p className="text-sm text-[var(--color-muted-foreground)]">The six numbers that best describe whether this cluster is safe and usable.</p></div>
+          <div><h2 id="rook-operational-signals-heading" className="text-base font-semibold">Operational signals</h2><p className="text-sm text-[var(--color-muted-foreground)]">Control-plane readiness, data cleanliness, and current client activity.</p></div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <CephSignal icon={Gauge} label="Raw capacity" value={usedPercent === undefined ? 'Unavailable' : `${usedPercent.toFixed(1)}% used`} detail={totalBytes === undefined ? 'Capacity data unavailable' : `${formatBytes(usedBytes)} used · ${formatBytes(availableBytes)} available · ${formatBytes(totalBytes)} total`} progress={usedPercent} warning={usedPercent !== undefined && usedPercent >= 80} />
-          <CephSignal icon={Server} label="OSD resilience" value={osdTotal === undefined ? 'Unavailable' : `${osdsUp}/${osdTotal} up · ${osdsIn}/${osdTotal} in`} detail={osdsUp === osdTotal && osdsIn === osdTotal ? 'All storage daemons are serving data' : 'An OSD is down or out of the data set'} warning={osdTotal !== undefined && (osdsUp !== osdTotal || osdsIn !== osdTotal)} />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <CephSignal icon={ShieldCheck} label="Control plane" value={quorum === undefined ? 'Unavailable' : `${quorum} MON in quorum`} detail={mgrName ? `Manager ${mgrName} is active` : 'No active manager reported'} warning={!mgrName || quorum === 0} />
           <CephSignal icon={Layers3} label="Placement groups" value={pgSummary} detail="Placement groups should remain active+clean" warning={Object.keys(pgStatuses).some((state) => state !== 'active+clean')} />
           <CephSignal icon={Database} label="Objects" value={objectCount === undefined ? 'Unavailable' : objectCount.toLocaleString()} detail={`${(degraded ?? 0).toLocaleString()} degraded · ${(misplaced ?? 0).toLocaleString()} misplaced`} warning={(degraded ?? 0) > 0 || (misplaced ?? 0) > 0} />
@@ -426,8 +424,18 @@ function RookCephClusterPage({ provider, isLoading, error, onRetry }: {
         </div>
       </section>
 
+      <section className="mt-6" aria-labelledby="rook-capacity-resilience-heading">
+        <div className="mb-3"><h2 id="rook-capacity-resilience-heading" className="text-base font-semibold">Capacity & resilience</h2><p className="text-sm text-[var(--color-muted-foreground)]">Raw Ceph utilization and whether every storage daemon can safely serve data.</p></div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          <CephSignal icon={Gauge} label="Raw capacity" value={usedPercent === undefined ? 'Unavailable' : `${usedPercent.toFixed(1)}% used`} detail={totalBytes === undefined ? 'Capacity data unavailable' : `${formatBytes(usedBytes)} used · ${formatBytes(availableBytes)} available · ${formatBytes(totalBytes)} total`} progress={usedPercent} warning={usedPercent !== undefined && usedPercent >= 80} />
+          <CephSignal icon={Server} label="OSD resilience" value={osdTotal === undefined ? 'Unavailable' : `${osdsUp}/${osdTotal} up · ${osdsIn}/${osdTotal} in`} detail={osdsUp === osdTotal && osdsIn === osdTotal ? 'All storage daemons are serving data' : 'An OSD is down or out of the data set'} warning={osdTotal !== undefined && (osdsUp !== osdTotal || osdsIn !== osdTotal)} />
+        </div>
+      </section>
+
+      <div className="mt-6"><ProviderWorkloadFootprint provider={provider.id} /></div>
+
       <section className="mt-6" aria-labelledby="storage-services-heading">
-        <div className="mb-3"><h2 id="storage-services-heading" className="text-base font-semibold">Storage services</h2><p className="text-sm text-[var(--color-muted-foreground)]">Move from cluster health into the Ceph resource responsible for it.</p></div>
+        <div className="mb-3"><h2 id="storage-services-heading" className="text-base font-semibold">Provider resources</h2><p className="text-sm text-[var(--color-muted-foreground)]">Move from cluster health into the Ceph service responsible for it.</p></div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {services.map((service) => {
             const Icon = service.icon
@@ -442,8 +450,6 @@ function RookCephClusterPage({ provider, isLoading, error, onRetry }: {
           })}
         </div>
       </section>
-
-      <div className="mt-6"><ProviderWorkloadFootprint provider={provider.id} /></div>
 
       <div className="mt-6 grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
         <Card>

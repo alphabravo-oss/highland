@@ -84,7 +84,18 @@ export function LinstorProviderPage({ provider }: { provider: ProviderDescriptor
           </div>
         </section>
         {summaryIssues.map((condition) => <Alert key={`${condition.type}:${condition.reason}`} tone={condition.severity === 'error' ? 'danger' : 'warning'}><AlertTitle>{condition.type}</AlertTitle><AlertDescription>{condition.message}</AlertDescription></Alert>)}
-        <section className="grid gap-4 xl:grid-cols-2">
+        <section aria-labelledby="linstor-operational-signals-heading">
+          <div className="mb-3"><h2 id="linstor-operational-signals-heading" className="text-base font-semibold">Operational signals</h2><p className="text-sm text-[var(--color-muted-foreground)]">Readiness, topology, resource placement, and protection coverage.</p></div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Metric icon={Boxes} label="Component readiness" value={`${ready}/${data.components.length}`} detail="Kubernetes workloads ready" warning={ready !== data.components.length}/>
+            <Metric icon={Server} label="Nodes" value={String(count('nodes'))} detail={`${count('satellites')} operator satellites`}/>
+            <Metric icon={HardDrive} label="Resources" value={String(count('resource-definitions'))} detail={`${count('resources')} placed replica records`}/>
+            <Metric icon={Network} label="Protection" value={`${count('snapshots')} snapshots`} detail={`${count('remotes')} remotes · ${count('schedules')} schedules`}/>
+          </div>
+        </section>
+        <section aria-labelledby="linstor-capacity-resilience-heading">
+          <div className="mb-3"><h2 id="linstor-capacity-resilience-heading" className="text-base font-semibold">Capacity & resilience</h2><p className="text-sm text-[var(--color-muted-foreground)]">Usable diskful capacity and the current safety state of placed replicas.</p></div>
+        <div className="grid gap-4 xl:grid-cols-2">
           <Card>
             <CardHeader><CardTitle>Allocatable pool capacity</CardTitle></CardHeader>
             <CardContent className="space-y-4">
@@ -111,18 +122,16 @@ export function LinstorProviderPage({ provider }: { provider: ProviderDescriptor
               </div>
             </CardContent>
           </Card>
-        </section>
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Metric icon={Boxes} label="Component readiness" value={`${ready}/${data.components.length}`} detail="Kubernetes workloads ready" warning={ready !== data.components.length}/>
-          <Metric icon={Server} label="Nodes" value={String(count('nodes'))} detail={`${count('satellites')} operator satellites`}/>
-          <Metric icon={HardDrive} label="Resources" value={String(count('resource-definitions'))} detail={`${count('resources')} placed replica records`}/>
-          <Metric icon={Network} label="Protection" value={`${count('snapshots')} snapshots`} detail={`${count('remotes')} remotes · ${count('schedules')} schedules`}/>
+        </div>
         </section>
         <ProviderWorkloadFootprint provider={provider.id} />
-        <section className="grid gap-4 lg:grid-cols-3">
-          <Area title="Lifecycle" icon={Activity} text="Operator convergence and workload readiness." links={[["Components",`${root}/components`],["Clusters",`${root}/clusters`],["Satellites",`${root}/satellites`]]}/>
-          <Area title="Capacity & placement" icon={Database} text="Nodes, pools, policy, and replica placement." links={[["Nodes",`${root}/nodes`],["Storage pools",`${root}/storage-pools`],["Resource groups",`${root}/resource-groups`],["Replicas",`${root}/resources`]]}/>
-          <Area title="Protection & diagnostics" icon={Network} text="Snapshots, backup destinations, schedules, and errors." links={[["Snapshots",`${root}/snapshots`],["Remotes",`${root}/remotes`],["Schedules",`${root}/schedules`],["Error reports",`${root}/error-reports`]]}/>
+        <section aria-labelledby="linstor-provider-resources-heading">
+          <div className="mb-3"><h2 id="linstor-provider-resources-heading" className="text-base font-semibold">Provider resources</h2><p className="text-sm text-[var(--color-muted-foreground)]">Continue into Piraeus lifecycle, LINSTOR placement, protection, and diagnostics.</p></div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Area title="Lifecycle" icon={Activity} text="Operator convergence and workload readiness." links={[["Components",`${root}/components`],["Clusters",`${root}/clusters`],["Satellites",`${root}/satellites`]]}/>
+            <Area title="Capacity & placement" icon={Database} text="Nodes, pools, policy, and replica placement." links={[["Nodes",`${root}/nodes`],["Storage pools",`${root}/storage-pools`],["Resource groups",`${root}/resource-groups`],["Replicas",`${root}/resources`]]}/>
+            <Area title="Protection & diagnostics" icon={Network} text="Snapshots, backup destinations, schedules, and errors." links={[["Snapshots",`${root}/snapshots`],["Remotes",`${root}/remotes`],["Schedules",`${root}/schedules`],["Error reports",`${root}/error-reports`]]}/>
+          </div>
         </section>
         {provider.health.conditions.length ? <Card><CardHeader><CardTitle>Health evidence</CardTitle></CardHeader><CardContent className="space-y-2">{provider.health.conditions.map((condition) => <div key={`${condition.type}:${condition.reason}`} className="flex items-start justify-between gap-3 rounded-md border border-[var(--color-border)] p-3"><div><div className="font-medium">{condition.type}</div><p className="mt-1 text-xs text-[var(--color-muted-foreground)]">{condition.message}</p></div><Badge tone={tone(condition.severity)}>{condition.status}</Badge></div>)}</CardContent></Card> : null}
       </div> : null}

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Activity, HardDrive, Server, TriangleAlert } from 'lucide-react'
+import { Activity, AlertTriangle, CheckCircle2, GitBranch, HardDrive, Server, TriangleAlert } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
 import {
@@ -20,6 +20,7 @@ import { QueryState } from '@/components/data/QueryState'
 import { Badge, stateTone } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
+import { ProviderWorkloadFootprint } from '@/features/storage/ProviderWorkloadFootprint'
 
 const ROBUSTNESS_COLORS = {
   healthy: '#16a34a',
@@ -179,6 +180,8 @@ export function DashboardPage() {
   )
 
   const loading = volumes.isLoading || nodes.isLoading
+  const healthIssues = (health.data?.items ?? []).filter((item) => item.severity === 'warning' || item.severity === 'error')
+  const providerHealthy = degraded === 0 && faulted === 0 && healthIssues.length === 0
   const error =
     (volumes.error as Error | null) ??
     (nodes.error as Error | null) ??
@@ -190,7 +193,6 @@ export function DashboardPage() {
         title={t('dashboard.title')}
         description={t('dashboard.description')}
       />
-      <ClusterWarnings />
       <QueryState
         isLoading={loading}
         error={error}
@@ -200,7 +202,20 @@ export function DashboardPage() {
           void dash.refetch()
         }}
       >
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <section className={`mb-5 rounded-xl border p-5 ${providerHealthy ? 'border-[var(--color-success)]/30 bg-[var(--color-success)]/5' : 'border-[var(--color-warning)]/40 bg-[var(--color-warning)]/5'}`}>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
+              <div className={`rounded-full p-2.5 ${providerHealthy ? 'bg-[var(--color-success)]/10 text-[var(--color-success)]' : 'bg-[var(--color-warning)]/10 text-[var(--color-warning)]'}`}>{providerHealthy ? <CheckCircle2 size={22} /> : <AlertTriangle size={22} />}</div>
+              <div><div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-semibold">{providerHealthy ? 'Longhorn is healthy' : 'Longhorn needs attention'}</h2><Badge tone={providerHealthy ? 'success' : 'warning'}>{providerHealthy ? 'ok' : 'attention'}</Badge></div><p className="mt-1 text-sm text-[var(--color-muted-foreground)]">{volList.length} volumes · {nodeList.length} nodes · {healthy} healthy, {degraded} degraded, {faulted} faulted</p></div>
+            </div>
+            <div className="flex flex-wrap gap-2"><Link className="inline-flex h-9 items-center gap-2 rounded-md bg-[var(--color-primary)] px-4 text-sm font-medium text-[var(--color-primary-foreground)]" to="/volumes"><HardDrive size={15} /> Volumes</Link><Link className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--color-border)] px-4 text-sm font-medium" to="/storage/providers/longhorn/context"><GitBranch size={15} /> Context</Link></div>
+          </div>
+        </section>
+        <ClusterWarnings />
+
+        <section aria-labelledby="longhorn-operational-signals-heading">
+          <div className="mb-3"><h2 id="longhorn-operational-signals-heading" className="text-base font-semibold">Operational signals</h2><p className="text-sm text-[var(--color-muted-foreground)]">Volume availability, attachment, node readiness, and total storage.</p></div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             title={t('dashboard.volumes')}
             value={volList.length}
@@ -242,9 +257,12 @@ export function DashboardPage() {
             icon={TriangleAlert}
             to="/nodes"
           />
-        </div>
+          </div>
+        </section>
 
-        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <section className="mt-6" aria-labelledby="longhorn-capacity-resilience-heading">
+          <div className="mb-3"><h2 id="longhorn-capacity-resilience-heading" className="text-base font-semibold">Capacity & resilience</h2><p className="text-sm text-[var(--color-muted-foreground)]">Volume robustness, allocatable capacity, and current storage traffic.</p></div>
+          <div className="grid gap-3 lg:grid-cols-3">
           <Card>
             <CardHeader>
               <CardTitle>{t('dashboard.robustness')}</CardTitle>
@@ -345,39 +363,13 @@ export function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+        </section>
 
-        {(health.data?.items ?? []).length > 0 ? (
-          <Card className="mt-4">
-            <CardHeader>
-              <CardTitle>{t('dashboard.healthNarrative')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {health.data!.items.map((item, i) => (
-                <div key={i} className="flex items-start gap-2 text-sm">
-                  <Badge
-                    tone={
-                      item.severity === 'ok'
-                        ? 'success'
-                        : item.severity === 'warning'
-                          ? 'warning'
-                          : 'info'
-                    }
-                  >
-                    {item.severity}
-                  </Badge>
-                  <span>
-                    <span className="font-mono text-xs text-[var(--color-muted-foreground)]">
-                      {item.code}
-                    </span>{' '}
-                    {item.message}
-                  </span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        ) : null}
+        <div className="mt-6"><ProviderWorkloadFootprint provider="longhorn" /></div>
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <section className="mt-6" aria-labelledby="longhorn-provider-resources-heading">
+          <div className="mb-3"><h2 id="longhorn-provider-resources-heading" className="text-base font-semibold">Provider resources</h2><p className="text-sm text-[var(--color-muted-foreground)]">Volume-level health and recent Longhorn events.</p></div>
+          <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle>{t('dashboard.volumeHealth')}</CardTitle>
@@ -420,6 +412,23 @@ export function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+        </section>
+
+        {(health.data?.items ?? []).length > 0 ? (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle>Health evidence</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {health.data!.items.map((item, i) => (
+                <div key={i} className="flex items-start gap-2 text-sm">
+                  <Badge tone={item.severity === 'ok' ? 'success' : item.severity === 'warning' ? 'warning' : 'info'}>{item.severity}</Badge>
+                  <span><span className="font-mono text-xs text-[var(--color-muted-foreground)]">{item.code}</span>{' '}{item.message}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        ) : null}
       </QueryState>
     </div>
   )

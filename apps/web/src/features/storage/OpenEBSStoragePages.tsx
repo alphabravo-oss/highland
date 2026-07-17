@@ -243,23 +243,18 @@ export function OpenEBSProviderPage({ provider }: { provider: ProviderDescriptor
 
         <PartialConditions conditions={data.conditions} />
 
-        <section>
-          <div className="mb-3">
-            <h2 className="text-base font-semibold">Installed storage engines</h2>
-            <p className="text-sm text-[var(--color-muted-foreground)]">Only engines that can currently provision or serve data are promoted here.</p>
+        <section aria-labelledby="openebs-operational-signals-heading">
+          <div className="mb-3"><h2 id="openebs-operational-signals-heading" className="text-base font-semibold">Operational signals</h2><p className="text-sm text-[var(--color-muted-foreground)]">Engine availability, controller readiness, observed resources, and provisioning model.</p></div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <SummaryCard icon={Gauge} label="Installed engines" value={String(installed.length)} detail={`${replicated.length} replicated · ${local.length} local`} />
+            <SummaryCard icon={Server} label="Component readiness" value={`${readyComponents}/${data.components.length}`} detail="Deployments and DaemonSets ready" warning={readyComponents !== data.components.length} />
+            <SummaryCard icon={Database} label="Provider resources" value={totalResources.toLocaleString()} detail="Provider-native records observed" />
+            <SummaryCard icon={ShieldCheck} label="Resilience model" value={replicated.length ? 'Replicated' : local.length ? 'Node-local' : 'Unavailable'} detail={replicated.length ? 'At least one replicated engine is installed' : 'No replicated engine is installed'} warning={!replicated.length} />
           </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {installed.map((engine) => <EngineCard key={engine.id} provider={provider.id} engine={engine} counts={data.resourceCounts} />)}
-          </div>
-          {available.length ? <details className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)]">
-            <summary className="cursor-pointer px-4 py-3 text-sm font-medium">{available.length} other supported engine{available.length === 1 ? '' : 's'} not installed</summary>
-            <div className="grid gap-3 border-t border-[var(--color-border)] p-4 md:grid-cols-2 xl:grid-cols-3">
-              {available.map((engine) => <EngineCard key={engine.id} provider={provider.id} engine={engine} counts={data.resourceCounts} />)}
-            </div>
-          </details> : null}
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-[1.25fr_.75fr]">
+        <section aria-labelledby="openebs-capacity-resilience-heading">
+          <div className="mb-3"><h2 id="openebs-capacity-resilience-heading" className="text-base font-semibold">Capacity & resilience</h2><p className="text-sm text-[var(--color-muted-foreground)]">OpenEBS engine capability and the failure behavior it implies for workloads.</p></div>
           <Card>
             <CardHeader><CardTitle>Engine resilience posture</CardTitle></CardHeader>
             <CardContent className="flex flex-col gap-5 sm:flex-row sm:items-center">
@@ -275,15 +270,23 @@ export function OpenEBSProviderPage({ provider }: { provider: ProviderDescriptor
               </div>
             </CardContent>
           </Card>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <SummaryCard icon={Server} label="Component readiness" value={`${readyComponents}/${data.components.length}`} detail="Deployments and DaemonSets ready" warning={readyComponents !== data.components.length} />
-            <SummaryCard icon={Database} label="Backend records" value={totalResources.toLocaleString()} detail="Provider-native resources observed" />
-          </div>
         </section>
 
         <ProviderWorkloadFootprint provider={provider.id} />
 
-        <Card>
+        <section aria-labelledby="openebs-provider-resources-heading">
+          <div className="mb-3"><h2 id="openebs-provider-resources-heading" className="text-base font-semibold">Provider resources</h2><p className="text-sm text-[var(--color-muted-foreground)]">Installed storage engines and the control-plane components that operate them.</p></div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {installed.map((engine) => <EngineCard key={engine.id} provider={provider.id} engine={engine} counts={data.resourceCounts} />)}
+          </div>
+          {available.length ? <details className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)]">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium">{available.length} other supported engine{available.length === 1 ? '' : 's'} not installed</summary>
+            <div className="grid gap-3 border-t border-[var(--color-border)] p-4 md:grid-cols-2 xl:grid-cols-3">
+              {available.map((engine) => <EngineCard key={engine.id} provider={provider.id} engine={engine} counts={data.resourceCounts} />)}
+            </div>
+          </details> : null}
+
+        <Card className="mt-4">
           <CardHeader><CardTitle>Control-plane components</CardTitle></CardHeader>
           <CardContent>
             {data.components.length ? <div className="overflow-x-auto">
@@ -300,6 +303,7 @@ export function OpenEBSProviderPage({ provider }: { provider: ProviderDescriptor
             </div> : <p className="text-sm text-[var(--color-muted-foreground)]">No OpenEBS controller workloads were observed in {data.namespace}.</p>}
           </CardContent>
         </Card>
+        </section>
 
         {provider.health.conditions.length ? <Card>
           <CardHeader><CardTitle>Health evidence</CardTitle></CardHeader>
