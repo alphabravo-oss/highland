@@ -187,9 +187,6 @@
     "bulkSkipped": "{{count}} skipped (action unavailable)",
     "bulkFailed": "{{count}} failed: {{names}}"
   },
-  "compat": {
-    "title": "Longhorn {{lh}} · Highland {{hVer}}"
-  },
   "notFound": {
     "title": "Page not found",
     "description": "That route is not part of Highland’s navigation.",

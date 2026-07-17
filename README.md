@@ -34,8 +34,8 @@ Kubernetes storage spans API objects, CSI drivers, and backend-specific consoles
 those facts into one hardened operator experience while keeping Kubernetes authoritative.
 
 - **Enterprise access, built in** — local admin, OIDC/SSO, RBAC (admin vs. viewer), and an audit log.
-  The browser **never** talks to the Longhorn manager directly; everything flows through an authenticated
-  backend-for-frontend (BFF).
+  The browser **never** receives Kubernetes or storage-provider credentials; access flows through an
+  authenticated backend-for-frontend (BFF).
 - **Live insight** — real-time volume/node/disk dashboards, per-volume I/O throughput & IOPS charts,
   and on-demand **fio benchmarks** you can run from the UI.
 - **Operator-grade console** — enterprise data tables everywhere (sort, search, pagination, CSV export,
@@ -99,10 +99,11 @@ cross-provider data migration are not part of 0.2.0. See the
 
 ## Quick start
 
-### Bolt on to an existing Longhorn installation (default)
+### Install the provider-neutral control plane
 
-> **Prerequisites:** a Kubernetes cluster with **Longhorn already installed** (its own UI can be disabled),
-> plus `helm` and `kubectl`. Highland connects to the in-cluster `longhorn-backend` service.
+> **Prerequisites:** a Kubernetes cluster, Helm, and kubectl. Highland automatically discovers CSI
+> drivers and Kubernetes storage resources; Longhorn, Rook/Ceph, and OpenEBS are optional deeper
+> integrations, not installation prerequisites.
 
 Install straight from GitHub Container Registry — no cloning, no image builds:
 
@@ -111,9 +112,7 @@ helm install highland oci://ghcr.io/alphabravo-oss/charts/highland \
   --version 0.2.0 \
   --namespace highland-system --create-namespace \
   --set auth.local.createSecret=true \
-  --set auth.local.password='change-me' \
-  --set longhorn.enabled=true \
-  --set longhorn.namespace=longhorn-system
+  --set auth.local.password='change-me'
 ```
 
 Then open the UI:
@@ -122,6 +121,35 @@ Then open the UI:
 kubectl -n highland-system port-forward svc/highland-web 8080:80
 # → http://127.0.0.1:8080     log in with  admin / change-me
 ```
+
+This base installation provides universal CSI inventory for every detected driver. Enable any
+combination of deeper provider workspaces with a Helm upgrade:
+
+| Existing provider | Values to add | What Highland adds |
+|---|---|---|
+| **Longhorn** | `--set providers.longhorn.enabled=true --set longhorn.namespace=longhorn-system` | Full Longhorn operations, backups, snapshots, nodes/disks, settings, and native workflows |
+| **Rook/Ceph** | `--set providers.rookCeph.enabled=true --set providers.rookCeph.namespace=rook-ceph` | Ceph health, quorum, OSD, pool, RBD, CephFS, mirroring, and guarded native workflows |
+| **OpenEBS** | `--set providers.openebs.enabled=true --set providers.openebs.namespace=openebs` | Engine-aware inventory for LocalPV HostPath/LVM/ZFS, Mayastor, and RawFile |
+| **Any other CSI driver** | No provider setting required | Provider-neutral drivers, classes, claims, volumes, workloads, snapshots, topology, capacity, events, and operations |
+
+For example, a cluster running all three managed providers can enable them together:
+
+```bash
+helm upgrade highland oci://ghcr.io/alphabravo-oss/charts/highland \
+  --version 0.2.0 \
+  --namespace highland-system \
+  --reuse-values \
+  --set providers.longhorn.enabled=true \
+  --set longhorn.namespace=longhorn-system \
+  --set providers.rookCeph.enabled=true \
+  --set providers.rookCeph.namespace=rook-ceph \
+  --set providers.openebs.enabled=true \
+  --set providers.openebs.namespace=openebs
+```
+
+Provider switches add discovery and the corresponding UI workspace; they do not install those
+storage systems or enable writes. Configure the optional Ceph Dashboard gateway, write-policy RBAC
+ceilings, ingress, and production authentication using **[docs/INSTALL.md](docs/INSTALL.md)**.
 
 ### All-in-one Highland + Longhorn (opt-in alpha)
 

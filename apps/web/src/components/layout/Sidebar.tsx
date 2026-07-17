@@ -1,7 +1,7 @@
 import { Database, PanelLeft, PanelLeftClose } from 'lucide-react'
 import { HighlandLogo } from '@/components/layout/HighlandLogo'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { CompatibilityBadge } from '@/components/layout/CompatibilityBadge'
+import { HighlandVersionBadge } from '@/components/layout/HighlandVersionBadge'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/auth/AuthContext'
@@ -164,7 +164,7 @@ export function Sidebar({ className }: SidebarProps) {
         })}
       </nav>
 
-      <CompatibilityBadge collapsed={collapsed} />
+      <HighlandVersionBadge collapsed={collapsed} />
 
       {!collapsed && (
         <div className="border-t border-[var(--color-border)] px-3 py-2 text-[11px] text-[var(--color-muted-foreground)]">
