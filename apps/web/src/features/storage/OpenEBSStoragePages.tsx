@@ -4,7 +4,6 @@ import type { ColumnDef } from '@tanstack/react-table'
 import {
   Activity,
   AlertTriangle,
-  Boxes,
   CheckCircle2,
   Database,
   Gauge,
@@ -19,6 +18,7 @@ import { canonicalGraphId } from '@/api/storage/context'
 import { useProviderResource, useProviderResources, useProviderSummary } from '@/api/storage/hooks'
 import type { ProviderDescriptor, StorageCondition, StorageFilters } from '@/api/storage/types'
 import { DataTable } from '@/components/data/DataTable'
+import { Donut, LegendRow } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ResourceContextLink } from './StorageContextPages'
+import { ProviderWorkloadFootprint } from './ProviderWorkloadFootprint'
 
 type OpenEBSEngine = {
   id: string
@@ -202,6 +203,7 @@ export function OpenEBSProviderPage({ provider }: { provider: ProviderDescriptor
   const installed = data?.engines.filter((engine) => engine.installed) ?? []
   const local = installed.filter((engine) => engine.mode === 'local')
   const replicated = installed.filter((engine) => engine.mode === 'replicated')
+  const available = data?.engines.filter((engine) => !engine.installed) ?? []
   const readyComponents = data?.components.filter((component) => component.ready).length ?? 0
   const totalResources = Object.values(data?.resourceCounts ?? {}).reduce((sum, count) => sum + count, 0)
   const healthy = provider.health.status === 'ok'
@@ -209,7 +211,7 @@ export function OpenEBSProviderPage({ provider }: { provider: ProviderDescriptor
   return <div data-testid="openebs-provider-page">
     <PageHeader
       title="Dashboard"
-      description="Engine-aware health, local-storage risk, capacity, and Kubernetes ownership."
+      description="Engine readiness, resilience posture, and provider-scoped Kubernetes ownership."
       actions={<Button type="button" variant="outline" onClick={() => void summary.refetch()}><RefreshCw size={15} /> Refresh</Button>}
     />
     <QueryState isLoading={summary.isLoading} error={summary.error as Error | null} onRetry={() => void summary.refetch()}>
@@ -243,19 +245,43 @@ export function OpenEBSProviderPage({ provider }: { provider: ProviderDescriptor
 
         <section>
           <div className="mb-3">
-            <h2 className="text-base font-semibold">Storage engines</h2>
-            <p className="text-sm text-[var(--color-muted-foreground)]">Installed engines stay separate because their resilience and operating models differ.</p>
+            <h2 className="text-base font-semibold">Installed storage engines</h2>
+            <p className="text-sm text-[var(--color-muted-foreground)]">Only engines that can currently provision or serve data are promoted here.</p>
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {data.engines.map((engine) => <EngineCard key={engine.id} provider={provider.id} engine={engine} counts={data.resourceCounts} />)}
+            {installed.map((engine) => <EngineCard key={engine.id} provider={provider.id} engine={engine} counts={data.resourceCounts} />)}
+          </div>
+          {available.length ? <details className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)]">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium">{available.length} other supported engine{available.length === 1 ? '' : 's'} not installed</summary>
+            <div className="grid gap-3 border-t border-[var(--color-border)] p-4 md:grid-cols-2 xl:grid-cols-3">
+              {available.map((engine) => <EngineCard key={engine.id} provider={provider.id} engine={engine} counts={data.resourceCounts} />)}
+            </div>
+          </details> : null}
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-[1.25fr_.75fr]">
+          <Card>
+            <CardHeader><CardTitle>Engine resilience posture</CardTitle></CardHeader>
+            <CardContent className="flex flex-col gap-5 sm:flex-row sm:items-center">
+              <Donut slices={[
+                { label: 'Replicated engines', value: replicated.length, color: 'var(--color-success)' },
+                { label: 'Local engines', value: local.length, color: 'var(--color-warning)' },
+              ]} />
+              <div className="min-w-0 flex-1 space-y-2">
+                <LegendRow color="var(--color-success)" label="Replicated" value={replicated.length} />
+                <LegendRow color="var(--color-warning)" label="Node-local" value={local.length} />
+                <p className="pt-2 text-xs text-[var(--color-muted-foreground)]">This describes installed engine capability, not the replication state of individual volumes.</p>
+                {local.length && !replicated.length ? <p className="rounded-md bg-[var(--color-warning)]/8 p-2 text-xs text-[var(--color-warning)]">Only node-local storage is installed. A node loss can make its volumes unavailable.</p> : null}
+              </div>
+            </CardContent>
+          </Card>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+            <SummaryCard icon={Server} label="Component readiness" value={`${readyComponents}/${data.components.length}`} detail="Deployments and DaemonSets ready" warning={readyComponents !== data.components.length} />
+            <SummaryCard icon={Database} label="Backend records" value={totalResources.toLocaleString()} detail="Provider-native resources observed" />
           </div>
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-3">
-          <SummaryCard icon={Boxes} label="Installed engines" value={String(installed.length)} detail={`${replicated.length} replicated · ${local.length} local`} />
-          <SummaryCard icon={Server} label="Component readiness" value={`${readyComponents}/${data.components.length}`} detail="Deployments and DaemonSets ready" warning={readyComponents !== data.components.length} />
-          <SummaryCard icon={Database} label="Backend records" value={totalResources.toLocaleString()} detail="Bounded OpenEBS resources observed" />
-        </section>
+        <ProviderWorkloadFootprint provider={provider.id} />
 
         <Card>
           <CardHeader><CardTitle>Control-plane components</CardTitle></CardHeader>

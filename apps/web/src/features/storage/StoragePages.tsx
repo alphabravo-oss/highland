@@ -50,6 +50,7 @@ import { canonicalGraphId } from '@/api/storage/context'
 import { ResourceContextLink } from './StorageContextPages'
 import { OpenEBSProviderPage } from './OpenEBSStoragePages'
 import { LinstorProviderPage } from './LinstorStoragePages'
+import { ProviderWorkloadFootprint } from './ProviderWorkloadFootprint'
 
 const LIMIT = 100
 
@@ -441,6 +442,8 @@ function RookCephClusterPage({ provider, isLoading, error, onRetry }: {
           })}
         </div>
       </section>
+
+      <div className="mt-6"><ProviderWorkloadFootprint provider={provider.id} /></div>
 
       <div className="mt-6 grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
         <Card>

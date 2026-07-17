@@ -5,6 +5,7 @@ import { Activity, AlertTriangle, Boxes, CheckCircle2, Database, GitBranch, Hard
 import { useProviderResource, useProviderResources, useProviderSummary } from '@/api/storage/hooks'
 import type { ProviderDescriptor, StorageCondition, StorageFilters } from '@/api/storage/types'
 import { DataTable } from '@/components/data/DataTable'
+import { Donut, LegendRow, UsageBar } from '@/components/data/dashcharts'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -12,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { ProviderWorkloadFootprint } from './ProviderWorkloadFootprint'
 
 type Component = { id: string; name: string; kind: string; desired: number; readyReplicas: number; ready: boolean }
 type Summary = { namespace: string; components: Component[]; resourceCounts: Record<string, number>; conditions?: StorageCondition[]; managementMode: string }
@@ -53,11 +55,22 @@ function formatCapacity(value: unknown, diskless = false) { const n = Number(val
 
 export function LinstorProviderPage({ provider }: { provider: ProviderDescriptor }) {
   const query = useProviderSummary<Summary>(provider.id)
+  const poolsQuery = useProviderResources<Resource>(provider.id, 'storage-pools', { limit: 100 })
+  const resourcesQuery = useProviderResources<Resource>(provider.id, 'resources', { limit: 100 })
   const data = query.data
   const ready = data?.components.filter((item) => item.ready).length ?? 0
   const count = (kind: string) => data?.resourceCounts[kind] ?? 0
   const healthy = provider.health.status === 'ok'
   const root = `/storage/providers/${encodeURIComponent(provider.id)}/linstor`
+  const dataPools = (poolsQuery.data?.data ?? []).filter((pool) => pool.provider_kind !== 'DISKLESS' && Number(pool.total_capacity) > 0 && Number(pool.total_capacity) <= Number.MAX_SAFE_INTEGER)
+  const totalCapacity = dataPools.reduce((sum, pool) => sum + Number(pool.total_capacity), 0)
+  const freeCapacity = dataPools.reduce((sum, pool) => sum + Math.max(0, Number(pool.free_capacity) || 0), 0)
+  const usedCapacity = Math.max(0, totalCapacity - freeCapacity)
+  const diskStates = (resourcesQuery.data?.data ?? []).flatMap((resource) => resource.volumes ?? []).map((volume) => String(volume.state?.disk_state ?? 'Unknown'))
+  const upToDate = diskStates.filter((value) => value.toLowerCase() === 'uptodate').length
+  const needsAttention = diskStates.filter((value) => !['uptodate', 'unknown'].includes(value.toLowerCase())).length
+  const unknown = diskStates.length - upToDate - needsAttention
+  const summaryIssues = data?.conditions?.filter((condition) => condition.severity === 'error' || condition.severity === 'warning') ?? []
   return <div data-testid="linstor-provider-page">
     <PageHeader title="Dashboard" description="Piraeus lifecycle health, LINSTOR capacity and replication evidence, and Kubernetes ownership." actions={<Button variant="outline" onClick={() => void query.refetch()}><RefreshCw size={15}/> Refresh</Button>} />
     <QueryState isLoading={query.isLoading} error={query.error as Error | null} onRetry={() => void query.refetch()}>
@@ -70,13 +83,42 @@ export function LinstorProviderPage({ provider }: { provider: ProviderDescriptor
             <div className="flex gap-2"><Link className="inline-flex h-9 items-center gap-2 rounded-md bg-[var(--color-primary)] px-4 text-sm font-medium text-[var(--color-primary-foreground)]" to={`${root}/storage-pools`}><Database size={15}/> Capacity</Link><Link className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--color-border)] px-4 text-sm font-medium" to={`/storage/providers/${encodeURIComponent(provider.id)}/context`}><GitBranch size={15}/> Context</Link></div>
           </div>
         </section>
-        {data.conditions?.map((condition) => <Alert key={`${condition.type}:${condition.reason}`} tone={condition.severity === 'error' ? 'danger' : 'warning'}><AlertTitle>{condition.type}</AlertTitle><AlertDescription>{condition.message}</AlertDescription></Alert>)}
+        {summaryIssues.map((condition) => <Alert key={`${condition.type}:${condition.reason}`} tone={condition.severity === 'error' ? 'danger' : 'warning'}><AlertTitle>{condition.type}</AlertTitle><AlertDescription>{condition.message}</AlertDescription></Alert>)}
+        <section className="grid gap-4 xl:grid-cols-2">
+          <Card>
+            <CardHeader><CardTitle>Allocatable pool capacity</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              {poolsQuery.isError ? <p className="text-sm text-[var(--color-warning)]">Pool capacity is temporarily unavailable.</p> : poolsQuery.isLoading ? <p className="text-sm text-[var(--color-muted-foreground)]">Loading controller capacity…</p> : totalCapacity > 0 ? <>
+                <div className="flex items-end justify-between gap-4"><div><div className="text-2xl font-semibold">{formatCapacity(usedCapacity)}</div><p className="text-xs text-[var(--color-muted-foreground)]">used across {dataPools.length} allocatable pool{dataPools.length === 1 ? '' : 's'}</p></div><div className="text-right text-sm"><div className="font-medium">{formatCapacity(freeCapacity)} free</div><div className="text-xs text-[var(--color-muted-foreground)]">{formatCapacity(totalCapacity)} total</div></div></div>
+                <UsageBar used={usedCapacity} total={totalCapacity} />
+                <p className="text-xs text-[var(--color-muted-foreground)]">Diskless pools are excluded because they place replicas but do not contribute storage capacity.</p>
+              </> : <p className="text-sm text-[var(--color-muted-foreground)]">No allocatable diskful pool capacity was reported.</p>}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>Replica disk state</CardTitle></CardHeader>
+            <CardContent className="flex flex-col gap-5 sm:flex-row sm:items-center">
+              <Donut slices={[
+                { label: 'Up to date', value: upToDate, color: 'var(--color-success)' },
+                { label: 'Needs attention', value: needsAttention, color: 'var(--color-destructive)' },
+                { label: 'Unknown', value: unknown, color: 'var(--color-warning)' },
+              ]} />
+              <div className="min-w-0 flex-1 space-y-2">
+                <LegendRow color="var(--color-success)" label="Up to date" value={upToDate} />
+                <LegendRow color="var(--color-destructive)" label="Needs attention" value={needsAttention} />
+                <LegendRow color="var(--color-warning)" label="Unknown" value={unknown} />
+                <p className="pt-2 text-xs text-[var(--color-muted-foreground)]">Current disk state of controller-observed resource replicas. A healthy protected resource should have every intended replica UpToDate.</p>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Metric icon={Boxes} label="Component readiness" value={`${ready}/${data.components.length}`} detail="Kubernetes workloads ready" warning={ready !== data.components.length}/>
           <Metric icon={Server} label="Nodes" value={String(count('nodes'))} detail={`${count('satellites')} operator satellites`}/>
-          <Metric icon={Database} label="Storage pools" value={String(count('storage-pools'))} detail="Capacity and placement domains"/>
-          <Metric icon={HardDrive} label="Resources" value={String(count('resource-definitions'))} detail={`${count('resources')} placed replicas`}/>
+          <Metric icon={HardDrive} label="Resources" value={String(count('resource-definitions'))} detail={`${count('resources')} placed replica records`}/>
+          <Metric icon={Network} label="Protection" value={`${count('snapshots')} snapshots`} detail={`${count('remotes')} remotes · ${count('schedules')} schedules`}/>
         </section>
+        <ProviderWorkloadFootprint provider={provider.id} />
         <section className="grid gap-4 lg:grid-cols-3">
           <Area title="Lifecycle" icon={Activity} text="Operator convergence and workload readiness." links={[["Components",`${root}/components`],["Clusters",`${root}/clusters`],["Satellites",`${root}/satellites`]]}/>
           <Area title="Capacity & placement" icon={Database} text="Nodes, pools, policy, and replica placement." links={[["Nodes",`${root}/nodes`],["Storage pools",`${root}/storage-pools`],["Resource groups",`${root}/resource-groups`],["Replicas",`${root}/resources`]]}/>
