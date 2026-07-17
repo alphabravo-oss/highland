@@ -142,7 +142,7 @@ export function StorageOperationsPage() {
   </div>
 }
 
-function OperationSafetyStatus({ provider, writesEnabled, nativeActions, portableProviderAllowed }: {
+export function OperationSafetyStatus({ provider, writesEnabled, nativeActions, portableProviderAllowed }: {
   provider?: ProviderDescriptor
   writesEnabled: boolean
   nativeActions: ActionAvailability[]
@@ -153,8 +153,7 @@ function OperationSafetyStatus({ provider, writesEnabled, nativeActions, portabl
   const nativeState = provider ? (nativeImplemented ? 'Implemented' : 'Not implemented') : 'Partial coverage'
   return <div className="space-y-4" data-testid="operations-safety-status">
     <Alert tone={!writesEnabled ? 'default' : nativeEnabled || !provider ? 'warning' : 'default'}>
-      <LockKeyhole size={18} />
-      <AlertTitle>{!writesEnabled ? 'Changes are disabled' : provider && !nativeEnabled && !portableProviderAllowed ? `All ${provider.displayName} changes are disabled` : provider && !nativeEnabled ? `${provider.displayName} native changes are disabled` : 'Changes are enabled'}</AlertTitle>
+      <AlertTitle className="flex items-center gap-2"><LockKeyhole size={17} className="shrink-0" />{!writesEnabled ? 'Changes are disabled' : provider && !nativeEnabled && !portableProviderAllowed ? `All ${provider.displayName} changes are disabled` : provider && !nativeEnabled ? `${provider.displayName} native changes are disabled` : 'Changes are enabled'}</AlertTitle>
       <AlertDescription>{!writesEnabled
         ? 'This is a Highland configuration state, not a provider health warning. You do not need to take action; workflow submissions are blocked cluster-wide.'
         : provider && !nativeEnabled && !portableProviderAllowed

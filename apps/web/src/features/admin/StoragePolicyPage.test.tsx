@@ -64,6 +64,9 @@ describe('PolicyConfirmationDialog', () => {
     }
     const { rerender } = render(<PolicyConfirmationDialog {...base} />)
     expect(screen.getByTestId('apply-storage-policy')).toBeDisabled()
+    expect(screen.getByText('Required value for this cluster')).toBeVisible()
+    expect(screen.getByTestId('required-cluster-identity')).toHaveTextContent('lab-cluster')
+    expect(screen.getByRole('button', { name: 'Copy cluster identity' })).toBeVisible()
     fireEvent.change(screen.getByTestId('policy-cluster-confirmation'), { target: { value: 'lab-cluster' } })
     expect(base.setClusterIdentity).toHaveBeenCalledWith('lab-cluster')
     rerender(<PolicyConfirmationDialog {...base} clusterIdentity="lab-cluster" enablePhrase="ENABLE STORAGE CHANGES" acknowledged />)

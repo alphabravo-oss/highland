@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Boxes, CheckCircle2, Database, LockKeyhole, Save, Server, Shield } from 'lucide-react'
+import { AlertTriangle, Boxes, Check, CheckCircle2, Copy, Database, LockKeyhole, Save, Server, Shield } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
@@ -34,6 +34,25 @@ const policyFields: PolicyField[] = [
   { key: 'allowCephStorageClassDelete', title: 'Ceph StorageClass deletion', description: 'Separately permits typed-confirmation deletion after dependency checks.', parent: 'rookCephWrites' },
   { key: 'allowCephPoolDelete', title: 'Ceph pool deletion', description: 'Critical gate for verified empty-pool deletion with additional typed confirmation.', parent: 'rookCephWrites' },
 ]
+
+async function copyText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value)
+    return true
+  }
+  const textarea = document.createElement('textarea')
+  textarea.value = value
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  try {
+    textarea.select()
+    return document.execCommand('copy')
+  } finally {
+    textarea.remove()
+  }
+}
 
 export function StoragePolicyPage() {
   const { isAdmin } = useAuth()
@@ -377,8 +396,18 @@ export function PolicyConfirmationDialog({
   applying: boolean
   onApply: () => void
 }) {
+  const [identityCopied, setIdentityCopied] = useState(false)
   if (!plan) return null
   const disabled = applying || (plan.broadening && (!acknowledged || clusterIdentity !== plan.clusterIdentity || enablePhrase !== 'ENABLE STORAGE CHANGES')) || (plan.enablesCephPoolDelete && cephPhrase !== 'ENABLE CEPH POOL DELETE')
+  const copyClusterIdentity = async () => {
+    try {
+      const copied = await copyText(plan.clusterIdentity)
+      setIdentityCopied(copied)
+      if (copied) window.setTimeout(() => setIdentityCopied(false), 2000)
+    } catch {
+      setIdentityCopied(false)
+    }
+  }
   return <Dialog
     open={open}
     onOpenChange={onOpenChange}
@@ -407,7 +436,20 @@ export function PolicyConfirmationDialog({
       {plan.broadening ? <Alert tone="warning"><AlertTriangle size={18} /><AlertTitle>Explicit enablement confirmation required</AlertTitle><AlertDescription>Operators may execute the listed operator workflows after this policy is effective. Individual workflows still require fresh plans and confirmations.</AlertDescription></Alert> : <Alert><LockKeyhole size={18} /><AlertTitle>New submissions will be narrowed</AlertTitle><AlertDescription>Already-approved operations continue reconciliation to a terminal state.</AlertDescription></Alert>}
       {plan.broadening ? <>
         <label className="flex items-start gap-2 text-sm font-medium"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />I reviewed the affected workflows, roles, installed ceiling, and active operations.</label>
-        <div><Label htmlFor="policy-cluster">Type the cluster identity</Label><Input id="policy-cluster" value={clusterIdentity} onChange={(event) => setClusterIdentity(event.target.value)} data-testid="policy-cluster-confirmation" /></div>
+        <div className="space-y-2">
+          <Label htmlFor="policy-cluster">Type the cluster identity</Label>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-muted)]/50 px-3 py-2">
+            <div className="min-w-0">
+              <div className="text-xs text-[var(--color-muted-foreground)]">Required value for this cluster</div>
+              <code className="block break-all font-mono text-sm font-semibold" data-testid="required-cluster-identity">{plan.clusterIdentity}</code>
+            </div>
+            <Button type="button" variant="outline" size="sm" aria-label="Copy cluster identity" onClick={() => void copyClusterIdentity()}>
+              {identityCopied ? <Check size={14} /> : <Copy size={14} />}{identityCopied ? 'Copied' : 'Copy'}
+            </Button>
+          </div>
+          <p className="text-xs text-[var(--color-muted-foreground)]">Copy the value above, then paste or type it below. This binds approval to the cluster named in the server-verified plan.</p>
+          <Input id="policy-cluster" value={clusterIdentity} onChange={(event) => setClusterIdentity(event.target.value)} autoComplete="off" spellCheck={false} data-testid="policy-cluster-confirmation" />
+        </div>
         <div><Label htmlFor="policy-enable">Type ENABLE STORAGE CHANGES</Label><Input id="policy-enable" value={enablePhrase} onChange={(event) => setEnablePhrase(event.target.value)} data-testid="policy-enable-confirmation" /></div>
       </> : null}
       {plan.enablesCephPoolDelete ? <div><Label htmlFor="policy-ceph-delete">Type ENABLE CEPH POOL DELETE</Label><Input id="policy-ceph-delete" value={cephPhrase} onChange={(event) => setCephPhrase(event.target.value)} data-testid="policy-ceph-confirmation" /></div> : null}

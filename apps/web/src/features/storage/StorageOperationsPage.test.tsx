@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { OperationPlan } from '@/api/storage/types'
-import { OperationApprovalDialog } from './StorageOperationsPage'
+import { OperationApprovalDialog, OperationSafetyStatus } from './StorageOperationsPage'
 
 function plan(overrides: Partial<OperationPlan> = {}): OperationPlan {
   return {
@@ -85,5 +85,14 @@ describe('OperationApprovalDialog', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.queryByTestId('typed-operation-confirmation')).not.toBeInTheDocument()
     expect(screen.getByTestId('operation-confirm-submit')).toBeEnabled()
+  })
+})
+
+describe('OperationSafetyStatus', () => {
+  it('keeps the lock icon beside the enabled-state heading', () => {
+    render(<OperationSafetyStatus writesEnabled nativeActions={[]} portableProviderAllowed={false} />)
+    const heading = screen.getByRole('heading', { name: 'Changes are enabled' })
+    expect(heading.querySelector('svg')).not.toBeNull()
+    expect(screen.getByText('Every change still requires a fresh plan, dependency review, role authorization, and explicit confirmation.')).toBeVisible()
   })
 })
