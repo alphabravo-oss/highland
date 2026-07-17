@@ -5,7 +5,6 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
 import {
   useAuditLog,
-  useCompatibility,
   useHighlandUsers,
   usePreflight,
   useUpdateHighlandUser,
@@ -115,7 +114,6 @@ export function AdminUsersPage() {
   const { user, isAdmin } = useAuth()
   const users = useHighlandUsers()
   const updateUserMut = useUpdateHighlandUser()
-  const compat = useCompatibility()
   const qc = useQueryClient()
   const toast = useToast()
   const [open, setOpen] = useState(false)
@@ -274,6 +272,14 @@ export function AdminUsersPage() {
     )
   }
 
+  const managedUsers = users.data?.data ?? []
+  const summary = [
+    { label: t('admin.totalAccounts'), value: managedUsers.length, icon: Users, tone: 'text-[var(--color-primary)] bg-[var(--color-accent)]' },
+    { label: t('admin.activeAccounts'), value: managedUsers.filter((account) => !account.disabled).length, icon: ShieldCheck, tone: 'text-[var(--color-success)] bg-[var(--color-success)]/10' },
+    { label: t('admin.administrators'), value: managedUsers.filter((account) => account.role === 'admin' && !account.disabled).length, icon: Shield, tone: 'text-[var(--color-info)] bg-[var(--color-info)]/10' },
+    { label: t('admin.twoFactorEnrolled'), value: managedUsers.filter((account) => account.mfaEnabled).length, icon: KeyRound, tone: 'text-[var(--color-warning)] bg-[var(--color-warning)]/10' },
+  ]
+
   return (
     <div data-testid="admin-users-page">
       <PageHeader
@@ -286,37 +292,26 @@ export function AdminUsersPage() {
         }
       />
 
-      <div className="mb-4 grid gap-4 lg:grid-cols-3">
-        <Card className="shadow-[var(--shadow-sm)]">
-          <CardHeader>
-            <CardTitle>{t('admin.yourSession')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="flex justify-between gap-2">
-              <span className="text-[var(--color-muted-foreground)]">{t('common.user')}</span>
-              <span className="font-medium">{user?.username}</span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <span className="text-[var(--color-muted-foreground)]">{t('admin.role')}</span>
-              <Badge tone="primary">{user?.role}</Badge>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="shadow-[var(--shadow-sm)] lg:col-span-2">
-          <CardHeader>
-            <CardTitle>{t('admin.platform')}</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-1 font-mono text-xs text-[var(--color-muted-foreground)] sm:grid-cols-2">
-            {compat.data
-              ? Object.entries(compat.data).map(([k, v]) => (
-                  <div key={k}>
-                    <span className="text-[var(--color-foreground)]">{k}</span>: {JSON.stringify(v)}
-                  </div>
-                ))
-              : t('common.loading')}
-          </CardContent>
-        </Card>
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="User account summary">
+        {summary.map(({ label, value, icon: Icon, tone }) => (
+          <Card key={label} className="shadow-[var(--shadow-sm)]">
+            <CardContent className="flex items-center gap-3 p-4">
+              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${tone}`}>
+                <Icon size={18} strokeWidth={1.75} aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <p className="text-2xl font-semibold tabular-nums">{users.isLoading ? '—' : value}</p>
+                <p className="truncate text-xs text-[var(--color-muted-foreground)]">{label}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
+
+      <Alert className="mb-4">
+        <p>{t('admin.localAccountsScope')}</p>
+        <p className="mt-1">{t('admin.currentAccount', { username: user?.username ?? '' })} <Link className="font-medium text-[var(--color-primary)] underline-offset-4 hover:underline" to="/account">{t('admin.manageMyAccount')}</Link></p>
+      </Alert>
 
       <QueryState
         isLoading={users.isLoading}
@@ -329,7 +324,7 @@ export function AdminUsersPage() {
         <DataTable
           data-testid="users-table"
           columns={columns}
-          data={users.data?.data ?? []}
+          data={managedUsers}
           getRowId={(u) => u.username}
           tableId="users"
           searchable
