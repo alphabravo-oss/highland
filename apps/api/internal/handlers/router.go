@@ -16,6 +16,7 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/metrics"
 	mw "github.com/highland-io/highland/apps/api/internal/middleware"
 	"github.com/highland-io/highland/apps/api/internal/observability"
+	"github.com/highland-io/highland/apps/api/internal/policy"
 	"github.com/highland-io/highland/apps/api/internal/ratelimit"
 	"github.com/highland-io/highland/apps/api/internal/storage"
 	storageoperations "github.com/highland-io/highland/apps/api/internal/storage/operations"
@@ -37,6 +38,8 @@ type Deps struct {
 	Benchmarks        *benchmark.Store
 	Storage           *storage.HTTPAPI
 	StorageOperations *storageoperations.API
+	StoragePolicy     *policy.API
+	PolicySnapshot    interface{ Snapshot() policy.Snapshot }
 	// Optional cluster/runtime facts for the status page.
 	K8s               kubernetes.Interface
 	LonghornNamespace string
@@ -97,6 +100,7 @@ func NewRouter(d Deps) http.Handler {
 		SessionBackend:                  d.SessionBackend,
 		BenchmarkMode:                   d.BenchmarkMode,
 		Storage:                         d.Storage,
+		Policy:                          d.PolicySnapshot,
 	}
 
 	r := chi.NewRouter()
@@ -134,6 +138,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Use(mw.CSRF(d.SessionSecret, d.Cfg.CSRFCookieName, d.Cfg.CookieSecure, d.Cfg.SessionTTL, d.Obs))
 		}
 		r.Use(mw.RequireRole(d.Audit, d.Obs))
+		r.Use(mw.ConditionalJSONETag)
 
 		// Provider-neutral Kubernetes/CSI inventory. The API remains mounted when
 		// Kubernetes is unavailable so callers receive a typed 503 condition.
@@ -142,6 +147,9 @@ func NewRouter(d Deps) http.Handler {
 		}
 		if d.StorageOperations != nil {
 			d.StorageOperations.Mount(r)
+		}
+		if d.StoragePolicy != nil {
+			d.StoragePolicy.Mount(r)
 		}
 
 		// Streaming path for large backing-image upload/download (no full buffer)

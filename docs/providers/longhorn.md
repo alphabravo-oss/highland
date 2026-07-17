@@ -1,5 +1,10 @@
 # Longhorn adapter compatibility and migration
 
+Portable PVC and VolumeSnapshot workflows are independent from Longhorn-native
+manager actions. Select provider ID `longhorn` in the Admin policy to authorize
+only the portable lifecycle; enable `longhornWrites` separately for attach,
+detach, backup, recurring-job, salvage, engine, and backup-target workflows.
+
 Highland retains the legacy manager proxy, stream endpoints, metrics scraper, watches, actions, and
 route URLs while registering Longhorn as a managed provider. `managerUrl`,
 `HIGHLAND_MANAGER_URL`, and `HIGHLAND_LONGHORN_NAMESPACE` remain valid; when no provider-native
@@ -21,3 +26,14 @@ Bolt-on and embedded installs remain separate. Disabling the adapter removes Lon
 handlers safely and Highland can run with the universal core alone. In legacy-only compatibility
 mode a required manager may still control readiness; in provider mode an optional outage is reported
 only on the Longhorn provider.
+
+## Runtime write policy
+
+When admin policy control is installed, **Longhorn native workflows** is independent from portable
+PVC and snapshot workflows. Enabling it makes the supported Longhorn action registry eligible for
+its existing operator/admin roles; it does not bypass manager availability, version checks,
+resource preflight, signed confirmation, or durable-operation reconciliation. Disabling it blocks
+new Longhorn plans and submissions while already-approved operations continue safely.
+
+The UI can enable this gate only when
+`adminPolicyControl.ceiling.longhornWrites=true` was installed through Helm/GitOps.

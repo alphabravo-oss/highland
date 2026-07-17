@@ -159,6 +159,8 @@ test.describe('provider-neutral storage UI', () => {
     await page.goto('/storage/providers')
     await expect(page.getByTestId('storage-providers-page')).toBeVisible()
     await page.getByRole('link', { name: /Rook \/ Ceph/ }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible()
+    await expect(page.getByTestId('sidebar').getByRole('link', { name: 'Dashboard' })).toBeVisible()
     await expect(page.getByText('Cluster is healthy')).toBeVisible()
     await expect(page.getByText('20.0% used')).toBeVisible()
     await expect(page.getByText('3/3 up · 3/3 in')).toBeVisible()
@@ -198,6 +200,8 @@ test.describe('provider-neutral storage UI', () => {
   test('keeps OpenEBS engines distinct and explains local-volume risk', async ({ page }) => {
     await page.goto('/storage/providers/openebs')
     await expect(page.getByTestId('openebs-provider-page')).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible()
+    await expect(page.getByTestId('sidebar').getByRole('link', { name: 'Dashboard' })).toBeVisible()
     await expect(page.getByText('OpenEBS is healthy')).toBeVisible()
     await expect(page.getByText('Dynamic LocalPV HostPath', { exact: true })).toBeVisible()
     await expect(page.getByText('Replicated PV / Mayastor', { exact: true })).toBeVisible()
@@ -262,6 +266,48 @@ test.describe('provider-neutral storage UI', () => {
     await expect(page.getByLabel('Volume mode')).toHaveValue('Filesystem')
     await expect(page.locator('#operation-parameters')).toHaveCount(0)
     await expect(page.getByText(/Credentials and secret values are never accepted/)).toBeVisible()
+  })
+
+  test('explains disabled benchmark execution instead of offering synthetic results', async ({ page }) => {
+    await page.route('**/api/v1/benchmarks**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [{
+            name: 'bench-openebs',
+            profile: 'quick',
+            phase: 'Succeeded',
+            mode: 'kubernetes-job',
+            message: 'fio Job completed',
+            providerId: 'openebs',
+            csiDriver: 'openebs.io/local',
+            storageClass: 'openebs-hostpath',
+            nodeName: 'storage-1',
+            pvcName: 'benchmark-pvc',
+            pvName: 'benchmark-pv',
+            createdAt: '2026-07-16T00:00:00Z',
+            results: { seqReadMBps: 500, randWriteIOPS: 12_000 },
+          }],
+          page: { limit: 50, total: 1 },
+          meta: { observedAt: '2026-07-16T00:00:00Z', stale: false, partial: false, benchmarkMode: 'disabled' },
+        }),
+      })
+    })
+    await page.goto('/benchmarks')
+    await expect(page.getByTestId('benchmarks-page')).toBeVisible()
+    const description = page.getByText('Run controlled fio workloads against a selected CSI StorageClass and retain provider-attributed results.')
+    const descriptionBox = await description.boundingBox()
+    const panelBox = await page.getByTestId('benchmark-run-panel').boundingBox()
+    expect(descriptionBox?.width).toBeGreaterThan(400)
+    expect(panelBox?.y).toBeGreaterThan((descriptionBox?.y ?? 0) + (descriptionBox?.height ?? 0))
+    await expect(page.getByTestId('benchmark-mode-disabled')).toContainText('Real benchmark execution is disabled')
+    await expect(page.getByTestId('run-benchmark')).toBeDisabled()
+    await expect(page.getByText(/Synthetic offline benchmarks/)).toHaveCount(0)
+    const target = page.getByTestId('benchmark-target-bench-openebs')
+    await expect(target).toContainText('OpenEBS')
+    await expect(target).toContainText('openebs-hostpath')
+    await expect(target).toContainText('openebs.io/local')
   })
 
   test('renders a bounded page for a 10,000-claim inventory', async ({ page }) => {

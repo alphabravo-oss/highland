@@ -4,6 +4,7 @@
 
 nameOverride: ""
 fullnameOverride: ""
+clusterIdentity: ""
 
 # Namespace is usually the release namespace (highland-system)
 namespaceOverride: ""
@@ -98,6 +99,18 @@ storage:
     recoveryEnabled: false
   requiredProviders: []
 
+# Optional runtime-administered storage policy. Kubernetes permissions remain
+# an installation-time ceiling; the Admin UI can never expand this ceiling.
+adminPolicyControl:
+  enabled: false
+  installStorageWriterPermissions: false
+  ceiling:
+    portableKubernetesWrites: false
+    longhornWrites: false
+    rookCephWrites: false
+    allowCephStorageClassDelete: false
+    allowCephPoolDelete: false
+
 providers:
   longhorn:
     # null preserves the legacy longhorn.enabled value. Set true/false to use
@@ -162,8 +175,8 @@ embeddedLonghorn:
 
 benchmark:
   # Opt in to real fio Job/PVC execution. Keeping this false ensures a default
-  # chart render has no PVC/Job/ConfigMap write permissions. The offline
-  # synthetic benchmark API remains available for UI evaluation.
+  # chart render has no PVC/Job/ConfigMap write permissions. The UI remains
+  # available in an explicitly disabled, read-only state.
   kubernetesJobEnabled: false
   # Used when API can reach the Kubernetes API (in-cluster ServiceAccount)
   fioImage: xridge/fio:latest

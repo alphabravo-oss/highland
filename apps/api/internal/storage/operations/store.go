@@ -20,6 +20,11 @@ var OperationGVR = schema.GroupVersionResource{Group: "highland.io", Version: "v
 type Store struct {
 	dynamic   dynamic.Interface
 	namespace string
+	publisher ChangePublisher
+}
+
+type ChangePublisher interface {
+	PublishHighlandChange(eventType string, keys []string, resource, name string, entity any)
 }
 
 func NewStore(client dynamic.Interface, namespace string) (*Store, error) {
@@ -30,6 +35,16 @@ func NewStore(client dynamic.Interface, namespace string) (*Store, error) {
 		namespace = "highland-system"
 	}
 	return &Store{dynamic: client, namespace: namespace}, nil
+}
+
+func (s *Store) SetPublisher(publisher ChangePublisher) {
+	s.publisher = publisher
+}
+
+func (s *Store) publish(eventType string, operation *Operation) {
+	if s.publisher != nil && operation != nil {
+		s.publisher.PublishHighlandChange(eventType, nil, "operations", operation.Name, operation)
+	}
 }
 
 func (s *Store) Create(ctx context.Context, spec Spec) (*Operation, error) {
@@ -57,7 +72,14 @@ func (s *Store) Create(ctx context.Context, spec Spec) (*Operation, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create StorageOperation: %w", err)
 	}
-	return decodeOperation(created)
+	operation, err := decodeOperation(created)
+	if err == nil {
+		s.publish("storage.operation.created", operation)
+		if operation.Status.Phase == "" {
+			operation, err = s.UpdateStatus(ctx, operation.Name, Status{Phase: "Pending", Step: "Queued"})
+		}
+	}
+	return operation, err
 }
 
 func (s *Store) Get(ctx context.Context, name string) (*Operation, error) {
@@ -172,7 +194,11 @@ func (s *Store) UpdateStatus(ctx context.Context, name string, status Status) (*
 	if err != nil {
 		return nil, fmt.Errorf("update StorageOperation status: %w", err)
 	}
-	return decodeOperation(updated)
+	operation, err := decodeOperation(updated)
+	if err == nil {
+		s.publish("storage.operation.updated", operation)
+	}
+	return operation, err
 }
 
 func (s *Store) DeleteTerminalBefore(ctx context.Context, cutoff time.Time) (int, error) {
@@ -195,6 +221,7 @@ func (s *Store) DeleteTerminalBeforeWhere(ctx context.Context, cutoff time.Time,
 		uid := k8stypes.UID(operation.UID)
 		if err := s.dynamic.Resource(OperationGVR).Namespace(s.namespace).Delete(ctx, operation.Name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &uid}}); err == nil {
 			deleted++
+			s.publish("storage.operation.deleted", &operation)
 		}
 	}
 	return deleted, nil

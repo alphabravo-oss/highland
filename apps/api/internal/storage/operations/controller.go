@@ -43,6 +43,13 @@ type PostflightObserver interface {
 	OperationPostflightMismatch(provider, kind string)
 }
 
+// AuthorizationFailureObserver is optional. It lets observability distinguish
+// an installed-permission regression from an ordinary provider or validation
+// failure without putting resource names or error text into metric labels.
+type AuthorizationFailureObserver interface {
+	OperationAuthorizationFailure(provider, action string)
+}
+
 type Controller struct {
 	core      kubernetes.Interface
 	dynamic   dynamic.Interface
@@ -92,7 +99,7 @@ func (c *Controller) run(ctx context.Context) {
 			return
 		}
 		for index := range operations {
-			if operations[index].Status.Phase == "Pending" || operations[index].Status.Phase == "Running" {
+			if operations[index].Status.Phase == "" || operations[index].Status.Phase == "Pending" || operations[index].Status.Phase == "Running" {
 				_ = c.Reconcile(ctx, &operations[index])
 			}
 		}
@@ -133,6 +140,13 @@ func (c *Controller) garbageCollect(ctx context.Context) {
 func (c *Controller) Reconcile(ctx context.Context, operation *Operation) error {
 	if operation == nil {
 		return nil
+	}
+	if operation.Status.Phase == "" {
+		updated, err := c.store.UpdateStatus(ctx, operation.Name, Status{Phase: "Pending", Step: "Queued"})
+		if err != nil {
+			return err
+		}
+		operation = updated
 	}
 	action, actionKnown := ActionByID(operation.Spec.ActionID)
 	if !actionKnown {
@@ -275,6 +289,16 @@ func (c *Controller) mutationObservation(ctx context.Context, operation *Operati
 		return false, false, false, "", nil, fmt.Errorf("operation plan must contain exactly one mutable resource")
 	}
 	resourcePlan := plan.Resources[0]
+	if isLonghornResourcePlan(resourcePlan) {
+		done, failed, message, err = c.inspectLonghorn(ctx, operation, plan)
+		if err != nil {
+			return false, false, false, "", nil, err
+		}
+		if done || failed {
+			return true, done, failed, message, longhornResultReference(operation, resourcePlan), nil
+		}
+		return false, false, false, message, nil, nil
+	}
 	gvr, namespaced, err := gvrFor(resourcePlan.APIVersion, resourcePlan.Kind)
 	if err != nil {
 		return false, false, false, "", nil, err
@@ -348,6 +372,9 @@ func (c *Controller) execute(ctx context.Context, operation *Operation, plan Pla
 		return nil, false, fmt.Errorf("operation plan must contain exactly one mutable resource")
 	}
 	resourcePlan := plan.Resources[0]
+	if isLonghornResourcePlan(resourcePlan) {
+		return c.executeLonghorn(ctx, operation, plan)
+	}
 	switch resourcePlan.Operation {
 	case "server-side-apply":
 		gvr, namespaced, err := gvrFor(resourcePlan.APIVersion, resourcePlan.Kind)
@@ -413,6 +440,9 @@ func (c *Controller) execute(ctx context.Context, operation *Operation, plan Pla
 
 func (c *Controller) inspect(ctx context.Context, operation *Operation, plan Plan) (bool, bool, string, error) {
 	resourcePlan := plan.Resources[0]
+	if isLonghornResourcePlan(resourcePlan) {
+		return c.inspectLonghorn(ctx, operation, plan)
+	}
 	gvr, namespaced, err := gvrFor(resourcePlan.APIVersion, resourcePlan.Kind)
 	if err != nil {
 		return false, false, "", err
@@ -500,6 +530,183 @@ func (c *Controller) inspect(ctx context.Context, operation *Operation, plan Pla
 	}
 }
 
+func isLonghornResourcePlan(resource PlannedResource) bool {
+	return resource.APIVersion == "longhorn.io/v1"
+}
+
+func (c *Controller) executeLonghorn(ctx context.Context, operation *Operation, plan Plan) (*ResultReference, bool, error) {
+	if c.planner.longhorn == nil {
+		return nil, false, &PlanError{Code: "LONGHORN_UNAVAILABLE", Message: "the Longhorn manager integration is unavailable", Retryable: true}
+	}
+	resource := plan.Resources[0]
+	collection, _ := resource.Manifest["collection"].(string)
+	action, _ := resource.Manifest["action"].(string)
+	parameters, _ := resource.Manifest["parameters"].(map[string]any)
+	switch resource.Operation {
+	case "longhorn-action":
+		if _, err := c.planner.longhorn.Action(ctx, collection, resource.Name, action, parameters); err != nil {
+			return nil, false, fmt.Errorf("execute Longhorn %s: %w", action, err)
+		}
+	case "longhorn-create":
+		if _, err := c.planner.longhorn.Create(ctx, collection, parameters); err != nil {
+			return nil, false, fmt.Errorf("create Longhorn %s: %w", resource.Kind, err)
+		}
+	case "longhorn-update":
+		if _, err := c.planner.longhorn.Update(ctx, collection, resource.Name, parameters); err != nil {
+			return nil, false, fmt.Errorf("update Longhorn %s: %w", resource.Kind, err)
+		}
+	default:
+		return nil, false, fmt.Errorf("unsupported Longhorn planned operation %q", resource.Operation)
+	}
+	return longhornResultReference(operation, resource), longhornNeedsPostflight(operation.Spec.ActionID), nil
+}
+
+func (c *Controller) inspectLonghorn(ctx context.Context, operation *Operation, plan Plan) (bool, bool, string, error) {
+	if c.planner.longhorn == nil {
+		return false, false, "", &PlanError{Code: "LONGHORN_UNAVAILABLE", Message: "the Longhorn manager integration is unavailable", Retryable: true}
+	}
+	resource := plan.Resources[0]
+	collection, _ := resource.Manifest["collection"].(string)
+	expected, _ := resource.Manifest["expected"].(map[string]any)
+	switch operation.Spec.ActionID {
+	case "longhorn-backup-delete":
+		response, err := c.planner.longhorn.Action(ctx, collection, resource.Name, "backupList", map[string]any{})
+		if err != nil {
+			return false, false, "", err
+		}
+		backupName, _ := expected["backupAbsent"].(string)
+		if !longhornCollectionContains(response, backupName) {
+			return true, false, "BackupDeleted", nil
+		}
+		return false, false, "WaitingForBackupDeletion", nil
+	case "longhorn-volume-backup":
+		backupVolumes, err := c.planner.longhorn.List(ctx, "backupvolumes")
+		if err != nil {
+			return false, false, "", err
+		}
+		for _, backupVolume := range backupVolumes {
+			volumeName := firstNonemptyString(longhornString(backupVolume, "volumeName"), longhornString(backupVolume, "name"))
+			if volumeName != operation.Spec.Target.Name {
+				continue
+			}
+			backupVolumeName := firstNonemptyString(longhornString(backupVolume, "name"), longhornString(backupVolume, "id"))
+			backups, listErr := c.planner.longhorn.Action(ctx, "backupvolumes", backupVolumeName, "backupList", map[string]any{})
+			if listErr != nil {
+				return false, false, "", listErr
+			}
+			found, complete, failed := longhornBackupSnapshotState(backups, stringParameter(operation.Spec.Parameters, "snapshotName"))
+			if failed != "" {
+				return false, true, failed, nil
+			}
+			if found && complete {
+				return true, false, "BackupCompleted", nil
+			}
+		}
+		return false, false, "WaitingForBackup", nil
+	case "longhorn-recurring-job-add", "longhorn-recurring-job-remove":
+		response, err := c.planner.longhorn.Action(ctx, "volumes", operation.Spec.Target.Name, "recurringJobList", map[string]any{})
+		if err != nil {
+			return false, false, "", err
+		}
+		assigned := longhornCollectionContains(response, stringParameter(operation.Spec.Parameters, "jobName"))
+		if operation.Spec.ActionID == "longhorn-recurring-job-add" && assigned {
+			return true, false, "RecurringJobAssigned", nil
+		}
+		if operation.Spec.ActionID == "longhorn-recurring-job-remove" && !assigned {
+			return true, false, "RecurringJobRemoved", nil
+		}
+		return false, false, "WaitingForRecurringJobState", nil
+	}
+	current, err := c.planner.longhorn.Get(ctx, collection, resource.Name)
+	if err != nil {
+		if isLonghornNotFound(err) && resource.Operation == "longhorn-create" {
+			return false, false, "WaitingForCreation", nil
+		}
+		return false, false, "", err
+	}
+	switch operation.Spec.ActionID {
+	case "longhorn-volume-attach":
+		state := strings.ToLower(longhornString(current, "state"))
+		if state == "attached" {
+			return true, false, "VolumeAttached", nil
+		}
+		if state == "faulted" {
+			return false, true, "volume faulted during attachment", nil
+		}
+		return false, false, "WaitingForAttachment", nil
+	case "longhorn-volume-detach":
+		if strings.EqualFold(longhornString(current, "state"), "detached") {
+			return true, false, "VolumeDetached", nil
+		}
+		return false, false, "WaitingForDetachment", nil
+	case "longhorn-volume-replica-count":
+		if longhornInt(current, "numberOfReplicas") == intParameter(operation.Spec.Parameters, "replicaCount", 0) {
+			return true, false, "ReplicaCountUpdated", nil
+		}
+		return false, false, "WaitingForReplicaCount", nil
+	case "longhorn-engine-upgrade":
+		image := stringParameter(operation.Spec.Parameters, "image")
+		if image == longhornString(current, "currentImage") || image == longhornString(current, "engineImage") || image == longhornString(current, "image") {
+			return true, false, "EngineUpgradeComplete", nil
+		}
+		return false, false, "WaitingForEngineUpgrade", nil
+	case "longhorn-volume-salvage":
+		state := strings.ToLower(longhornString(current, "state"))
+		robustness := strings.ToLower(longhornString(current, "robustness"))
+		if state != "faulted" && robustness != "faulted" && state != "unknown" {
+			return true, false, "VolumeSalvaged", nil
+		}
+		return false, false, "WaitingForSalvage", nil
+	case "longhorn-backup-target-configure":
+		if longhornString(current, "backupTargetURL") == stringParameter(operation.Spec.Parameters, "url") {
+			return true, false, "BackupTargetConfigured", nil
+		}
+		return false, false, "WaitingForBackupTarget", nil
+	case "longhorn-backup-restore":
+		if firstNonemptyString(longhornString(current, "name"), longhornString(current, "id")) == operation.Spec.Target.Name {
+			return true, false, "RestoreVolumeCreated", nil
+		}
+		return false, false, "WaitingForRestoreVolume", nil
+	default:
+		return true, false, "LonghornActionAccepted", nil
+	}
+}
+
+func longhornNeedsPostflight(actionID string) bool {
+	switch actionID {
+	case "longhorn-volume-attach", "longhorn-volume-detach", "longhorn-volume-replica-count",
+		"longhorn-volume-backup", "longhorn-recurring-job-add", "longhorn-recurring-job-remove",
+		"longhorn-volume-salvage", "longhorn-engine-upgrade", "longhorn-backup-target-configure",
+		"longhorn-backup-delete", "longhorn-backup-restore":
+		return true
+	default:
+		return false
+	}
+}
+
+func longhornBackupSnapshotState(response map[string]any, snapshotName string) (found, complete bool, failed string) {
+	data, _ := response["data"].([]any)
+	for _, raw := range data {
+		backup, _ := raw.(map[string]any)
+		if longhornString(backup, "snapshotName") != snapshotName {
+			continue
+		}
+		state := strings.ToLower(longhornString(backup, "state"))
+		if state == "error" {
+			return true, false, firstNonemptyString(longhornString(backup, "error"), "Longhorn backup failed")
+		}
+		return true, state == "complete" || state == "completed", ""
+	}
+	return false, false, ""
+}
+
+func longhornResultReference(operation *Operation, resource PlannedResource) *ResultReference {
+	return &ResultReference{
+		APIVersion: resource.APIVersion, Kind: resource.Kind,
+		Name: operation.Spec.Target.Name, UID: operation.Spec.Target.UID,
+	}
+}
+
 func (c *Controller) verifyDeletedBackend(ctx context.Context, resourcePlan PlannedResource) (bool, bool, string, error) {
 	if resourcePlan.Kind != "CephBlockPool" {
 		return true, false, "ResourceDeleted", nil
@@ -545,8 +752,21 @@ func (c *Controller) fail(ctx context.Context, operation *Operation, code, messa
 	if c.observer != nil && c.observeFinished(operation) {
 		c.observer.OperationFinished(nonempty(operation.Spec.ProviderID, "kubernetes"), operation.Spec.ActionID, "failed", now.Sub(operation.CreationTimestamp))
 	}
+	if observer, ok := c.observer.(AuthorizationFailureObserver); ok && isAuthorizationFailure(code, message) {
+		observer.OperationAuthorizationFailure(nonempty(operation.Spec.ProviderID, "kubernetes"), operation.Spec.ActionID)
+	}
 	c.auditOperation(operation, "storage_operation_failed", "error", code+": "+sanitize(message))
 	return err
+}
+
+func isAuthorizationFailure(code, message string) bool {
+	if code == "DEPENDENCY_PERMISSION_DENIED" {
+		return true
+	}
+	normalized := strings.ToLower(message)
+	return strings.Contains(normalized, "forbidden") ||
+		strings.Contains(normalized, "unauthorized") ||
+		strings.Contains(normalized, "authorization denied")
 }
 
 func (c *Controller) observeStarted(operation *Operation) {

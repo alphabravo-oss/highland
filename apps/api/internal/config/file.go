@@ -11,22 +11,38 @@ import (
 // FileConfig is the shape of a mounted config file (ConfigMap) — Kubernetes-native settings.
 // Secrets (passwords, OIDC client secret) stay in env from Secret keyRefs, not in this file.
 type FileConfig struct {
-	ListenAddr      string               `json:"listenAddr" yaml:"listenAddr"`
-	ManagerURL      string               `json:"managerUrl" yaml:"managerUrl"`
-	AuthMode        string               `json:"authMode" yaml:"authMode"`
-	LocalAlways     *bool                `json:"localAlways" yaml:"localAlways"`
-	CookieName      string               `json:"cookieName" yaml:"cookieName"`
-	CookieSecure    *bool                `json:"cookieSecure" yaml:"cookieSecure"`
-	SessionTTL      string               `json:"sessionTTL" yaml:"sessionTTL"`
-	MetricsInterval string               `json:"metricsInterval" yaml:"metricsInterval"`
-	OIDCIssuer      string               `json:"oidcIssuer" yaml:"oidcIssuer"`
-	OIDCClientID    string               `json:"oidcClientId" yaml:"oidcClientId"`
-	OIDCRedirectURL string               `json:"oidcRedirectUrl" yaml:"oidcRedirectUrl"`
-	OIDCMock        *bool                `json:"oidcMock" yaml:"oidcMock"`
-	Version         string               `json:"version" yaml:"version"`
-	AllowedOrigins  string               `json:"allowedOrigins" yaml:"allowedOrigins"` // comma-separated
-	Storage         *StorageFileConfig   `json:"storage,omitempty" yaml:"storage,omitempty"`
-	Providers       *ProvidersFileConfig `json:"providers,omitempty" yaml:"providers,omitempty"`
+	ListenAddr      string                 `json:"listenAddr" yaml:"listenAddr"`
+	ManagerURL      string                 `json:"managerUrl" yaml:"managerUrl"`
+	AuthMode        string                 `json:"authMode" yaml:"authMode"`
+	LocalAlways     *bool                  `json:"localAlways" yaml:"localAlways"`
+	CookieName      string                 `json:"cookieName" yaml:"cookieName"`
+	CookieSecure    *bool                  `json:"cookieSecure" yaml:"cookieSecure"`
+	SessionTTL      string                 `json:"sessionTTL" yaml:"sessionTTL"`
+	MetricsInterval string                 `json:"metricsInterval" yaml:"metricsInterval"`
+	OIDCIssuer      string                 `json:"oidcIssuer" yaml:"oidcIssuer"`
+	OIDCClientID    string                 `json:"oidcClientId" yaml:"oidcClientId"`
+	OIDCRedirectURL string                 `json:"oidcRedirectUrl" yaml:"oidcRedirectUrl"`
+	OIDCMock        *bool                  `json:"oidcMock" yaml:"oidcMock"`
+	Version         string                 `json:"version" yaml:"version"`
+	AllowedOrigins  string                 `json:"allowedOrigins" yaml:"allowedOrigins"` // comma-separated
+	Storage         *StorageFileConfig     `json:"storage,omitempty" yaml:"storage,omitempty"`
+	Providers       *ProvidersFileConfig   `json:"providers,omitempty" yaml:"providers,omitempty"`
+	AdminPolicy     *AdminPolicyFileConfig `json:"adminPolicyControl,omitempty" yaml:"adminPolicyControl,omitempty"`
+	ClusterIdentity string                 `json:"clusterIdentity,omitempty" yaml:"clusterIdentity,omitempty"`
+}
+
+type AdminPolicyFileConfig struct {
+	Enabled                         *bool                     `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	InstallStorageWriterPermissions *bool                     `json:"installStorageWriterPermissions,omitempty" yaml:"installStorageWriterPermissions,omitempty"`
+	Ceiling                         *AdminPolicyCeilingConfig `json:"ceiling,omitempty" yaml:"ceiling,omitempty"`
+}
+
+type AdminPolicyCeilingConfig struct {
+	PortableKubernetesWrites    *bool `json:"portableKubernetesWrites,omitempty" yaml:"portableKubernetesWrites,omitempty"`
+	LonghornWrites              *bool `json:"longhornWrites,omitempty" yaml:"longhornWrites,omitempty"`
+	RookCephWrites              *bool `json:"rookCephWrites,omitempty" yaml:"rookCephWrites,omitempty"`
+	AllowCephStorageClassDelete *bool `json:"allowCephStorageClassDelete,omitempty" yaml:"allowCephStorageClassDelete,omitempty"`
+	AllowCephPoolDelete         *bool `json:"allowCephPoolDelete,omitempty" yaml:"allowCephPoolDelete,omitempty"`
 }
 
 type StorageFileConfig struct {
@@ -229,6 +245,22 @@ func seedEnvFromFile(f *FileConfig) error {
 	}
 	set("HIGHLAND_VERSION", f.Version)
 	set("HIGHLAND_ALLOWED_ORIGINS", f.AllowedOrigins)
+	set("HIGHLAND_CLUSTER_IDENTITY", f.ClusterIdentity)
+	if f.AdminPolicy != nil {
+		if f.AdminPolicy.Enabled != nil && os.Getenv("HIGHLAND_ADMIN_POLICY_CONTROL_ENABLED") == "" {
+			_ = os.Setenv("HIGHLAND_ADMIN_POLICY_CONTROL_ENABLED", fmt.Sprintf("%v", *f.AdminPolicy.Enabled))
+		}
+		if f.AdminPolicy.InstallStorageWriterPermissions != nil && os.Getenv("HIGHLAND_ADMIN_POLICY_INSTALL_WRITER_RBAC") == "" {
+			_ = os.Setenv("HIGHLAND_ADMIN_POLICY_INSTALL_WRITER_RBAC", fmt.Sprintf("%v", *f.AdminPolicy.InstallStorageWriterPermissions))
+		}
+		if ceiling := f.AdminPolicy.Ceiling; ceiling != nil {
+			setBoolEnv("HIGHLAND_POLICY_CEILING_PORTABLE_WRITES", ceiling.PortableKubernetesWrites)
+			setBoolEnv("HIGHLAND_POLICY_CEILING_LONGHORN_WRITES", ceiling.LonghornWrites)
+			setBoolEnv("HIGHLAND_POLICY_CEILING_ROOK_CEPH_WRITES", ceiling.RookCephWrites)
+			setBoolEnv("HIGHLAND_POLICY_CEILING_CEPH_STORAGECLASS_DELETE", ceiling.AllowCephStorageClassDelete)
+			setBoolEnv("HIGHLAND_POLICY_CEILING_CEPH_POOL_DELETE", ceiling.AllowCephPoolDelete)
+		}
+	}
 	if f.Storage != nil {
 		if f.Storage.Enabled != nil && os.Getenv("HIGHLAND_STORAGE_ENABLED") == "" {
 			_ = os.Setenv("HIGHLAND_STORAGE_ENABLED", fmt.Sprintf("%v", *f.Storage.Enabled))
@@ -319,6 +351,12 @@ func seedEnvFromFile(f *FileConfig) error {
 		}
 	}
 	return nil
+}
+
+func setBoolEnv(key string, value *bool) {
+	if value != nil && os.Getenv(key) == "" {
+		_ = os.Setenv(key, fmt.Sprintf("%v", *value))
+	}
 }
 
 // unmarshalLooseYAML supports a tiny subset for config maps without a YAML dependency.

@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from 'react'
+import { Suspense } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { CommandPalette } from '@/components/layout/CommandPalette'
 import { PageFallback } from '@/components/layout/PageFallback'
@@ -18,23 +18,6 @@ export function AppShell({ user, onLogout }: AppShellProps) {
   const location = useLocation()
   const mobileOpen = useUIStore((s) => s.mobileSidebarOpen)
   const setMobileSidebarOpen = useUIStore((s) => s.setMobileSidebarOpen)
-
-  // Warm the highest-traffic route chunks once the shell is idle so the common
-  // post-login landings (dashboard, volumes) don't flash the loading skeleton.
-  useEffect(() => {
-    const warm = () => {
-      void import('@/features/dashboard/DashboardPage')
-      void import('@/features/volumes/VolumesPage')
-    }
-    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void) => number })
-      .requestIdleCallback
-    if (ric) {
-      const id = ric(warm)
-      return () => (window as unknown as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback?.(id)
-    }
-    const t = window.setTimeout(warm, 1500)
-    return () => window.clearTimeout(t)
-  }, [])
 
   return (
     <div className="flex h-full min-h-0" data-testid="app-shell">

@@ -1,5 +1,10 @@
 # Rook/Ceph provider
 
+Portable PVC and VolumeSnapshot workflows for Rook/Ceph require provider ID
+`rook-ceph`. They do not require or imply Ceph infrastructure management.
+`rookCephWrites`, StorageClass deletion, and pool deletion remain separate native
+gates; routine validation keeps both destructive gates disabled.
+
 The Rook/Ceph provider is opt-in. Rook CRDs supply desired state and operator status, the Ceph
 Dashboard supplies bounded runtime facts, and Prometheus supplies an allowlisted time-series
 snapshot. Dashboard mutation is never used.
@@ -82,6 +87,11 @@ the public browser URL is intentionally not probed.
 
 `providers.rookCeph.writes.enabled` permits the approved StorageClass and replicated-pool workflows
 only when global storage writes are also enabled. `allowPoolDelete` is separate and false by default.
+For installations using admin policy control, these startup flags are replaced by the effective
+runtime gates **Rook / Ceph native workflows**, **Ceph StorageClass deletion**, and **Ceph pool
+deletion**. The child deletion gates cannot be enabled unless the parent Ceph gate and matching
+Helm-installed ceilings are enabled. The Admin UI still cannot bypass version, health, runtime
+verification, dependency, role, or per-resource confirmation checks.
 Pool creation requires a ready cluster, safe replica count, enough failure domains, allowlisted
 options, server-side dry-run, Rook Ready, and fresh Ceph runtime presence. Pool deletion requires
 fresh health and proof that no class, PV/PVC path, image, filesystem, or mirroring dependency exists.

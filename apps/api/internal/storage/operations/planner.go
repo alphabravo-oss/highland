@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -52,6 +53,8 @@ type PlannerConfig struct {
 	ImpactAnalyzer        storage.ImpactAnalyzer
 	ProviderForDriver     func(string) string
 	RequireImpactAnalysis bool
+	Longhorn              LonghornClient
+	PolicyVersion         func() string
 }
 
 type Planner struct {
@@ -66,6 +69,8 @@ type Planner struct {
 	impactAnalyzer        storage.ImpactAnalyzer
 	providerForDriver     func(string) string
 	requireImpactAnalysis bool
+	longhorn              LonghornClient
+	policyVersion         func() string
 }
 
 type PlanError struct {
@@ -95,6 +100,7 @@ func NewPlanner(cfg PlannerConfig) (*Planner, error) {
 		rookNamespace: cfg.RookNamespace, rookClusterName: cfg.RookClusterName, safety: cfg.Safety,
 		planDryRun: cfg.PlanDryRun, impactAnalyzer: cfg.ImpactAnalyzer,
 		providerForDriver: cfg.ProviderForDriver, requireImpactAnalysis: cfg.RequireImpactAnalysis,
+		longhorn: cfg.Longhorn, policyVersion: cfg.PolicyVersion,
 	}, nil
 }
 
@@ -128,11 +134,11 @@ func (p *Planner) Plan(ctx context.Context, requester string, request Request) (
 			return Plan{}, invalid("target.namespace", "target namespace must be a valid Kubernetes DNS label")
 		}
 	}
-	if action.ProviderKind == "rook-ceph" {
+	if action.ProviderKind != "" {
 		if request.ProviderID == "" {
-			request.ProviderID = "rook-ceph"
-		} else if request.ProviderID != "rook-ceph" {
-			return Plan{}, &PlanError{Code: "PROVIDER_MISMATCH", Message: "action is bound to the configured rook-ceph provider"}
+			request.ProviderID = action.ProviderKind
+		} else if request.ProviderID != action.ProviderKind {
+			return Plan{}, &PlanError{Code: "PROVIDER_MISMATCH", Message: "action is bound to the configured " + action.ProviderKind + " provider"}
 		}
 	}
 	if request.Target.Namespace != "" && !p.scope.Allows(request.Target.Namespace) {
@@ -165,6 +171,11 @@ func (p *Planner) Plan(ctx context.Context, requester string, request Request) (
 		err = p.planPool(ctx, &plan, request, false)
 	case "delete-ceph-blockpool":
 		err = p.planPool(ctx, &plan, request, true)
+	case "longhorn-volume-attach", "longhorn-volume-detach", "longhorn-volume-replica-count",
+		"longhorn-volume-backup", "longhorn-recurring-job-add", "longhorn-recurring-job-remove",
+		"longhorn-volume-salvage", "longhorn-engine-upgrade", "longhorn-backup-target-configure",
+		"longhorn-backup-delete", "longhorn-backup-restore":
+		err = p.planLonghorn(ctx, &plan, request)
 	}
 	if err != nil {
 		return Plan{}, err
@@ -180,10 +191,13 @@ func (p *Planner) Plan(ctx context.Context, requester string, request Request) (
 		}
 		plan.Checks = append(plan.Checks, Check{ID: "server-dry-run", Status: "pass", Message: "Kubernetes admission accepted a server-side dry-run"})
 	}
-	plan.Hash = hashValue(map[string]any{"action": request.ActionID, "provider": request.ProviderID, "target": plan.Target, "parameters": request.Parameters, "resources": plan.Resources, "dependencies": plan.Dependencies, "warnings": plan.Warnings})
+	plan.Hash = hashValue(map[string]any{"action": request.ActionID, "provider": plan.ProviderID, "target": plan.Target, "parameters": request.Parameters, "resources": plan.Resources, "dependencies": plan.Dependencies, "warnings": plan.Warnings})
+	if p.policyVersion != nil {
+		plan.PolicyVersion = p.policyVersion()
+	}
 	expires := time.Now().UTC().Add(5 * time.Minute)
 	plan.ChallengeExpiresAt = expires
-	plan.Challenge = p.sign(challengePayload{Requester: requester, ActionID: request.ActionID, ProviderID: request.ProviderID, Target: plan.Target, PlanHash: plan.Hash, Expires: expires.Unix()})
+	plan.Challenge = p.sign(challengePayload{Requester: requester, ActionID: request.ActionID, ProviderID: plan.ProviderID, Target: plan.Target, PlanHash: plan.Hash, PolicyVersion: plan.PolicyVersion, Expires: expires.Unix()})
 	return plan, nil
 }
 
@@ -308,7 +322,30 @@ func (p *Planner) resolveProvider(driver, requested string) string {
 	if p.providerForDriver != nil && driver != "" {
 		return p.providerForDriver(driver)
 	}
+	if driver != "" {
+		return storage.GenericProviderID(driver)
+	}
 	return requested
+}
+
+// bindPortableProvider establishes the provider from an authoritative CSI
+// driver discovered on the selected Kubernetes object. A client-supplied
+// provider is only a consistency hint and can never override that attribution.
+func (p *Planner) bindPortableProvider(plan *Plan, requested, driver string) error {
+	driver = strings.TrimSpace(driver)
+	if driver == "" {
+		return &PlanError{Code: "PROVIDER_ATTRIBUTION_UNKNOWN", Message: "the selected resource has no authoritative CSI driver identity"}
+	}
+	providerID := strings.TrimSpace(p.resolveProvider(driver, ""))
+	if providerID == "" {
+		return &PlanError{Code: "PROVIDER_ATTRIBUTION_UNKNOWN", Message: "the selected CSI driver could not be mapped to a storage provider", Details: map[string]any{"driver": driver}}
+	}
+	if requested = strings.TrimSpace(requested); requested != "" && requested != providerID {
+		return &PlanError{Code: "PROVIDER_MISMATCH", Message: "the requested provider does not own the selected storage resource", Details: map[string]any{"requestedProviderId": requested, "resolvedProviderId": providerID, "driver": driver}}
+	}
+	plan.ProviderID = providerID
+	plan.Checks = append(plan.Checks, Check{ID: "provider-attribution", Status: "pass", Message: "CSI driver " + driver + " resolves to provider " + providerID})
+	return nil
 }
 
 func graphKindToKubernetesKind(kind string) string {
@@ -389,6 +426,8 @@ func (p *Planner) serverDryRun(ctx context.Context, request Request, plan Plan) 
 			return resourceClient.Namespace(resourcePlan.Namespace).Delete(ctx, resourcePlan.Name, options)
 		}
 		return resourceClient.Delete(ctx, resourcePlan.Name, options)
+	case "longhorn-action", "longhorn-create", "longhorn-update":
+		return nil
 	default:
 		return fmt.Errorf("unsupported planned operation %q", resourcePlan.Operation)
 	}
@@ -402,7 +441,11 @@ func (p *Planner) Verify(requester string, request Request, plan Plan) error {
 	if err != nil {
 		return err
 	}
-	if payload.Requester != requester || payload.ActionID != request.ActionID || payload.ProviderID != request.ProviderID || payload.Target.UID != plan.Target.UID || payload.Target.ResourceVersion != plan.Target.ResourceVersion || payload.PlanHash != plan.Hash {
+	currentPolicyVersion := plan.PolicyVersion
+	if p.policyVersion != nil {
+		currentPolicyVersion = p.policyVersion()
+	}
+	if payload.Requester != requester || payload.ActionID != request.ActionID || payload.ProviderID != plan.ProviderID || payload.Target.UID != plan.Target.UID || payload.Target.ResourceVersion != plan.Target.ResourceVersion || payload.PlanHash != plan.Hash || payload.PolicyVersion != currentPolicyVersion {
 		return &PlanError{Code: "STALE_CONFIRMATION", Message: "confirmation no longer matches the current plan"}
 	}
 	if time.Now().Unix() > payload.Expires {
@@ -446,6 +489,14 @@ func (p *Planner) ActionPrerequisite(ctx context.Context, action Action) (bool, 
 			return false, "the configured CephCluster is not ready"
 		}
 	}
+	if action.ProviderKind == "longhorn" {
+		if p.longhorn == nil {
+			return false, "the Longhorn manager integration is unavailable"
+		}
+		if _, err := p.longhorn.List(ctx, "volumes"); err != nil {
+			return false, "the Longhorn manager is unavailable"
+		}
+	}
 	return true, ""
 }
 
@@ -467,6 +518,9 @@ func (p *Planner) planPVC(ctx context.Context, plan *Plan, request Request, mode
 		return &PlanError{Code: "STORAGE_CLASS_NOT_FOUND", Message: "selected StorageClass was not found"}
 	} else if err != nil {
 		return &PlanError{Code: "DEPENDENCY_CHECK_FAILED", Message: "selected StorageClass could not be inspected", Retryable: true}
+	}
+	if err := p.bindPortableProvider(plan, request.ProviderID, class.Provisioner); err != nil {
+		return err
 	}
 	size := stringParameter(request.Parameters, "size")
 	if _, err := resource.ParseQuantity(size); err != nil {
@@ -574,6 +628,9 @@ func (p *Planner) planExpand(ctx context.Context, plan *Plan, request Request) e
 	if class.AllowVolumeExpansion == nil || !*class.AllowVolumeExpansion {
 		return &PlanError{Code: "EXPANSION_UNSUPPORTED", Message: "StorageClass does not allow volume expansion"}
 	}
+	if err := p.bindPortableProvider(plan, request.ProviderID, class.Provisioner); err != nil {
+		return err
+	}
 	requested, err := resource.ParseQuantity(stringParameter(request.Parameters, "size"))
 	if err != nil {
 		return invalid("parameters.size", "size must be a valid Kubernetes quantity")
@@ -612,6 +669,12 @@ func (p *Planner) planDeletePVC(ctx context.Context, plan *Plan, request Request
 	plan.Resources = []PlannedResource{{APIVersion: "v1", Kind: "PersistentVolumeClaim", Namespace: claim.Namespace, Name: claim.Name, Operation: "delete"}}
 	if claim.Spec.VolumeName != "" {
 		if pv, getErr := p.core.CoreV1().PersistentVolumes().Get(ctx, claim.Spec.VolumeName, metav1.GetOptions{}); getErr == nil {
+			if pv.Spec.CSI == nil {
+				return &PlanError{Code: "PROVIDER_ATTRIBUTION_UNKNOWN", Message: "the bound PV has no CSI driver identity"}
+			}
+			if bindErr := p.bindPortableProvider(plan, request.ProviderID, pv.Spec.CSI.Driver); bindErr != nil {
+				return bindErr
+			}
 			plan.Dependencies = append(plan.Dependencies, ResourceTarget{APIVersion: "v1", Kind: "PersistentVolume", Name: pv.Name, UID: string(pv.UID), ResourceVersion: pv.ResourceVersion})
 			plan.Warnings = append(plan.Warnings, "PV reclaim policy is "+string(pv.Spec.PersistentVolumeReclaimPolicy))
 			if pv.Spec.PersistentVolumeReclaimPolicy == corev1.PersistentVolumeReclaimRetain {
@@ -631,6 +694,18 @@ func (p *Planner) planDeletePVC(ctx context.Context, plan *Plan, request Request
 				plan.Warnings = append(plan.Warnings, "VolumeAttachment "+attachment.Name+" still targets the claim's PV on node "+attachment.Spec.NodeName+".")
 			}
 		}
+	} else {
+		if claim.Spec.StorageClassName == nil || strings.TrimSpace(*claim.Spec.StorageClassName) == "" {
+			return &PlanError{Code: "PROVIDER_ATTRIBUTION_UNKNOWN", Message: "the unbound PVC has no StorageClass for provider attribution"}
+		}
+		class, classErr := p.core.StorageV1().StorageClasses().Get(ctx, *claim.Spec.StorageClassName, metav1.GetOptions{})
+		if classErr != nil {
+			return classifyReadError(classErr, "STORAGE_CLASS_NOT_FOUND", "PVC StorageClass was not found", "PVC StorageClass could not be inspected for provider attribution")
+		}
+		if bindErr := p.bindPortableProvider(plan, request.ProviderID, class.Provisioner); bindErr != nil {
+			return bindErr
+		}
+		plan.Dependencies = append(plan.Dependencies, ResourceTarget{APIVersion: "storage.k8s.io/v1", Kind: "StorageClass", Name: class.Name, UID: string(class.UID), ResourceVersion: class.ResourceVersion})
 	}
 	if len(claim.Finalizers) > 0 {
 		plan.Warnings = append(plan.Warnings, "PVC has finalizers: "+strings.Join(claim.Finalizers, ", "))
@@ -660,13 +735,19 @@ func (p *Planner) planSnapshot(ctx context.Context, plan *Plan, request Request,
 		plan.Target.UID, plan.Target.ResourceVersion = string(snapshot.GetUID()), snapshot.GetResourceVersion()
 		plan.Resources = []PlannedResource{{APIVersion: "snapshot.storage.k8s.io/v1", Kind: "VolumeSnapshot", Namespace: request.Target.Namespace, Name: request.Target.Name, Operation: "delete"}}
 		className, _, _ := unstructured.NestedString(snapshot.Object, "spec", "volumeSnapshotClassName")
-		policy := "unknown"
-		if className != "" {
-			if snapshotClass, classErr := p.dynamic.Resource(snapshotClassGVR).Get(ctx, className, metav1.GetOptions{}); classErr == nil {
-				policy, _, _ = unstructured.NestedString(snapshotClass.Object, "deletionPolicy")
-				plan.Dependencies = append(plan.Dependencies, ResourceTarget{APIVersion: "snapshot.storage.k8s.io/v1", Kind: "VolumeSnapshotClass", Name: className, UID: string(snapshotClass.GetUID()), ResourceVersion: snapshotClass.GetResourceVersion()})
-			}
+		if className == "" {
+			return &PlanError{Code: "PROVIDER_ATTRIBUTION_UNKNOWN", Message: "VolumeSnapshot has no VolumeSnapshotClass for provider attribution"}
 		}
+		snapshotClass, classErr := p.dynamic.Resource(snapshotClassGVR).Get(ctx, className, metav1.GetOptions{})
+		if classErr != nil {
+			return classifyReadError(classErr, "SNAPSHOT_CLASS_NOT_FOUND", "VolumeSnapshotClass was not found", "VolumeSnapshotClass could not be inspected for provider attribution")
+		}
+		driver, _, _ := unstructured.NestedString(snapshotClass.Object, "driver")
+		if bindErr := p.bindPortableProvider(plan, request.ProviderID, driver); bindErr != nil {
+			return bindErr
+		}
+		policy, _, _ := unstructured.NestedString(snapshotClass.Object, "deletionPolicy")
+		plan.Dependencies = append(plan.Dependencies, ResourceTarget{APIVersion: "snapshot.storage.k8s.io/v1", Kind: "VolumeSnapshotClass", Name: className, UID: string(snapshotClass.GetUID()), ResourceVersion: snapshotClass.GetResourceVersion()})
 		if policy == "Retain" {
 			plan.Warnings = append(plan.Warnings, "VolumeSnapshotClass deletionPolicy is Retain; backend snapshot content remains after this object is deleted.")
 		} else {
@@ -705,6 +786,9 @@ func (p *Planner) planSnapshot(ctx context.Context, plan *Plan, request Request,
 	snapshotDriver, _, _ := unstructured.NestedString(snapshotClass.Object, "driver")
 	if snapshotDriver != pv.Spec.CSI.Driver {
 		return &PlanError{Code: "DRIVER_MISMATCH", Message: "VolumeSnapshotClass driver does not match the source PV CSI driver"}
+	}
+	if err := p.bindPortableProvider(plan, request.ProviderID, pv.Spec.CSI.Driver); err != nil {
+		return err
 	}
 	manifest := map[string]any{"apiVersion": "snapshot.storage.k8s.io/v1", "kind": "VolumeSnapshot", "metadata": map[string]any{"name": request.Target.Name, "namespace": request.Target.Namespace, "labels": map[string]any{"app.kubernetes.io/managed-by": "highland"}}, "spec": map[string]any{"volumeSnapshotClassName": className, "source": map[string]any{"persistentVolumeClaimName": sourceName}}}
 	plan.Resources = []PlannedResource{{APIVersion: "snapshot.storage.k8s.io/v1", Kind: "VolumeSnapshot", Namespace: request.Target.Namespace, Name: request.Target.Name, Operation: "server-side-apply", Manifest: manifest}}
@@ -957,6 +1041,417 @@ func (p *Planner) planPool(ctx context.Context, plan *Plan, request Request, del
 	return nil
 }
 
+func (p *Planner) planLonghorn(ctx context.Context, plan *Plan, request Request) error {
+	if p.longhorn == nil {
+		return &PlanError{Code: "LONGHORN_UNAVAILABLE", Message: "the Longhorn manager integration is unavailable", Retryable: true}
+	}
+	plan.ProviderID = "longhorn"
+	plan.BlastRadius = "one Longhorn resource"
+	switch request.ActionID {
+	case "longhorn-backup-target-configure":
+		return p.planLonghornBackupTarget(ctx, plan, request)
+	case "longhorn-backup-delete":
+		return p.planLonghornBackupDelete(ctx, plan, request)
+	case "longhorn-backup-restore":
+		return p.planLonghornBackupRestore(ctx, plan, request)
+	default:
+		return p.planLonghornVolume(ctx, plan, request)
+	}
+}
+
+func (p *Planner) planLonghornVolume(ctx context.Context, plan *Plan, request Request) error {
+	volume, err := p.longhorn.Get(ctx, "volumes", request.Target.Name)
+	if err != nil {
+		return classifyLonghornReadError(err, "LONGHORN_VOLUME_NOT_FOUND", "Longhorn volume was not found", "Longhorn volume could not be inspected")
+	}
+	actionName := map[string]string{
+		"longhorn-volume-attach":        "attach",
+		"longhorn-volume-detach":        "detach",
+		"longhorn-volume-replica-count": "updateReplicaCount",
+		"longhorn-volume-backup":        "snapshotBackup",
+		"longhorn-recurring-job-add":    "recurringJobAdd",
+		"longhorn-recurring-job-remove": "recurringJobDelete",
+		"longhorn-volume-salvage":       "salvage",
+		"longhorn-engine-upgrade":       "engineUpgrade",
+	}[request.ActionID]
+	if actionName == "" || !longhornHasAction(volume, actionName) {
+		return &PlanError{Code: "LONGHORN_ACTION_UNAVAILABLE", Message: actionName + " is not currently available for this Longhorn volume"}
+	}
+	plan.Target.UID = firstNonemptyString(longhornString(volume, "id"), request.Target.Name)
+	plan.Target.ResourceVersion = longhornResourceVersion(volume)
+	state := strings.ToLower(longhornString(volume, "state"))
+	robustness := strings.ToLower(longhornString(volume, "robustness"))
+	parameters := map[string]any{}
+	switch request.ActionID {
+	case "longhorn-volume-attach":
+		if state != "detached" {
+			return &PlanError{Code: "INVALID_VOLUME_STATE", Message: "Longhorn volume must be detached before attachment"}
+		}
+		hostID := stringParameter(request.Parameters, "hostId")
+		if hostID == "" {
+			return invalid("parameters.hostId", "target Longhorn node is required")
+		}
+		nodes, listErr := p.longhorn.List(ctx, "nodes")
+		if listErr != nil {
+			return &PlanError{Code: "LONGHORN_DEPENDENCY_CHECK_FAILED", Message: "Longhorn nodes could not be inspected", Retryable: true}
+		}
+		found := false
+		for _, node := range nodes {
+			if longhornString(node, "name") == hostID || longhornString(node, "id") == hostID {
+				found = true
+				plan.Dependencies = append(plan.Dependencies, ResourceTarget{Kind: "LonghornNode", Name: hostID})
+				break
+			}
+		}
+		if !found {
+			return &PlanError{Code: "LONGHORN_NODE_NOT_FOUND", Message: "selected Longhorn node was not found"}
+		}
+		parameters = map[string]any{"hostId": hostID, "disableFrontend": false, "attachedBy": "", "attacherType": "", "attachmentID": ""}
+		plan.Checks = append(plan.Checks, Check{ID: "target-node", Status: "pass", Message: "target Longhorn node exists"})
+	case "longhorn-volume-detach":
+		if state == "detached" {
+			return &PlanError{Code: "INVALID_VOLUME_STATE", Message: "Longhorn volume is already detached"}
+		}
+		force := boolParameter(request.Parameters, "force", false)
+		parameters = map[string]any{"forceDetach": force, "hostId": "", "attachmentID": ""}
+		if force {
+			plan.Warnings = append(plan.Warnings, "Forced detach can interrupt active I/O and must only be used after workload ownership is understood.")
+		}
+		appendLonghornWorkloadEvidence(plan, volume)
+		plan.BlastRadius = "one attached Longhorn volume and its listed Kubernetes workloads"
+	case "longhorn-volume-replica-count":
+		replicaCount := intParameter(request.Parameters, "replicaCount", 0)
+		if replicaCount < 1 || replicaCount > 20 {
+			return invalid("parameters.replicaCount", "replicaCount must be between 1 and 20")
+		}
+		current := longhornInt(volume, "numberOfReplicas")
+		if current == replicaCount {
+			return &PlanError{Code: "NO_CHANGE", Message: "requested replica count already matches the volume"}
+		}
+		if replicaCount < current {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf("Replica count will decrease from %d to %d, reducing redundancy.", current, replicaCount))
+		}
+		parameters = map[string]any{"replicaCount": replicaCount}
+		plan.Resources = []PlannedResource{longhornPlannedResource("LonghornVolume", request.Target.Name, "longhorn-action", "volumes", actionName, parameters, map[string]any{"numberOfReplicas": replicaCount})}
+		plan.Checks = append(plan.Checks, Check{ID: "replica-safety", Status: "pass", Message: fmt.Sprintf("replica count changes from %d to %d", current, replicaCount)})
+	case "longhorn-volume-backup":
+		snapshotName := stringParameter(request.Parameters, "snapshotName")
+		if snapshotName == "" {
+			return invalid("parameters.snapshotName", "snapshotName is required")
+		}
+		snapshots, actionErr := p.longhorn.Action(ctx, "volumes", request.Target.Name, firstAvailableLonghornAction(volume, "snapshotList", "snapshotCRList"), map[string]any{})
+		if actionErr != nil {
+			return &PlanError{Code: "LONGHORN_SNAPSHOT_CHECK_FAILED", Message: "Longhorn snapshots could not be inspected", Retryable: true}
+		}
+		if !longhornCollectionContains(snapshots, snapshotName) {
+			return &PlanError{Code: "LONGHORN_SNAPSHOT_NOT_FOUND", Message: "selected Longhorn snapshot was not found"}
+		}
+		targetName := stringParameter(request.Parameters, "backupTargetName")
+		if targetName != "" {
+			if _, targetErr := p.longhorn.Get(ctx, "backuptargets", targetName); targetErr != nil {
+				return classifyLonghornReadError(targetErr, "LONGHORN_BACKUP_TARGET_NOT_FOUND", "Longhorn backup target was not found", "Longhorn backup target could not be inspected")
+			}
+			plan.Dependencies = append(plan.Dependencies, ResourceTarget{Kind: "LonghornBackupTarget", Name: targetName})
+		}
+		parameters = map[string]any{"name": snapshotName, "backupTargetName": targetName, "backupMode": allowedString(request.Parameters, "backupMode", []string{"full", "incremental"}, "incremental"), "labels": map[string]any{}}
+		plan.Dependencies = append(plan.Dependencies, ResourceTarget{Kind: "LonghornSnapshot", Name: snapshotName})
+	case "longhorn-recurring-job-add", "longhorn-recurring-job-remove":
+		jobName := stringParameter(request.Parameters, "jobName")
+		if jobName == "" {
+			return invalid("parameters.jobName", "jobName is required")
+		}
+		if _, jobErr := p.longhorn.Get(ctx, "recurringjobs", jobName); jobErr != nil {
+			return classifyLonghornReadError(jobErr, "LONGHORN_RECURRING_JOB_NOT_FOUND", "Longhorn recurring job was not found", "Longhorn recurring job could not be inspected")
+		}
+		parameters = map[string]any{"name": jobName, "isGroup": false}
+		plan.Dependencies = append(plan.Dependencies, ResourceTarget{Kind: "LonghornRecurringJob", Name: jobName})
+		if request.ActionID == "longhorn-recurring-job-remove" {
+			plan.Warnings = append(plan.Warnings, "Removing this assignment stops future scheduled executions of the recurring job for this volume.")
+		}
+	case "longhorn-volume-salvage":
+		if robustness != "faulted" && state != "faulted" {
+			return &PlanError{Code: "INVALID_VOLUME_STATE", Message: "salvage is only allowed for a faulted Longhorn volume"}
+		}
+		replicas, replicaErr := stringListParameter(request.Parameters, "replicas")
+		if replicaErr != nil || len(replicas) == 0 {
+			return invalid("parameters.replicas", "at least one salvage replica is required")
+		}
+		available := longhornReplicaNames(volume)
+		for _, replica := range replicas {
+			if !available[replica] {
+				return &PlanError{Code: "LONGHORN_REPLICA_NOT_FOUND", Message: "selected salvage replica does not belong to the volume", Details: map[string]any{"replica": replica}}
+			}
+		}
+		parameters = map[string]any{"names": stringSliceAny(replicas)}
+		plan.Warnings = append(plan.Warnings, "Salvage selects surviving replica data as authoritative and may discard newer data from other replicas.")
+		plan.BlastRadius = "one faulted Longhorn volume and all of its replica data"
+	case "longhorn-engine-upgrade":
+		image := stringParameter(request.Parameters, "image")
+		if image == "" {
+			return invalid("parameters.image", "target engine image is required")
+		}
+		images, listErr := p.longhorn.List(ctx, "engineimages")
+		if listErr != nil {
+			return &PlanError{Code: "LONGHORN_ENGINE_IMAGE_CHECK_FAILED", Message: "Longhorn engine images could not be inspected", Retryable: true}
+		}
+		found := false
+		for _, candidate := range images {
+			if longhornString(candidate, "image") == image || longhornString(candidate, "name") == image {
+				state := strings.ToLower(longhornString(candidate, "state"))
+				if state != "" && state != "deployed" && state != "ready" {
+					return &PlanError{Code: "LONGHORN_ENGINE_IMAGE_NOT_READY", Message: "selected Longhorn engine image is not deployed"}
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return &PlanError{Code: "LONGHORN_ENGINE_IMAGE_NOT_FOUND", Message: "selected Longhorn engine image was not found"}
+		}
+		parameters = map[string]any{"image": image}
+		plan.Dependencies = append(plan.Dependencies, ResourceTarget{Kind: "LonghornEngineImage", Name: image})
+		plan.Warnings = append(plan.Warnings, "Engine upgrades can temporarily interrupt volume availability and cannot always be downgraded safely.")
+	}
+	if len(plan.Resources) == 0 {
+		plan.Resources = []PlannedResource{longhornPlannedResource("LonghornVolume", request.Target.Name, "longhorn-action", "volumes", actionName, parameters, nil)}
+	}
+	plan.Checks = append(plan.Checks,
+		Check{ID: "provider-health", Status: "pass", Message: "Longhorn manager returned current volume state"},
+		Check{ID: "volume-state", Status: "pass", Message: "volume state permits the requested workflow"},
+		Check{ID: "action-available", Status: "pass", Message: "Longhorn currently advertises the requested action"},
+	)
+	return nil
+}
+
+func (p *Planner) planLonghornBackupTarget(ctx context.Context, plan *Plan, request Request) error {
+	rawURL := stringParameter(request.Parameters, "url")
+	if rawURL == "" {
+		return invalid("parameters.url", "backup target URL is required")
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme == "" || !map[string]bool{"s3": true, "nfs": true, "cifs": true, "azblob": true, "vfs": true}[strings.ToLower(parsed.Scheme)] {
+		return invalid("parameters.url", "backup target URL must use s3, nfs, cifs, azblob, or vfs")
+	}
+	body := map[string]any{
+		"name": request.Target.Name, "backupTargetURL": rawURL,
+		"credentialSecret": stringParameter(request.Parameters, "credentialSecret"),
+		"pollInterval":     firstNonemptyString(stringParameter(request.Parameters, "pollInterval"), "5m"),
+	}
+	existing, getErr := p.longhorn.Get(ctx, "backuptargets", request.Target.Name)
+	operation := "longhorn-create"
+	action := ""
+	if getErr == nil {
+		if !longhornHasAction(existing, "backupTargetUpdate") {
+			return &PlanError{Code: "LONGHORN_ACTION_UNAVAILABLE", Message: "backup target update is not currently available"}
+		}
+		operation = "longhorn-action"
+		action = "backupTargetUpdate"
+		plan.Target.UID = firstNonemptyString(longhornString(existing, "id"), request.Target.Name)
+		plan.Target.ResourceVersion = longhornResourceVersion(existing)
+		plan.Warnings = append(plan.Warnings, "The existing backup target configuration will be replaced after confirmation.")
+	} else if !isLonghornNotFound(getErr) {
+		return &PlanError{Code: "LONGHORN_DEPENDENCY_CHECK_FAILED", Message: "existing backup target could not be inspected", Retryable: true}
+	} else {
+		plan.Target.UID = request.Target.Name
+		plan.Target.ResourceVersion = "absent"
+	}
+	plan.Resources = []PlannedResource{longhornPlannedResource("LonghornBackupTarget", request.Target.Name, operation, "backuptargets", action, body, map[string]any{"backupTargetURL": rawURL})}
+	plan.Checks = append(plan.Checks,
+		Check{ID: "provider-health", Status: "pass", Message: "Longhorn manager is reachable"},
+		Check{ID: "backup-url", Status: "pass", Message: "backup target URL uses a supported scheme"},
+		Check{ID: "credential-reference", Status: "pass", Message: "only a Kubernetes credential Secret reference is stored"},
+	)
+	plan.BlastRadius = "one Longhorn backup target configuration"
+	return nil
+}
+
+func (p *Planner) planLonghornBackupDelete(ctx context.Context, plan *Plan, request Request) error {
+	backupVolume := stringParameter(request.Parameters, "backupVolume")
+	if backupVolume == "" {
+		return invalid("parameters.backupVolume", "backupVolume is required")
+	}
+	resource, err := p.longhorn.Get(ctx, "backupvolumes", backupVolume)
+	if err != nil {
+		return classifyLonghornReadError(err, "LONGHORN_BACKUP_VOLUME_NOT_FOUND", "Longhorn backup volume was not found", "Longhorn backup volume could not be inspected")
+	}
+	if !longhornHasAction(resource, "backupDelete") {
+		return &PlanError{Code: "LONGHORN_ACTION_UNAVAILABLE", Message: "backup deletion is not currently available for this backup volume"}
+	}
+	backups, listErr := p.longhorn.Action(ctx, "backupvolumes", backupVolume, "backupList", map[string]any{})
+	if listErr != nil {
+		return &PlanError{Code: "LONGHORN_BACKUP_CHECK_FAILED", Message: "Longhorn backups could not be inspected", Retryable: true}
+	}
+	if !longhornCollectionContains(backups, request.Target.Name) {
+		return &PlanError{Code: "LONGHORN_BACKUP_NOT_FOUND", Message: "selected Longhorn backup was not found"}
+	}
+	parameters := map[string]any{"name": request.Target.Name}
+	plan.Target.UID = backupVolume + "/" + request.Target.Name
+	plan.Target.ResourceVersion = longhornResourceVersion(backups)
+	plan.Resources = []PlannedResource{longhornPlannedResource("LonghornBackup", backupVolume, "longhorn-action", "backupvolumes", "backupDelete", parameters, map[string]any{"backupAbsent": request.Target.Name})}
+	plan.Dependencies = append(plan.Dependencies, ResourceTarget{Kind: "LonghornBackupVolume", Name: backupVolume})
+	plan.Warnings = append(plan.Warnings, "Deleting a Longhorn-native backup permanently removes that recovery point from the backup target.")
+	plan.BlastRadius = "one Longhorn-native backup recovery point"
+	return nil
+}
+
+func (p *Planner) planLonghornBackupRestore(ctx context.Context, plan *Plan, request Request) error {
+	backupVolume := stringParameter(request.Parameters, "backupVolume")
+	backupName := stringParameter(request.Parameters, "backupName")
+	if backupVolume == "" || backupName == "" {
+		return invalid("parameters", "backupVolume and backupName are required")
+	}
+	if _, err := p.longhorn.Get(ctx, "volumes", request.Target.Name); err == nil {
+		return &PlanError{Code: "ALREADY_EXISTS", Message: "a Longhorn volume with the restore target name already exists"}
+	} else if !isLonghornNotFound(err) {
+		return &PlanError{Code: "LONGHORN_DEPENDENCY_CHECK_FAILED", Message: "restore target name could not be checked", Retryable: true}
+	}
+	resource, err := p.longhorn.Get(ctx, "backupvolumes", backupVolume)
+	if err != nil {
+		return classifyLonghornReadError(err, "LONGHORN_BACKUP_VOLUME_NOT_FOUND", "Longhorn backup volume was not found", "Longhorn backup volume could not be inspected")
+	}
+	backups, listErr := p.longhorn.Action(ctx, "backupvolumes", backupVolume, "backupList", map[string]any{})
+	if listErr != nil {
+		return &PlanError{Code: "LONGHORN_BACKUP_CHECK_FAILED", Message: "Longhorn backups could not be inspected", Retryable: true}
+	}
+	if !longhornCollectionContains(backups, backupName) {
+		return &PlanError{Code: "LONGHORN_BACKUP_NOT_FOUND", Message: "selected Longhorn backup was not found"}
+	}
+	replicas := intParameter(request.Parameters, "replicaCount", 3)
+	if replicas < 1 || replicas > 20 {
+		return invalid("parameters.replicaCount", "replicaCount must be between 1 and 20")
+	}
+	body := map[string]any{
+		"name": request.Target.Name, "size": firstNonemptyString(stringParameter(request.Parameters, "size"), longhornString(resource, "size")),
+		"numberOfReplicas": replicas, "frontend": "blockdev", "standby": boolParameter(request.Parameters, "standby", false),
+		"fromBackup": "backup://" + backupVolume + "/" + backupName,
+	}
+	if body["standby"] == true {
+		body["frontend"] = ""
+	}
+	plan.Target.UID = request.Target.Name
+	plan.Target.ResourceVersion = "absent"
+	plan.Resources = []PlannedResource{longhornPlannedResource("LonghornVolume", request.Target.Name, "longhorn-create", "volumes", "", body, map[string]any{"fromBackup": body["fromBackup"]})}
+	plan.Dependencies = append(plan.Dependencies,
+		ResourceTarget{Kind: "LonghornBackupVolume", Name: backupVolume},
+		ResourceTarget{Kind: "LonghornBackup", Name: backupName},
+	)
+	plan.Warnings = append(plan.Warnings, "Restore creates a new Longhorn volume and begins asynchronous data recovery from the selected backup.")
+	plan.BlastRadius = "one new Longhorn volume restored from one backup"
+	return nil
+}
+
+func longhornPlannedResource(kind, name, operation, collection, action string, parameters, expected map[string]any) PlannedResource {
+	manifest := map[string]any{"collection": collection}
+	if action != "" {
+		manifest["action"] = action
+	}
+	if parameters != nil {
+		manifest["parameters"] = parameters
+	}
+	if expected != nil {
+		manifest["expected"] = expected
+	}
+	return PlannedResource{APIVersion: "longhorn.io/v1", Kind: kind, Name: name, Operation: operation, Manifest: manifest}
+}
+
+func appendLonghornWorkloadEvidence(plan *Plan, volume map[string]any) {
+	status, _ := volume["kubernetesStatus"].(map[string]any)
+	workloads, _ := status["workloadsStatus"].([]any)
+	for _, raw := range workloads {
+		workload, _ := raw.(map[string]any)
+		name := firstNonemptyString(longhornString(workload, "podName"), longhornString(workload, "workloadName"))
+		if name == "" {
+			continue
+		}
+		namespace := longhornString(status, "namespace")
+		plan.Dependencies = append(plan.Dependencies, ResourceTarget{Kind: "Pod", Namespace: namespace, Name: name})
+	}
+	if len(plan.Dependencies) > 0 {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf("%d Kubernetes workload references are reported by Longhorn and may lose access during detach.", len(plan.Dependencies)))
+	}
+}
+
+func firstAvailableLonghornAction(resource map[string]any, names ...string) string {
+	for _, name := range names {
+		if longhornHasAction(resource, name) {
+			return name
+		}
+	}
+	return names[0]
+}
+
+func longhornCollectionContains(response map[string]any, name string) bool {
+	data, _ := response["data"].([]any)
+	for _, raw := range data {
+		item, _ := raw.(map[string]any)
+		if firstNonemptyString(longhornString(item, "name"), longhornString(item, "backupName"), longhornString(item, "id")) == name {
+			return true
+		}
+	}
+	return false
+}
+
+func longhornReplicaNames(volume map[string]any) map[string]bool {
+	result := map[string]bool{}
+	replicas, _ := volume["replicas"].([]any)
+	for _, raw := range replicas {
+		replica, _ := raw.(map[string]any)
+		if name := longhornString(replica, "name"); name != "" {
+			result[name] = true
+		}
+	}
+	return result
+}
+
+func stringListParameter(parameters map[string]any, key string) ([]string, error) {
+	raw, ok := parameters[key].([]any)
+	if !ok {
+		return nil, fmt.Errorf("%s must be an array", key)
+	}
+	result := make([]string, 0, len(raw))
+	for _, item := range raw {
+		value, ok := item.(string)
+		if !ok || strings.TrimSpace(value) == "" {
+			return nil, fmt.Errorf("%s must contain nonempty strings", key)
+		}
+		result = append(result, strings.TrimSpace(value))
+	}
+	return result, nil
+}
+
+func stringSliceAny(values []string) []any {
+	result := make([]any, len(values))
+	for index := range values {
+		result[index] = values[index]
+	}
+	return result
+}
+
+func longhornResourceVersion(resource any) string {
+	return hashValue(resource)
+}
+
+func classifyLonghornReadError(err error, notFoundCode, notFoundMessage, dependencyMessage string) error {
+	if isLonghornNotFound(err) {
+		return &PlanError{Code: notFoundCode, Message: notFoundMessage}
+	}
+	return &PlanError{Code: "LONGHORN_DEPENDENCY_CHECK_FAILED", Message: dependencyMessage, Retryable: true}
+}
+
+func isLonghornNotFound(err error) bool {
+	var responseErr *LonghornHTTPError
+	return errors.As(err, &responseErr) && responseErr.Status == 404
+}
+
+func firstNonemptyString(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func (p *Planner) rookProvisioner(actionID string, parameters map[string]any) (string, map[string]any) {
 	result := map[string]any{"clusterID": p.rookNamespace}
 	if actionID == "create-ceph-rbd-storageclass" {
@@ -987,12 +1482,13 @@ func (p *Planner) rookProvisioner(actionID string, parameters map[string]any) (s
 }
 
 type challengePayload struct {
-	Requester  string         `json:"sub"`
-	ActionID   string         `json:"action"`
-	ProviderID string         `json:"provider,omitempty"`
-	Target     ResourceTarget `json:"target"`
-	PlanHash   string         `json:"planHash"`
-	Expires    int64          `json:"exp"`
+	Requester     string         `json:"sub"`
+	ActionID      string         `json:"action"`
+	ProviderID    string         `json:"provider,omitempty"`
+	Target        ResourceTarget `json:"target"`
+	PlanHash      string         `json:"planHash"`
+	PolicyVersion string         `json:"policyVersion,omitempty"`
+	Expires       int64          `json:"exp"`
 }
 
 func (p *Planner) sign(payload challengePayload) string {
@@ -1092,18 +1588,29 @@ func validateAllowed(parameters map[string]any, key string, allowed []string) er
 }
 
 var actionParameterAllowlist = map[string]map[string]bool{
-	"create-pvc":                   {"storageClass": true, "size": true, "accessModes": true, "volumeMode": true},
-	"expand-pvc":                   {"size": true},
-	"delete-pvc":                   {},
-	"create-snapshot":              {"sourceClaim": true, "snapshotClass": true},
-	"delete-snapshot":              {},
-	"restore-snapshot":             {"sourceSnapshot": true, "storageClass": true, "size": true, "accessModes": true, "volumeMode": true},
-	"clone-pvc":                    {"sourceClaim": true, "storageClass": true, "size": true, "accessModes": true, "volumeMode": true},
-	"create-ceph-rbd-storageclass": {"pool": true, "reclaimPolicy": true, "volumeBindingMode": true, "allowVolumeExpansion": true, "default": true, "imageFeatures": true, "filesystemType": true, "encrypted": true, "mountOptions": true},
-	"create-cephfs-storageclass":   {"filesystem": true, "pool": true, "subvolumeGroup": true, "reclaimPolicy": true, "volumeBindingMode": true, "allowVolumeExpansion": true, "default": true, "mountOptions": true},
-	"delete-ceph-storageclass":     {},
-	"create-ceph-blockpool":        {"replicatedSize": true, "failureDomain": true, "deviceClass": true, "compressionMode": true},
-	"delete-ceph-blockpool":        {},
+	"create-pvc":                       {"storageClass": true, "size": true, "accessModes": true, "volumeMode": true},
+	"expand-pvc":                       {"size": true},
+	"delete-pvc":                       {},
+	"create-snapshot":                  {"sourceClaim": true, "snapshotClass": true},
+	"delete-snapshot":                  {},
+	"restore-snapshot":                 {"sourceSnapshot": true, "storageClass": true, "size": true, "accessModes": true, "volumeMode": true},
+	"clone-pvc":                        {"sourceClaim": true, "storageClass": true, "size": true, "accessModes": true, "volumeMode": true},
+	"create-ceph-rbd-storageclass":     {"pool": true, "reclaimPolicy": true, "volumeBindingMode": true, "allowVolumeExpansion": true, "default": true, "imageFeatures": true, "filesystemType": true, "encrypted": true, "mountOptions": true},
+	"create-cephfs-storageclass":       {"filesystem": true, "pool": true, "subvolumeGroup": true, "reclaimPolicy": true, "volumeBindingMode": true, "allowVolumeExpansion": true, "default": true, "mountOptions": true},
+	"delete-ceph-storageclass":         {},
+	"create-ceph-blockpool":            {"replicatedSize": true, "failureDomain": true, "deviceClass": true, "compressionMode": true},
+	"delete-ceph-blockpool":            {},
+	"longhorn-volume-attach":           {"hostId": true},
+	"longhorn-volume-detach":           {"force": true},
+	"longhorn-volume-replica-count":    {"replicaCount": true},
+	"longhorn-volume-backup":           {"snapshotName": true, "backupTargetName": true, "backupMode": true},
+	"longhorn-recurring-job-add":       {"jobName": true},
+	"longhorn-recurring-job-remove":    {"jobName": true},
+	"longhorn-volume-salvage":          {"replicas": true},
+	"longhorn-engine-upgrade":          {"image": true},
+	"longhorn-backup-target-configure": {"url": true, "credentialSecret": true, "pollInterval": true},
+	"longhorn-backup-delete":           {"backupVolume": true},
+	"longhorn-backup-restore":          {"backupVolume": true, "backupName": true, "size": true, "replicaCount": true, "standby": true},
 }
 
 func validateActionParameters(actionID string, parameters map[string]any) error {

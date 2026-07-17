@@ -21,8 +21,70 @@ tags:
     description: Bounded resource relationships, workload impact, and desired/runtime drift.
   - name: Operations
     description: Planned, durable, authorized storage workflows.
+  - name: Policy
+    description: Admin-controlled runtime storage policy bounded by install-time Kubernetes permissions.
 
 paths:
+  /api/v1/admin/storage-policy:
+    get:
+      tags: [Policy]
+      operationId: getStoragePolicy
+      summary: Read requested, effective, and installed storage policy
+      responses:
+        "200":
+          description: Effective policy is readable by every authenticated Highland role.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoragePolicyResponse" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      tags: [Policy]
+      operationId: applyStoragePolicy
+      summary: Apply a freshly planned runtime storage policy change
+      parameters:
+        - $ref: "#/components/parameters/Csrf"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StoragePolicyChangeRequest" }
+      responses:
+        "200":
+          description: Persisted policy generation observed by the API.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoragePolicyResponse" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/admin/storage-policy/plans:
+    post:
+      tags: [Policy]
+      operationId: planStoragePolicy
+      summary: Plan an admin storage policy change and issue a five-minute challenge
+      parameters:
+        - $ref: "#/components/parameters/Csrf"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StoragePolicyChangeRequest" }
+      responses:
+        "200":
+          description: Current/requested/effective comparison and signed confirmation challenge.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoragePolicyPlan" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/admin/storage-policy/history:
+    get:
+      tags: [Policy]
+      operationId: listStoragePolicyHistory
+      summary: List bounded policy audit events
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Policy planning, denial, error, and apply audit events.
+        default: { $ref: "#/components/responses/Error" }
   /api/v1/storage/providers:
     get:
       tags: [Providers]
@@ -441,10 +503,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [data, writesEnabled]
+                required: [data, writesEnabled, portableProviderIds]
                 properties:
                   data: { type: array, items: { $ref: "#/components/schemas/ActionAvailability" } }
                   writesEnabled: { type: boolean }
+                  portableProviderIds:
+                    type: array
+                    description: Provider IDs currently authorized for portable PVC and snapshot workflows. A legacy wildcard is represented by `*`.
+                    items: { type: string }
+                  policySource: { type: string }
+                  policyGeneration: { type: integer, format: int64 }
         default: { $ref: "#/components/responses/Error" }
   /api/v1/storage/plans:
     post:
@@ -1006,6 +1074,7 @@ components:
         warnings: { type: array, items: { type: string } }
         blastRadius: { type: string }
         hash: { type: string, pattern: "^[a-f0-9]{64}$" }
+        policyVersion: { type: string, description: Observed runtime policy version bound into the challenge. }
         challenge: { type: string }
         challengeExpiresAt: { type: string, format: date-time }
         observedAt: { type: string, format: date-time }
@@ -1035,6 +1104,91 @@ components:
             startedAt: { type: string, format: date-time }
             finishedAt: { type: string, format: date-time }
             lastAttemptAt: { type: string, format: date-time }
+    StorageWritePolicy:
+      type: object
+      additionalProperties: false
+      required: [acceptNewOperations, portableKubernetesWrites, portableKubernetesProviderIds, longhornWrites, rookCephWrites, allowCephStorageClassDelete, allowCephPoolDelete]
+      properties:
+        acceptNewOperations: { type: boolean }
+        portableKubernetesWrites: { type: boolean }
+        portableKubernetesProviderIds:
+          type: array
+          maxItems: 64
+          uniqueItems: true
+          description: Explicit provider IDs allowed to use portable PVC and snapshot workflows. A legacy wildcard may be returned for a pre-scoping policy but is never emitted by the current UI.
+          items: { type: string }
+        longhornWrites: { type: boolean }
+        rookCephWrites: { type: boolean }
+        allowCephStorageClassDelete: { type: boolean }
+        allowCephPoolDelete: { type: boolean }
+    StoragePolicyCeiling:
+      type: object
+      additionalProperties: false
+      properties:
+        portableKubernetesWrites: { type: boolean }
+        longhornWrites: { type: boolean }
+        rookCephWrites: { type: boolean }
+        allowCephStorageClassDelete: { type: boolean }
+        allowCephPoolDelete: { type: boolean }
+    StoragePolicyConfirmation:
+      type: object
+      additionalProperties: false
+      required: [challenge]
+      properties:
+        challenge: { type: string }
+        clusterIdentity: { type: string }
+        enablePhrase: { type: string, enum: [ENABLE STORAGE CHANGES] }
+        cephPoolPhrase: { type: string, enum: [ENABLE CEPH POOL DELETE] }
+        impactAcknowledged: { type: boolean }
+    StoragePolicyChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [policy, resourceVersion]
+      properties:
+        policy: { $ref: "#/components/schemas/StorageWritePolicy" }
+        resourceVersion: { type: string }
+        confirmation: { $ref: "#/components/schemas/StoragePolicyConfirmation" }
+    StoragePolicyResponse:
+      type: object
+      required: [requested, effective, ceiling, conditions, source, generation, resourceVersion, observedGeneration, inFlightOperations, meta]
+      properties:
+        requested: { $ref: "#/components/schemas/StorageWritePolicy" }
+        effective: { $ref: "#/components/schemas/StorageWritePolicy" }
+        ceiling: { $ref: "#/components/schemas/StoragePolicyCeiling" }
+        conditions: { type: array, items: { type: object, additionalProperties: true } }
+        source: { type: string, enum: [runtime-policy, static-helm, unavailable] }
+        generation: { type: integer, format: int64 }
+        resourceVersion: { type: string }
+        observedGeneration: { type: integer, format: int64 }
+        inFlightOperations: { type: integer, minimum: 0 }
+        lastChange: { type: object, additionalProperties: true }
+        meta: { type: object, additionalProperties: true }
+    StoragePolicyPlan:
+      type: object
+      required: [current, requested, effective, ceiling, resourceVersion, policyGeneration, broadening, impact, inFlightOperations, clusterIdentity, actor, requestId, hash, challenge, challengeExpiresAt]
+      properties:
+        current: { $ref: "#/components/schemas/StorageWritePolicy" }
+        requested: { $ref: "#/components/schemas/StorageWritePolicy" }
+        effective: { $ref: "#/components/schemas/StorageWritePolicy" }
+        ceiling: { $ref: "#/components/schemas/StoragePolicyCeiling" }
+        conditions: { type: array, items: { type: object, additionalProperties: true } }
+        resourceVersion: { type: string }
+        policyGeneration: { type: integer, format: int64 }
+        broadening: { type: boolean }
+        enablesCephPoolDelete: { type: boolean }
+        impact:
+          type: object
+          properties:
+            actionIds: { type: array, items: { type: string } }
+            roles: { type: array, items: { type: string } }
+        inFlightOperations: { type: integer, minimum: 0 }
+        clusterIdentity: { type: string }
+        actor: { type: string }
+        requestId: { type: string }
+        hash: { type: string, pattern: "^[a-f0-9]{64}$" }
+        challenge: { type: string }
+        challengeExpiresAt: { type: string, format: date-time }
+        observedAt: { type: string, format: date-time }
     APIError:
       type: object
       required: [code, message, retryable]

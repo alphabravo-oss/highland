@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -570,7 +571,11 @@ func (a *HTTPAPI) eventAttributionResolver(r *http.Request) (graphAttributionRes
 	for _, descriptor := range a.registry.Descriptors(r.Context(), drivers) {
 		graph, buildErr := a.context.build(r.Context(), descriptor.ID)
 		if buildErr != nil {
-			return resolver, fmt.Errorf("build %s relationship graph: %w", descriptor.ID, buildErr)
+			// Timeline attribution is an enrichment. A transient provider
+			// reader failure must not discard Kubernetes events or the healthy
+			// providers' evidence; unmatched events remain explicitly unknown.
+			slog.Warn("storage timeline provider attribution unavailable", "provider", descriptor.ID, "err", buildErr)
+			continue
 		}
 		for _, node := range graph.nodes {
 			if node.UID == "" {

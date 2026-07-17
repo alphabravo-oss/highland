@@ -1,0 +1,23 @@
+{
+  "read": {
+    "requested": {"acceptNewOperations": false, "portableKubernetesWrites": false, "portableKubernetesProviderIds": [], "longhornWrites": false, "rookCephWrites": false, "allowCephStorageClassDelete": false, "allowCephPoolDelete": false},
+    "effective": {"acceptNewOperations": false, "portableKubernetesWrites": false, "portableKubernetesProviderIds": [], "longhornWrites": false, "rookCephWrites": false, "allowCephStorageClassDelete": false, "allowCephPoolDelete": false},
+    "source": "runtime-policy",
+    "resourceVersion": "42"
+  },
+  "planRequest": {
+    "policy": {"acceptNewOperations": true, "portableKubernetesWrites": false, "portableKubernetesProviderIds": [], "longhornWrites": true, "rookCephWrites": false, "allowCephStorageClassDelete": false, "allowCephPoolDelete": false},
+    "resourceVersion": "42"
+  },
+  "applyConfirmation": {
+    "challenge": "<server-generated>",
+    "clusterIdentity": "production-west",
+    "enablePhrase": "ENABLE STORAGE CHANGES",
+    "impactAcknowledged": true
+  },
+  "errors": {
+    "stale": {"code": "POLICY_STALE"},
+    "forbidden": {"code": "POLICY_FORBIDDEN"},
+    "ceiling": {"code": "POLICY_PERMISSION_CEILING"}
+  }
+}

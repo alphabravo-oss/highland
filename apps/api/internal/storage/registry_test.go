@@ -2,6 +2,8 @@ package storage
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -53,5 +55,81 @@ func TestGenericProviderIDIsStableAndSafe(t *testing.T) {
 	}
 	if len(GenericProviderID("very."+string(make([]byte, 300)))) > 128 {
 		t.Fatal("generic provider id exceeded the API bound")
+	}
+}
+
+type countingProvider struct {
+	calls atomic.Int32
+	delay time.Duration
+}
+
+func (p *countingProvider) Descriptor(ctx context.Context) (ProviderDescriptor, error) {
+	p.calls.Add(1)
+	select {
+	case <-ctx.Done():
+		return ProviderDescriptor{}, ctx.Err()
+	case <-time.After(p.delay):
+	}
+	return ProviderDescriptor{
+		ID: "counting", Drivers: []string{"counting.example"},
+		Health: ProviderHealth{Status: SeverityOK, ObservedAt: time.Now()},
+	}, nil
+}
+func (p *countingProvider) Health(context.Context) ProviderHealth {
+	return ProviderHealth{Status: SeverityOK, ObservedAt: time.Now()}
+}
+func (p *countingProvider) Capabilities(context.Context) []Capability {
+	return []Capability{CapabilityClaimsRead}
+}
+
+func TestDescriptorSnapshotDeduplicatesAndReturnsWarmCacheImmediately(t *testing.T) {
+	registry := NewRegistry()
+	provider := &countingProvider{delay: 40 * time.Millisecond}
+	if err := registry.Register(context.Background(), provider); err != nil {
+		t.Fatal(err)
+	}
+	provider.calls.Store(0)
+	var wg sync.WaitGroup
+	for range 12 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			got, _, stale := registry.DescriptorSnapshot(context.Background(), []string{"counting.example"})
+			if len(got) != 1 || stale {
+				t.Errorf("snapshot=%#v stale=%t", got, stale)
+			}
+		}()
+	}
+	wg.Wait()
+	if calls := provider.calls.Load(); calls != 1 {
+		t.Fatalf("descriptor refreshes=%d, want 1", calls)
+	}
+	started := time.Now()
+	got, _, stale := registry.DescriptorSnapshot(context.Background(), []string{"counting.example"})
+	if len(got) != 1 || stale || time.Since(started) > 10*time.Millisecond {
+		t.Fatalf("warm snapshot len=%d stale=%t duration=%s", len(got), stale, time.Since(started))
+	}
+}
+
+func TestExpiredDescriptorSnapshotReturnsStaleWhileRefreshing(t *testing.T) {
+	previous := providerDescriptorTTL
+	providerDescriptorTTL = time.Millisecond
+	t.Cleanup(func() { providerDescriptorTTL = previous })
+	registry := NewRegistry()
+	provider := &countingProvider{delay: 40 * time.Millisecond}
+	if err := registry.Register(context.Background(), provider); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ := registry.DescriptorSnapshot(context.Background(), []string{"counting.example"}); len(got) != 1 {
+		t.Fatal("missing initial snapshot")
+	}
+	time.Sleep(2 * time.Millisecond)
+	started := time.Now()
+	got, _, stale := registry.DescriptorSnapshot(context.Background(), []string{"counting.example"})
+	if len(got) != 1 || !stale || !got[0].Health.Stale {
+		t.Fatalf("expired snapshot=%#v stale=%t", got, stale)
+	}
+	if time.Since(started) > 10*time.Millisecond {
+		t.Fatalf("stale cache blocked for %s", time.Since(started))
 	}
 }

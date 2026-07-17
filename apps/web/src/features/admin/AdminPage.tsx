@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ArrowRight, KeyRound, Plus, ScrollText, Shield, Trash2, UserPlus, Users } from 'lucide-react'
+import { ArrowRight, KeyRound, Plus, ScrollText, Shield, ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
@@ -65,6 +65,12 @@ export function AdminPage() {
       title: t('audit.title'),
       description: t('admin.auditSummary'),
       icon: ScrollText,
+    },
+    {
+      path: '/admin/storage-policy',
+      title: 'Storage change policy',
+      description: 'Enable or disable bounded storage workflow families with audited confirmation.',
+      icon: ShieldCheck,
     },
   ]
 

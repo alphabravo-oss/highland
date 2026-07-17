@@ -170,7 +170,15 @@ export function StorageProvidersPage() {
     <div data-testid="storage-providers-page">
       <PageHeader title="Storage providers" description="CSI drivers and managed storage backends discovered in this Kubernetes cluster." />
       <PartialConditions conditions={query.data?.meta.conditions} />
-      <QueryState isLoading={query.isLoading} error={query.error as Error | null} onRetry={() => void query.refetch()}>
+      <QueryState
+        isLoading={query.isLoading}
+        isFetching={query.isFetching && !query.isLoading}
+        observedAt={query.data?.meta.observedAt}
+        stale={query.data?.meta.stale}
+        partial={query.data?.meta.partial}
+        error={query.error as Error | null}
+        onRetry={() => void query.refetch()}
+      >
         {providers.length === 0 ? (
           <Card><CardContent className="py-10 text-center text-sm text-[var(--color-muted-foreground)]">No CSI drivers have been observed yet. Highland will add unknown drivers automatically when a CSIDriver, StorageClass, or CSI-backed PV appears.</CardContent></Card>
         ) : (
@@ -234,7 +242,12 @@ export function StorageProviderPage() {
   }
   return (
     <div>
-      <PageHeader title={provider?.displayName ?? 'Storage provider'} description="Provider identity, health, capabilities, and authoritative CSI driver ownership." />
+      <PageHeader
+        title={id === 'longhorn' || provider?.kind === 'longhorn' ? 'Provider details' : 'Dashboard'}
+        description={provider
+          ? `${provider.displayName} health, capabilities, and authoritative CSI driver ownership.`
+          : 'Provider health, capabilities, and authoritative CSI driver ownership.'}
+      />
       <QueryState isLoading={query.isLoading} error={query.error as Error | null} onRetry={() => void query.refetch()}>
         {provider ? <div className="grid gap-4 lg:grid-cols-2">
           <Card><CardHeader><CardTitle>Provider</CardTitle></CardHeader><CardContent className="space-y-2 text-sm">
@@ -354,7 +367,7 @@ function RookCephClusterPage({ provider, isLoading, error, onRetry }: {
 
   return <div data-testid="rook-ceph-cluster-page">
     <PageHeader
-      title="Ceph cluster"
+      title="Dashboard"
       description="Operational health, resilience, capacity, and storage services for this Rook-managed Ceph cluster."
       actions={<Button type="button" variant="outline" size="sm" onClick={() => { void query.refetch(); onRetry() }}><RefreshCw size={14} />Refresh</Button>}
     />
@@ -615,7 +628,7 @@ export function CephResourcePage() {
         <Button type="button" variant="outline" size="icon" aria-label="Refresh resources" onClick={() => void query.refetch()}><RefreshCw size={15} /></Button>
       </div>
     </div>
-    <QueryState isLoading={query.isLoading} error={query.error as Error | null} onRetry={() => void query.refetch()}>
+    <QueryState isLoading={query.isLoading} isFetching={query.isFetching && !query.isLoading} observedAt={query.data?.meta?.observedAt} stale={query.data?.meta?.stale} partial={query.data?.meta?.partial} error={query.error as Error | null} onRetry={() => void query.refetch()}>
       {kind === 'quorum' && rows[0] ? <CephQuorumDetails row={rows[0]} /> : rows.length ? <>
         <div className="mb-2 flex items-center justify-between text-xs text-[var(--color-muted-foreground)]"><span>{rows.length} observed resource{rows.length === 1 ? '' : 's'}</span><span>Latest observation {formatObserved(rows[0]?.observedAt)}</span></div>
         <DataTable columns={columns} data={rows} tableId={`ceph-${kind}`} getRowId={(row, index) => String(row.id ?? row.name ?? index)} enableExport exportName={`ceph-${kind}`} />
@@ -760,7 +773,12 @@ export function CephResourceDetailPage() {
   const config = cephResourceConfig[kind] ?? { title: kind.replaceAll('-', ' '), description: 'Curated Ceph resource data.', guidance: '' }
   return <div data-testid="ceph-resource-detail-page">
     <PageHeader title={title} description={`${config.title} detail from Rook desired state and the Ceph runtime.`} actions={<Badge tone="info">read only</Badge>} />
-    <QueryState isLoading={query.isLoading} error={query.error as Error | null} onRetry={() => void query.refetch()}>
+    <QueryState
+      isLoading={query.isLoading}
+      isFetching={query.isFetching && !query.isLoading}
+      error={query.error as Error | null}
+      onRetry={() => void query.refetch()}
+    >
       <div className="grid gap-4">
       {query.data ? <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Resource highlights">
         {highlights.map((highlight) => <div key={highlight.label} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4">
@@ -850,7 +868,15 @@ function InventoryPage<T>({ kind, title, description, columns, rowId, capability
     <PageHeader title={title} description={description} />
     <FilterBar {...state} />
     <PartialConditions conditions={page?.conditions} />
-    <QueryState isLoading={query.isLoading} error={query.error as Error | null} onRetry={() => void query.refetch()}>
+    <QueryState
+      isLoading={query.isLoading}
+      isFetching={query.isFetching && !query.isLoading}
+      observedAt={page?.meta?.observedAt}
+      stale={page?.meta?.stale}
+      partial={page?.meta?.partial}
+      error={query.error as Error | null}
+      onRetry={() => void query.refetch()}
+    >
       {data.length === 0 && capabilityEmpty ? capabilityEmpty : <DataTable columns={columns} data={data} tableId={`storage-${kind}`} getRowId={rowId} enableExport exportName={`highland-${kind}`} />}
       <div className="mt-3 flex items-center justify-between text-sm text-[var(--color-muted-foreground)]">
         <span>{page?.page.total ?? 0} matching objects in the current cache</span>

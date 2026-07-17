@@ -912,44 +912,49 @@ func (e *ContextEngine) driftReport(ctx context.Context, providerID string) (Dri
 	report := DriftReport{APIVersion: GraphAPIVersion, ProviderID: providerID, Data: []DriftRecord{}, ObservedAt: now}
 	current := map[string]struct{}{}
 	itemsByKind := map[string][]map[string]any{}
-	for _, kind := range []string{"clusters", "pools", "filesystems", "mirroring"} {
-		if !contains(reader.ResourceKinds(ctx), kind) {
-			report.Incomplete = true
-			report.Conditions = append(report.Conditions, Condition{Type: "DriftSourceAvailable", Status: "False", Severity: SeverityInfo, Reason: "ResourceKindUnavailable", Message: kind + " is not served by this provider version", ObservedAt: now})
-			continue
-		}
-		raw, _, err := reader.ListProviderResources(ctx, kind, PageRequest{Limit: providerReadLimit})
-		if err != nil {
-			report.Incomplete = true
-			report.Conditions = append(report.Conditions, partialContextCondition("Provider "+kind, err, now))
-			continue
-		}
-		itemsByKind[kind] = providerMaps(raw)
+	desc, descriptorErr := provider.Descriptor(ctx)
+	if descriptorErr != nil {
+		report.Incomplete = true
+		report.Conditions = append(report.Conditions, partialContextCondition("Provider descriptor", descriptorErr, now))
 	}
-	expectedPools := expectedCephFilesystemPools(itemsByKind["filesystems"])
-	for _, kind := range []string{"clusters", "pools", "filesystems", "mirroring"} {
-		for _, item := range itemsByKind[kind] {
-			for _, candidate := range classifyDriftItem(providerID, kind, item, expectedPools, now) {
-				current[candidate.ID] = struct{}{}
-				candidate.FirstObserved, candidate.LastObserved = e.recordDrift(candidate.ID, now)
-				candidate.Duration = candidate.LastObserved.Sub(candidate.FirstObserved).Round(time.Second).String()
-				if (candidate.Category == DriftMissingRuntime || candidate.Category == DriftUnexpectedRuntime) && candidate.LastObserved.Sub(candidate.FirstObserved) < driftGracePeriod {
-					candidate.Suppressed = true
-					candidate.Severity = SeverityInfo
+	if descriptorErr == nil && desc.Kind == "rook-ceph" {
+		resourceKinds := reader.ResourceKinds(ctx)
+		for _, kind := range []string{"clusters", "pools", "filesystems", "mirroring"} {
+			if !contains(resourceKinds, kind) {
+				continue
+			}
+			raw, _, err := reader.ListProviderResources(ctx, kind, PageRequest{Limit: providerReadLimit})
+			if err != nil {
+				report.Incomplete = true
+				report.Conditions = append(report.Conditions, partialContextCondition("Provider "+kind, err, now))
+				continue
+			}
+			itemsByKind[kind] = providerMaps(raw)
+		}
+		expectedPools := expectedCephFilesystemPools(itemsByKind["filesystems"])
+		for _, kind := range []string{"clusters", "pools", "filesystems", "mirroring"} {
+			for _, item := range itemsByKind[kind] {
+				for _, candidate := range classifyDriftItem(providerID, kind, item, expectedPools, now) {
+					current[candidate.ID] = struct{}{}
+					candidate.FirstObserved, candidate.LastObserved = e.recordDrift(candidate.ID, now)
+					candidate.Duration = candidate.LastObserved.Sub(candidate.FirstObserved).Round(time.Second).String()
+					if (candidate.Category == DriftMissingRuntime || candidate.Category == DriftUnexpectedRuntime) && candidate.LastObserved.Sub(candidate.FirstObserved) < driftGracePeriod {
+						candidate.Suppressed = true
+						candidate.Severity = SeverityInfo
+					}
+					report.Data = append(report.Data, candidate)
 				}
-				report.Data = append(report.Data, candidate)
 			}
 		}
 	}
-	desc, err := provider.Descriptor(ctx)
-	if err == nil {
+	if descriptorErr == nil {
 		for _, condition := range desc.Health.Conditions {
 			if condition.Reason != "UnsupportedVersion" {
 				continue
 			}
 			id := "drift:" + providerID + ":version-unsupported"
 			first, last := e.recordDrift(id, now)
-			report.Data = append(report.Data, DriftRecord{ID: id, ProviderID: providerID, Category: DriftVersionUnsupported, Resource: GraphNode{APIVersion: GraphAPIVersion, ID: canonicalGraphID("provider", providerID, "", providerID), Kind: "provider", ProviderID: providerID, Name: desc.DisplayName}, FirstObserved: first, LastObserved: last, Duration: last.Sub(first).Round(time.Second).String(), Severity: condition.Severity, Actionable: false, ActionSurface: "rook-ceph", Message: condition.Message})
+			report.Data = append(report.Data, DriftRecord{ID: id, ProviderID: providerID, Category: DriftVersionUnsupported, Resource: GraphNode{APIVersion: GraphAPIVersion, ID: canonicalGraphID("provider", providerID, "", providerID), Kind: "provider", ProviderID: providerID, Name: desc.DisplayName}, FirstObserved: first, LastObserved: last, Duration: last.Sub(first).Round(time.Second).String(), Severity: condition.Severity, Actionable: false, ActionSurface: desc.Kind, Message: condition.Message})
 			current[id] = struct{}{}
 		}
 	}
@@ -998,7 +1003,11 @@ func (e *ContextEngine) driftReport(ctx context.Context, providerID string) (Dri
 		}
 	}
 	if len(report.Data) == 0 && !report.Incomplete {
-		report.Conditions = append(report.Conditions, Condition{Type: "DesiredRuntimeDrift", Status: "False", Severity: SeverityOK, Reason: "InSync", Message: "No supported Rook/Ceph desired-versus-runtime drift was observed.", ObservedAt: now})
+		message := "No supported provider drift was observed."
+		if descriptorErr == nil && desc.Kind == "rook-ceph" {
+			message = "No supported Rook/Ceph desired-versus-runtime drift was observed."
+		}
+		report.Conditions = append(report.Conditions, Condition{Type: "DesiredRuntimeDrift", Status: "False", Severity: SeverityOK, Reason: "InSync", Message: message, ObservedAt: now})
 	}
 	return report, nil
 }

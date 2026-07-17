@@ -18,6 +18,7 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/audit"
 	"github.com/highland-io/highland/apps/api/internal/auth"
 	appmw "github.com/highland-io/highland/apps/api/internal/middleware"
+	"github.com/highland-io/highland/apps/api/internal/policy"
 	"github.com/highland-io/highland/apps/api/internal/storage"
 )
 
@@ -35,6 +36,7 @@ type APIConfig struct {
 	CephPoolVerified        bool
 	CephVersionSafe         bool
 	CephVersionCheck        func(context.Context) bool
+	Policy                  interface{ Snapshot() policy.Snapshot }
 }
 
 type API struct {
@@ -49,10 +51,11 @@ type API struct {
 	cephPoolVerified        bool
 	cephVersionSafe         bool
 	cephVersionCheck        func(context.Context) bool
+	policy                  interface{ Snapshot() policy.Snapshot }
 }
 
 func NewAPI(cfg APIConfig) *API {
-	return &API{store: cfg.Store, planner: cfg.Planner, audit: cfg.Audit, observer: cfg.Observer, writesEnabled: cfg.WritesEnabled, cephWritesEnabled: cfg.CephWritesEnabled, allowStorageClassDelete: cfg.AllowStorageClassDelete, allowPoolDelete: cfg.AllowPoolDelete, cephPoolVerified: cfg.CephPoolVerified, cephVersionSafe: cfg.CephVersionSafe, cephVersionCheck: cfg.CephVersionCheck}
+	return &API{store: cfg.Store, planner: cfg.Planner, audit: cfg.Audit, observer: cfg.Observer, writesEnabled: cfg.WritesEnabled, cephWritesEnabled: cfg.CephWritesEnabled, allowStorageClassDelete: cfg.AllowStorageClassDelete, allowPoolDelete: cfg.AllowPoolDelete, cephPoolVerified: cfg.CephPoolVerified, cephVersionSafe: cfg.CephVersionSafe, cephVersionCheck: cfg.CephVersionCheck, policy: cfg.Policy}
 }
 
 func (a *API) Mount(r chi.Router) {
@@ -71,6 +74,7 @@ func (a *API) Mount(r chi.Router) {
 	r.Delete("/api/v1/providers/{providerId}/ceph/block-pools/{namespace}/{name}", a.submit("delete-ceph-blockpool", "rook-ceph", targetFromPath("CephBlockPool")))
 	r.Post("/api/v1/providers/{providerId}/ceph/storage-classes", a.submit("create-ceph-rbd-storageclass", "rook-ceph", targetFromBody))
 	r.Delete("/api/v1/providers/{providerId}/ceph/storage-classes/{name}", a.submit("delete-ceph-storageclass", "rook-ceph", targetFromPath("StorageClass")))
+	r.Post("/api/v1/providers/{providerId}/longhorn/operations/{actionId}", a.submit("", "longhorn", targetFromBody))
 }
 
 func (a *API) ListActions(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +94,9 @@ func (a *API) ListActions(w http.ResponseWriter, r *http.Request) {
 		if action.ProviderKind == "rook-ceph" {
 			prerequisiteKey = "rook-ceph"
 		}
+		if action.ProviderKind == "longhorn" {
+			prerequisiteKey = "longhorn"
+		}
 		prerequisite, cached := prerequisites[prerequisiteKey]
 		if !cached {
 			prerequisite.available, prerequisite.reason = a.planner.ActionPrerequisite(r.Context(), action)
@@ -106,7 +113,12 @@ func (a *API) ListActions(w http.ResponseWriter, r *http.Request) {
 		}
 		result = append(result, map[string]any{"action": action, "enabled": enabled, "available": available, "unavailableReason": reason})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": result, "writesEnabled": a.writesEnabled})
+	snapshot := a.policySnapshot()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data": result, "writesEnabled": snapshot.Effective.AcceptNewOperations,
+		"portableProviderIds": policy.Normalize(snapshot.Effective).PortableKubernetesProviderIDs,
+		"policySource":        snapshot.Source, "policyGeneration": snapshot.ObservedGeneration,
+	})
 }
 
 func (a *API) unavailableReason(ctx context.Context, action Action) string {
@@ -142,7 +154,14 @@ func (a *API) ListOperations(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusServiceUnavailable, "OPERATION_STORE_UNAVAILABLE", err.Error(), true, nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": operations})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data": operations,
+		"page": map[string]any{"limit": limit, "total": len(operations)},
+		"meta": map[string]any{
+			"observedAt": time.Now().UTC(), "stale": false, "partial": false,
+			"requestId": chimw.GetReqID(r.Context()),
+		},
+	})
 }
 
 func (a *API) GetOperation(w http.ResponseWriter, r *http.Request) {
@@ -193,7 +212,13 @@ func (a *API) CreatePlan(w http.ResponseWriter, r *http.Request) {
 		a.writePlanError(w, r, request.ProviderID, err)
 		return
 	}
-	a.auditEvent(user, r, action.ID, action.AuditAction+"_plan", request.ProviderID, plan.Target, "", plan.Hash, "ok", "plan generated")
+	if err := a.authorizePlannedProvider(action, plan); err != nil {
+		a.deny(plan.ProviderID, "provider_policy_disabled")
+		a.auditEvent(user, r, action.ID, action.AuditAction+"_denied", plan.ProviderID, plan.Target, "", plan.Hash, "denied", "resolved provider policy is disabled")
+		writeError(w, r, http.StatusForbidden, "PROVIDER_POLICY_DISABLED", err.Error(), false, map[string]any{"providerId": plan.ProviderID})
+		return
+	}
+	a.auditEvent(user, r, action.ID, action.AuditAction+"_plan", plan.ProviderID, plan.Target, "", plan.Hash, "ok", "plan generated")
 	writeJSON(w, http.StatusOK, plan)
 }
 
@@ -212,6 +237,9 @@ func (a *API) submit(actionID, providerKind string, target targetBuilder) http.H
 			}
 		}
 		resolvedActionID := actionID
+		if resolvedActionID == "" {
+			resolvedActionID = chi.URLParam(r, "actionId")
+		}
 		if actionID == "create-ceph-rbd-storageclass" && request.ActionID == "create-cephfs-storageclass" {
 			resolvedActionID = request.ActionID
 		}
@@ -234,7 +262,11 @@ func (a *API) submit(actionID, providerKind string, target targetBuilder) http.H
 			writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required", false, nil)
 			return
 		}
-		action, _ := ActionByID(resolvedActionID)
+		action, actionFound := ActionByID(resolvedActionID)
+		if !actionFound || (providerKind != "" && action.ProviderKind != providerKind) {
+			writeError(w, r, http.StatusNotFound, "ACTION_NOT_SUPPORTED", "provider action is not supported", false, nil)
+			return
+		}
 		if action.ProviderKind != "" && request.ProviderID != action.ProviderKind {
 			a.deny(request.ProviderID, "provider_mismatch")
 			a.auditEvent(user, r, action.ID, action.AuditAction+"_denied", request.ProviderID, request.Target, "", "", "denied", "provider mismatch")
@@ -253,12 +285,18 @@ func (a *API) submit(actionID, providerKind string, target targetBuilder) http.H
 			a.writePlanError(w, r, request.ProviderID, err)
 			return
 		}
-		if err := a.planner.Verify(user.Username, request, plan); err != nil {
-			a.auditEvent(user, r, action.ID, action.AuditAction+"_denied", request.ProviderID, plan.Target, "", plan.Hash, "denied", codeOf(err, "CONFIRMATION_INVALID"))
-			a.writePlanError(w, r, request.ProviderID, err)
+		if err := a.authorizePlannedProvider(action, plan); err != nil {
+			a.deny(plan.ProviderID, "provider_policy_disabled")
+			a.auditEvent(user, r, action.ID, action.AuditAction+"_denied", plan.ProviderID, plan.Target, "", plan.Hash, "denied", "resolved provider policy is disabled")
+			writeError(w, r, http.StatusForbidden, "PROVIDER_POLICY_DISABLED", err.Error(), false, map[string]any{"providerId": plan.ProviderID})
 			return
 		}
-		spec := Spec{ActionID: resolvedActionID, ProviderID: request.ProviderID, Target: plan.Target, Parameters: request.Parameters, ParameterHash: hashValue(map[string]any{"action": resolvedActionID, "provider": request.ProviderID, "target": plan.Target, "parameters": request.Parameters}), PlanHash: plan.Hash, IdempotencyHash: hashValue(request.Confirmation.Challenge), Resources: plan.Resources, Dependencies: plan.Dependencies, Requester: user.Username, RequesterRole: string(user.Role), RequestedAt: time.Now().UTC()}
+		if err := a.planner.Verify(user.Username, request, plan); err != nil {
+			a.auditEvent(user, r, action.ID, action.AuditAction+"_denied", plan.ProviderID, plan.Target, "", plan.Hash, "denied", codeOf(err, "CONFIRMATION_INVALID"))
+			a.writePlanError(w, r, plan.ProviderID, err)
+			return
+		}
+		spec := Spec{ActionID: resolvedActionID, ProviderID: plan.ProviderID, Target: plan.Target, Parameters: request.Parameters, ParameterHash: hashValue(map[string]any{"action": resolvedActionID, "provider": plan.ProviderID, "target": plan.Target, "parameters": request.Parameters}), PlanHash: plan.Hash, IdempotencyHash: hashValue(request.Confirmation.Challenge), Resources: plan.Resources, Dependencies: plan.Dependencies, Requester: user.Username, RequesterRole: string(user.Role), RequestedAt: time.Now().UTC()}
 		if existing, findErr := a.store.FindEquivalent(r.Context(), spec); findErr == nil && existing != nil {
 			writeJSON(w, http.StatusAccepted, map[string]any{"operation": existing, "duplicate": true})
 			return
@@ -278,7 +316,7 @@ func (a *API) submit(actionID, providerKind string, target targetBuilder) http.H
 			writeError(w, r, http.StatusServiceUnavailable, "OPERATION_STORE_UNAVAILABLE", err.Error(), true, nil)
 			return
 		}
-		a.auditEvent(user, r, action.ID, action.AuditAction+"_approved", request.ProviderID, plan.Target, operation.Name, plan.Hash, "ok", "operation approved")
+		a.auditEvent(user, r, action.ID, action.AuditAction+"_approved", plan.ProviderID, plan.Target, operation.Name, plan.Hash, "ok", "operation approved")
 		w.Header().Set("Location", "/api/v1/storage/operations/"+operation.Name)
 		writeJSON(w, http.StatusAccepted, map[string]any{"operation": operation, "operationId": operation.Name})
 	}
@@ -305,7 +343,41 @@ func (a *API) authorize(ctx context.Context, action Action, role auth.Role) erro
 	}
 	return Authorize(action, role)
 }
+
+func (a *API) authorizePlannedProvider(action Action, plan Plan) error {
+	if action.ProviderKind != "" || a.policy == nil {
+		return nil
+	}
+	if a.policySnapshot().Effective.AllowsPortableProvider(plan.ProviderID) {
+		return nil
+	}
+	return fmt.Errorf("portable Kubernetes workflows are disabled for provider %s", nonempty(plan.ProviderID, "unknown"))
+}
 func (a *API) featureEnabled(ctx context.Context, action Action) bool {
+	if a.policy != nil {
+		effective := a.policySnapshot().Effective
+		switch action.FeatureFlag {
+		case "storage.writes.enabled":
+			if action.ProviderKind == "longhorn" {
+				return effective.AcceptNewOperations && effective.LonghornWrites
+			}
+			return effective.AcceptNewOperations && effective.PortableKubernetesWrites
+		case "providers.rookCeph.writes.enabled":
+			if !a.cephVersionSupported(ctx) {
+				return false
+			}
+			if action.ID == "create-ceph-blockpool" && !a.cephPoolVerified {
+				return false
+			}
+			return effective.AcceptNewOperations && effective.RookCephWrites
+		case "providers.rookCeph.writes.allowPoolDelete":
+			return effective.AcceptNewOperations && effective.RookCephWrites && effective.AllowCephPoolDelete && a.cephPoolVerified && a.cephVersionSupported(ctx)
+		case "providers.rookCeph.writes.allowStorageClassDelete":
+			return effective.AcceptNewOperations && effective.RookCephWrites && effective.AllowCephStorageClassDelete && a.cephVersionSupported(ctx)
+		default:
+			return false
+		}
+	}
 	switch action.FeatureFlag {
 	case "storage.writes.enabled":
 		return a.writesEnabled
@@ -324,6 +396,27 @@ func (a *API) featureEnabled(ctx context.Context, action Action) bool {
 	default:
 		return false
 	}
+}
+
+func (a *API) policySnapshot() policy.Snapshot {
+	if a.policy != nil {
+		return a.policy.Snapshot()
+	}
+	requested := policy.StoragePolicy{
+		AcceptNewOperations:      a.writesEnabled,
+		PortableKubernetesWrites: a.writesEnabled,
+		PortableKubernetesProviderIDs: func() []string {
+			if a.writesEnabled {
+				return []string{"*"}
+			}
+			return []string{}
+		}(),
+		LonghornWrites:              a.writesEnabled,
+		RookCephWrites:              a.writesEnabled && a.cephWritesEnabled,
+		AllowCephStorageClassDelete: a.writesEnabled && a.cephWritesEnabled && a.allowStorageClassDelete,
+		AllowCephPoolDelete:         a.writesEnabled && a.cephWritesEnabled && a.allowPoolDelete,
+	}
+	return policy.Snapshot{Requested: requested, Effective: requested, Source: "static-helm"}
 }
 
 func (a *API) cephVersionSupported(ctx context.Context) bool {

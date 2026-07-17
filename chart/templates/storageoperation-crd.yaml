@@ -59,6 +59,17 @@ spec:
                     - delete-ceph-storageclass
                     - create-ceph-blockpool
                     - delete-ceph-blockpool
+                    - longhorn-volume-attach
+                    - longhorn-volume-detach
+                    - longhorn-volume-replica-count
+                    - longhorn-volume-backup
+                    - longhorn-recurring-job-add
+                    - longhorn-recurring-job-remove
+                    - longhorn-volume-salvage
+                    - longhorn-engine-upgrade
+                    - longhorn-backup-target-configure
+                    - longhorn-backup-delete
+                    - longhorn-backup-restore
                 providerId: { type: string, maxLength: 128 }
                 parameterHash: { type: string, minLength: 64, maxLength: 64 }
                 planHash: { type: string, minLength: 64, maxLength: 64 }

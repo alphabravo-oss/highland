@@ -63,6 +63,14 @@ type Config struct {
 	StorageWritesEnabled            bool
 	StorageOperationRecoveryEnabled bool
 	RequiredProviders               []string
+	AdminPolicyControlEnabled       bool
+	AdminPolicyInstallWriterRBAC    bool
+	PolicyCeilingPortableWrites     bool
+	PolicyCeilingLonghornWrites     bool
+	PolicyCeilingRookCephWrites     bool
+	PolicyCeilingCephSCDelete       bool
+	PolicyCeilingCephPoolDelete     bool
+	ClusterIdentity                 string
 
 	// Longhorn managed-provider compatibility. ManagerURL remains the legacy
 	// connection setting and is synthesized into this provider when enabled.
@@ -173,6 +181,14 @@ func LoadFromEnv() (*Config, error) {
 		StorageWritesEnabled:            envBool("HIGHLAND_STORAGE_WRITES_ENABLED", false),
 		StorageOperationRecoveryEnabled: envBool("HIGHLAND_STORAGE_OPERATION_RECOVERY_ENABLED", false),
 		RequiredProviders:               envCSV("HIGHLAND_REQUIRED_PROVIDERS"),
+		AdminPolicyControlEnabled:       envBool("HIGHLAND_ADMIN_POLICY_CONTROL_ENABLED", false),
+		AdminPolicyInstallWriterRBAC:    envBool("HIGHLAND_ADMIN_POLICY_INSTALL_WRITER_RBAC", false),
+		PolicyCeilingPortableWrites:     envBool("HIGHLAND_POLICY_CEILING_PORTABLE_WRITES", false),
+		PolicyCeilingLonghornWrites:     envBool("HIGHLAND_POLICY_CEILING_LONGHORN_WRITES", false),
+		PolicyCeilingRookCephWrites:     envBool("HIGHLAND_POLICY_CEILING_ROOK_CEPH_WRITES", false),
+		PolicyCeilingCephSCDelete:       envBool("HIGHLAND_POLICY_CEILING_CEPH_STORAGECLASS_DELETE", false),
+		PolicyCeilingCephPoolDelete:     envBool("HIGHLAND_POLICY_CEILING_CEPH_POOL_DELETE", false),
+		ClusterIdentity:                 envOr("HIGHLAND_CLUSTER_IDENTITY", "local"),
 		LonghornEnabled:                 envBool("HIGHLAND_LONGHORN_ENABLED", true),
 		LonghornRequired:                envBool("HIGHLAND_LONGHORN_REQUIRED", true),
 		LonghornNamespace:               envOr("HIGHLAND_LONGHORN_NAMESPACE", "longhorn-system"),
@@ -265,6 +281,27 @@ func LoadFromEnv() (*Config, error) {
 	}
 	if cfg.StorageWritesEnabled && !cfg.StorageEnabled {
 		return nil, fmt.Errorf("HIGHLAND_STORAGE_WRITES_ENABLED requires HIGHLAND_STORAGE_ENABLED")
+	}
+	if cfg.AdminPolicyControlEnabled && !cfg.StorageEnabled {
+		return nil, fmt.Errorf("HIGHLAND_ADMIN_POLICY_CONTROL_ENABLED requires HIGHLAND_STORAGE_ENABLED")
+	}
+	if cfg.AdminPolicyInstallWriterRBAC && !cfg.AdminPolicyControlEnabled {
+		return nil, fmt.Errorf("HIGHLAND_ADMIN_POLICY_INSTALL_WRITER_RBAC requires HIGHLAND_ADMIN_POLICY_CONTROL_ENABLED")
+	}
+	if (cfg.PolicyCeilingPortableWrites || cfg.PolicyCeilingLonghornWrites || cfg.PolicyCeilingRookCephWrites || cfg.PolicyCeilingCephSCDelete || cfg.PolicyCeilingCephPoolDelete) && !cfg.AdminPolicyInstallWriterRBAC {
+		return nil, fmt.Errorf("policy write ceilings require HIGHLAND_ADMIN_POLICY_INSTALL_WRITER_RBAC")
+	}
+	if cfg.PolicyCeilingRookCephWrites && !cfg.RookCephEnabled {
+		return nil, fmt.Errorf("HIGHLAND_POLICY_CEILING_ROOK_CEPH_WRITES requires HIGHLAND_ROOK_CEPH_ENABLED")
+	}
+	if cfg.PolicyCeilingCephSCDelete && !cfg.PolicyCeilingRookCephWrites {
+		return nil, fmt.Errorf("HIGHLAND_POLICY_CEILING_CEPH_STORAGECLASS_DELETE requires the Rook/Ceph write ceiling")
+	}
+	if cfg.PolicyCeilingCephPoolDelete && !cfg.PolicyCeilingRookCephWrites {
+		return nil, fmt.Errorf("HIGHLAND_POLICY_CEILING_CEPH_POOL_DELETE requires the Rook/Ceph write ceiling")
+	}
+	if strings.TrimSpace(cfg.ClusterIdentity) == "" || len(cfg.ClusterIdentity) > 128 {
+		return nil, fmt.Errorf("HIGHLAND_CLUSTER_IDENTITY must be a nonempty value no longer than 128 characters")
 	}
 	if cfg.RookCephWritesEnabled && !cfg.RookCephEnabled {
 		return nil, fmt.Errorf("HIGHLAND_ROOK_CEPH_WRITES_ENABLED requires HIGHLAND_ROOK_CEPH_ENABLED")

@@ -376,6 +376,22 @@ func TestCephWriteCapabilitiesRequireSupportedOperatorVersion(t *testing.T) {
 	}
 }
 
+func TestCephCapabilitiesFollowRuntimeWritePolicy(t *testing.T) {
+	cluster := rookObject("CephCluster", "cephclusters", "rook-ceph", map[string]any{"state": "Created", "ceph": map[string]any{"health": "HEALTH_OK"}})
+	_ = unstructured.SetNestedField(cluster.Object, "quay.io/ceph/ceph:v19.2.3", "spec", "cephVersion", "image")
+	adapter := testAdapter(t, cluster)
+	adapter.version = "1.20.2"
+	enabled := false
+	adapter.writePolicy = func() (bool, bool, bool) { return enabled, false, false }
+	if containsCapability(adapter.Capabilities(context.Background()), storage.CapabilityCephClassCreate) {
+		t.Fatal("runtime policy disabled but Ceph write capability was advertised")
+	}
+	enabled = true
+	if !containsCapability(adapter.Capabilities(context.Background()), storage.CapabilityCephClassCreate) {
+		t.Fatal("runtime policy enabled but Ceph write capability remained unavailable")
+	}
+}
+
 func TestCephWriteCapabilitiesRequireSupportedCephVersion(t *testing.T) {
 	cluster := rookObject("CephCluster", "cephclusters", "rook-ceph", map[string]any{"state": "Created", "ceph": map[string]any{"health": "HEALTH_OK"}})
 	adapter := testAdapter(t, cluster)

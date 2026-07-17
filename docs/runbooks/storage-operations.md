@@ -1,5 +1,19 @@
 # Storage operation runbook
 
+## Provider-scoped admission
+
+The Admin policy has three independent layers: the global new-operation gate,
+portable Kubernetes workflow access for explicit provider IDs, and provider-
+native controls. When `PROVIDER_POLICY_DISABLED` is returned, confirm the
+provider shown in the plan, then enable that exact provider under **Admin →
+Storage change policy** only if the intended StorageClass/PV belongs to it.
+Do not broaden to a wildcard. `PROVIDER_MISMATCH` means the client hint disagrees
+with Kubernetes evidence; refresh the target rather than overriding it.
+
+Narrowing policy blocks new plans/submissions immediately. Operations already
+stored as approved continue to a terminal state; monitor them in Storage
+operations before removing installation-time RBAC.
+
 ## Observe an operation
 
 Use the Operations page or:
@@ -15,6 +29,12 @@ approval, execution start, and terminal result linkage.
 
 ## Emergency disable
 
+When runtime policy control is installed, open **Admin → Storage change policy**, clear
+**Accept new storage operations**, review the narrowing summary, and apply. New plans and submissions
+are rejected as soon as the observed policy generation changes; already-approved operations continue.
+
+If runtime policy control is not installed:
+
 1. Set `storage.writes.enabled=false` to reject new plans/submissions.
 2. Set `storage.writes.recoveryEnabled=true` while approved Pending/Running operations must finish.
    Recovery mode keeps the namespaced storage writer and leader-election RBAC required by existing
@@ -26,6 +46,16 @@ approval, execution start, and terminal result linkage.
 
 Do not delete a `StorageOperation` to stop a Kubernetes/Rook reconciliation. No initial action has a
 safe cancellation point, so cancellation is intentionally absent.
+
+## Runtime policy troubleshooting
+
+- `POLICY_STALE` or `POLICY_UPDATE_CONFLICT`: refresh the Admin page and generate a new plan.
+- `POLICY_PERMISSION_CEILING`: the requested capability was not installed through Helm/GitOps.
+- `POLICY_CHALLENGE_EXPIRED`: review again; challenges expire after five minutes.
+- `POLICY_NOT_OBSERVED`: the object was persisted but the API watch did not observe its generation;
+  inspect `HighlandPolicy/highland`, API watch errors, and policy metrics before retrying.
+- A policy that says “effective” grants eligibility only. Provider health, dependency analysis,
+  server dry-run, action role, and per-resource confirmation are still required.
 
 ## API leader failure
 

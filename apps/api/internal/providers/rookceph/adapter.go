@@ -50,6 +50,7 @@ type Config struct {
 	WritesEnabled           bool
 	AllowStorageClassDelete bool
 	AllowPoolDelete         bool
+	WritePolicy             func() (enabled, allowStorageClassDelete, allowPoolDelete bool)
 }
 
 type Adapter struct {
@@ -62,6 +63,7 @@ type Adapter struct {
 	publisher                                               storage.ChangePublisher
 	observer                                                storage.Observer
 	writesEnabled, allowStorageClassDelete, allowPoolDelete bool
+	writePolicy                                             func() (bool, bool, bool)
 
 	mu              sync.RWMutex
 	retryOnce       sync.Once
@@ -89,7 +91,7 @@ func New(cfg Config) (*Adapter, error) {
 	if cfg.ClusterName == "" {
 		cfg.ClusterName = "rook-ceph"
 	}
-	return &Adapter{id: cfg.ID, namespace: cfg.Namespace, clusterName: cfg.ClusterName, version: cfg.Version, dynamic: cfg.Dynamic, discovery: cfg.Discovery, dashboard: cfg.Dashboard, dashboardPublicURL: cfg.DashboardPublicURL, prometheus: cfg.Prometheus, publisher: cfg.Publisher, observer: cfg.Observer, writesEnabled: cfg.WritesEnabled, allowStorageClassDelete: cfg.AllowStorageClassDelete, allowPoolDelete: cfg.AllowPoolDelete, informers: map[string]cache.SharedIndexInformer{}, served: map[string]bool{}}, nil
+	return &Adapter{id: cfg.ID, namespace: cfg.Namespace, clusterName: cfg.ClusterName, version: cfg.Version, dynamic: cfg.Dynamic, discovery: cfg.Discovery, dashboard: cfg.Dashboard, dashboardPublicURL: cfg.DashboardPublicURL, prometheus: cfg.Prometheus, publisher: cfg.Publisher, observer: cfg.Observer, writesEnabled: cfg.WritesEnabled, allowStorageClassDelete: cfg.AllowStorageClassDelete, allowPoolDelete: cfg.AllowPoolDelete, writePolicy: cfg.WritePolicy, informers: map[string]cache.SharedIndexInformer{}, served: map[string]bool{}}, nil
 }
 
 func (a *Adapter) ID() string { return a.id }
@@ -272,15 +274,19 @@ func (a *Adapter) Descriptor(ctx context.Context) (storage.ProviderDescriptor, e
 
 func (a *Adapter) Capabilities(ctx context.Context) []storage.Capability {
 	capabilities := []storage.Capability{storage.CapabilityClaimsRead, storage.CapabilityVolumesRead, storage.CapabilityAttachmentsRead, storage.CapabilitySnapshotsRead, storage.CapabilityCapacityRead, storage.CapabilityEventsRead, storage.CapabilityProviderHealth}
-	if a.writesEnabled && a.WriteSupported(ctx) {
+	writesEnabled, allowStorageClassDelete, allowPoolDelete := a.writesEnabled, a.allowStorageClassDelete, a.allowPoolDelete
+	if a.writePolicy != nil {
+		writesEnabled, allowStorageClassDelete, allowPoolDelete = a.writePolicy()
+	}
+	if writesEnabled && a.WriteSupported(ctx) {
 		capabilities = append(capabilities, storage.CapabilityCephClassCreate)
-		if a.allowStorageClassDelete {
+		if allowStorageClassDelete {
 			capabilities = append(capabilities, storage.CapabilityCephClassDelete)
 		}
 		if a.PoolVerificationAvailable() {
 			capabilities = append(capabilities, storage.CapabilityCephPoolCreate)
 		}
-		if a.allowPoolDelete && a.PoolVerificationAvailable() {
+		if allowPoolDelete && a.PoolVerificationAvailable() {
 			capabilities = append(capabilities, storage.CapabilityCephPoolDelete)
 		}
 	}

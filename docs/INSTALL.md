@@ -207,7 +207,66 @@ ready until the embedded manager answers, which is expected during startup.
 
 Browser → **highland-web** → **highland-api** → **longhorn-backend** (ClusterIP only).
 
-## 5. Existing Secret (recommended for GitOps)
+## 5. Optional admin-controlled storage writes
+
+Highland is read-only by default. To let administrators enable a reviewed subset of storage
+workflows at runtime, first install an explicit Kubernetes permission ceiling through Helm/GitOps:
+
+```yaml
+clusterIdentity: production-west
+adminPolicyControl:
+  enabled: true
+  installStorageWriterPermissions: true
+  ceiling:
+    portableKubernetesWrites: true
+    longhornWrites: true
+    rookCephWrites: false
+    allowCephStorageClassDelete: false
+    allowCephPoolDelete: false
+```
+
+After upgrade, an administrator uses **Admin → Storage change policy**. The initial runtime policy is
+disabled; checking a control does not grant new Kubernetes permissions. Common Kubernetes PVC and
+snapshot workflows must be enabled for explicit detected provider IDs (for example, `longhorn` or
+`rook-ceph`); provider-native Longhorn and Rook/Ceph controls remain independent. Broadening requires the
+exact cluster identity and `ENABLE STORAGE CHANGES`. Ceph pool deletion also requires a separately
+installed ceiling and `ENABLE CEPH POOL DELETE`.
+
+Verify the boundary:
+
+```bash
+kubectl -n highland-system get highlandpolicy highland -o yaml
+kubectl auth can-i create role \
+  --as=system:serviceaccount:highland-system:highland
+# must be "no"
+```
+
+Keep the ceiling minimal. Change it only through reviewed Helm/GitOps. Ordinary upgrades preserve
+the singleton policy spec rather than silently re-enabling or disabling runtime workflows.
+The chart packages `HighlandPolicy` in Helm's `crds/` directory so a fresh install registers the API
+before creating the singleton. It also retains an upgrade-tracked copy with
+`helm.sh/resource-policy: keep` for compatibility with early builds that rendered the CRD from
+`templates/`. This prevents an upgrade from interpreting that migration as CRD removal. Helm does
+not reliably upgrade CRD schemas; apply the reviewed file before upgrading workloads whenever the
+schema changes:
+
+```bash
+kubectl apply --server-side -f chart/crds/highlandpolicies.highland.io.yaml
+helm upgrade highland ./chart --namespace highland-system -f values-prod.yaml
+```
+
+Migration precedence is deliberate:
+
+- With `adminPolicyControl.enabled=false`, legacy `storage.writes.*` and
+  `providers.rookCeph.writes.*` startup flags remain authoritative.
+- The first install with policy control enabled seeds the singleton from those legacy values, bounded
+  by the new ceiling.
+- After the singleton exists, Helm upgrades preserve its `spec`; the Admin policy page becomes the
+  runtime source of truth.
+- Rolling back to a release without policy support returns authority to the legacy startup flags.
+  Disable new work and drain nonterminal operations before that rollback.
+
+## 6. Existing Secret (recommended for GitOps)
 
 ```bash
 kubectl -n highland-system create secret generic highland-admin \
@@ -221,7 +280,7 @@ helm upgrade --install highland ./chart -n highland-system \
 
 Create the Secret in `longhorn-system` instead when using embedded mode.
 
-## 6. Optional OIDC
+## 7. Optional OIDC
 
 Local username/password remains available when `config.localAlways: true` (the default). OIDC users
 map to admin/viewer roles through the `highland_role` claim or configured groups.
@@ -242,14 +301,14 @@ auth:
     clientSecret: "..."
 ```
 
-## 7. Local Docker (no cluster)
+## 8. Local Docker (no cluster)
 
 ```bash
 docker compose -f deploy/docker-compose.yaml up --build
 # http://127.0.0.1:8088  admin / highland
 ```
 
-## 8. Optional Redis (multi-replica session HA)
+## 9. Optional Redis (multi-replica session HA)
 
 ```yaml
 replicaCount:
@@ -274,8 +333,9 @@ benchmark:
 When enabled, benchmarks run as fio Jobs and provision a PVC using the StorageClass selected in the
 UI. `benchmark.storageClass` may set a default; blank requires an explicit selection. Results retain
 provider, CSI driver, class, PVC/PV, node, and topology identity. Failed PVC retention is admin-only
-and requires typing `RETAIN FAILED PVC`; cleanup is the default. When disabled, the offline synthetic
-mode remains available but creates no Kubernetes resources.
+and requires typing `RETAIN FAILED PVC`; cleanup is the default. When disabled, existing results
+remain readable but new executions are rejected. Highland never presents fabricated benchmark
+results as storage measurements.
 
 ## 10. Upgrade
 

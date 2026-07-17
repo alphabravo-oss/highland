@@ -208,7 +208,7 @@ export function OpenEBSProviderPage({ provider }: { provider: ProviderDescriptor
 
   return <div data-testid="openebs-provider-page">
     <PageHeader
-      title="OpenEBS"
+      title="Dashboard"
       description="Engine-aware health, local-storage risk, capacity, and Kubernetes ownership."
       actions={<Button type="button" variant="outline" onClick={() => void summary.refetch()}><RefreshCw size={15} /> Refresh</Button>}
     />

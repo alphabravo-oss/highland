@@ -22,6 +22,7 @@ common_values=(
 )
 
 helm lint "$CHART" "${common_values[@]}"
+helm show crds "$CHART" >"$tmp/crds.yaml"
 helm template highland "$CHART" \
   --namespace highland-system \
   "${common_values[@]}" >"$tmp/default.yaml"
@@ -68,6 +69,36 @@ helm template highland "$CHART" --namespace highland-system "${common_values[@]}
   --set metrics.grafanaDashboard.enabled=true >"$tmp/dashboard.yaml"
 helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
   --set benchmark.kubernetesJobEnabled=true >"$tmp/benchmark.yaml"
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set adminPolicyControl.enabled=true >"$tmp/policy-no-ceiling.yaml"
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --include-crds --set adminPolicyControl.enabled=true >"$tmp/policy-fresh-install.yaml"
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set storage.writes.enabled=true \
+  --set adminPolicyControl.enabled=true \
+  --set adminPolicyControl.installStorageWriterPermissions=true \
+  --set adminPolicyControl.ceiling.portableKubernetesWrites=true >"$tmp/policy-legacy-portable.yaml"
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set adminPolicyControl.enabled=true \
+  --set adminPolicyControl.installStorageWriterPermissions=true \
+  --set adminPolicyControl.ceiling.portableKubernetesWrites=true \
+  --set adminPolicyControl.ceiling.longhornWrites=true \
+  --set metrics.prometheusRule.enabled=true >"$tmp/policy-portable-longhorn.yaml"
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set storage.scope.mode=namespaces \
+  --set 'storage.scope.namespaces={tenant-a,tenant-b}' \
+  --set adminPolicyControl.enabled=true \
+  --set adminPolicyControl.installStorageWriterPermissions=true \
+  --set adminPolicyControl.ceiling.portableKubernetesWrites=true >"$tmp/policy-namespaces.yaml"
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set adminPolicyControl.enabled=true \
+  --set adminPolicyControl.installStorageWriterPermissions=true \
+  --set adminPolicyControl.ceiling.rookCephWrites=true \
+  --set adminPolicyControl.ceiling.allowCephStorageClassDelete=true \
+  --set adminPolicyControl.ceiling.allowCephPoolDelete=true \
+  --set providers.rookCeph.enabled=true \
+  --set providers.rookCeph.dashboard.url=https://rook-ceph-mgr-dashboard.rook-ceph.svc:8443 \
+  --set providers.rookCeph.dashboard.existingSecret=ceph-dashboard-user >"$tmp/policy-ceph.yaml"
 
 fail() {
   echo "ERROR: $*" >&2
@@ -106,6 +137,40 @@ not_contains "$tmp/default.yaml" "name: highland-namespaced-storage-writer"
 not_contains "$tmp/default.yaml" "name: highland-ceph-pool-writer"
 not_contains "$tmp/default.yaml" "name: highland-benchmark"
 not_contains "$tmp/default.yaml" "kind: PrometheusRule"
+not_contains "$tmp/default.yaml" "apiVersion: highland.io/v1alpha1"
+not_contains "$tmp/default.yaml" "name: highland-policy"
+contains "$tmp/crds.yaml" "name: highlandpolicies.highland.io"
+contains "$tmp/crds.yaml" "subresources:"
+contains "$tmp/crds.yaml" "x-kubernetes-validations:"
+contains "$tmp/crds.yaml" "portableKubernetesProviderIds:"
+contains "$tmp/crds.yaml" "self.portableKubernetesProviderIds.size() > 0"
+contains "$tmp/policy-fresh-install.yaml" "helm.sh/resource-policy: keep"
+contains "$tmp/policy-fresh-install.yaml" "x-kubernetes-list-type: set"
+contains "$tmp/policy-fresh-install.yaml" "self.portableKubernetesProviderIds.size() > 0"
+
+# Runtime policy control installs only the singleton access role until a
+# reviewed writer ceiling is explicitly installed.
+contains "$tmp/policy-no-ceiling.yaml" "apiVersion: highland.io/v1alpha1"
+contains "$tmp/policy-no-ceiling.yaml" "name: highland-policy"
+contains "$tmp/policy-no-ceiling.yaml" 'resourceNames: ["highland"]'
+not_contains "$tmp/policy-no-ceiling.yaml" "name: highland-namespaced-storage-writer"
+not_contains "$tmp/policy-no-ceiling.yaml" "name: highland-ceph-pool-writer"
+contains "$tmp/policy-no-ceiling.yaml" "portableKubernetesProviderIds: []"
+contains "$tmp/policy-legacy-portable.yaml" 'portableKubernetesProviderIds: ["*"]'
+crd_line="$(grep -n -m1 'name: highlandpolicies.highland.io' "$tmp/policy-fresh-install.yaml" | cut -d: -f1)"
+policy_line="$(grep -n -m1 'apiVersion: highland.io/v1alpha1' "$tmp/policy-fresh-install.yaml" | cut -d: -f1)"
+if [[ -z "$crd_line" || -z "$policy_line" || "$crd_line" -ge "$policy_line" ]]; then
+  fail "fresh install did not render the HighlandPolicy CRD before its singleton"
+fi
+contains "$tmp/policy-portable-longhorn.yaml" "name: highland-namespaced-storage-writer"
+contains "$tmp/policy-portable-longhorn.yaml" "name: highland-storage-operation-controller"
+contains "$tmp/policy-portable-longhorn.yaml" "alert: HighlandStoragePolicyNotObserved"
+not_contains "$tmp/policy-portable-longhorn.yaml" "name: highland-ceph-pool-writer"
+contains "$tmp/policy-namespaces.yaml" 'namespace: "tenant-a"'
+contains "$tmp/policy-namespaces.yaml" 'namespace: "tenant-b"'
+contains "$tmp/policy-namespaces.yaml" "name: highland-storage-writer"
+contains "$tmp/policy-ceph.yaml" "name: highland-ceph-storageclass-writer"
+contains "$tmp/policy-ceph.yaml" "name: highland-ceph-pool-writer"
 
 # Namespace mode grants only namespaced readers in the explicit allowlist and
 # deliberately omits PV/driver/attachment cluster metadata.
@@ -170,10 +235,35 @@ contains "$tmp/dashboard.yaml" "highland_storage_provider_up"
 contains "$tmp/benchmark.yaml" "name: highland-benchmark"
 contains "$tmp/benchmark.yaml" 'resources: ["persistentvolumeclaims"]'
 
-for rendered in "$tmp/default.yaml" "$tmp/namespaces.yaml" "$tmp/no-longhorn.yaml" "$tmp/ceph-read.yaml" "$tmp/recovery.yaml" "$tmp/ceph-create-only.yaml" "$tmp/writes.yaml" "$tmp/benchmark.yaml"; do
+for rendered in "$tmp/default.yaml" "$tmp/namespaces.yaml" "$tmp/no-longhorn.yaml" "$tmp/ceph-read.yaml" "$tmp/recovery.yaml" "$tmp/ceph-create-only.yaml" "$tmp/writes.yaml" "$tmp/benchmark.yaml" "$tmp/policy-no-ceiling.yaml" "$tmp/policy-portable-longhorn.yaml" "$tmp/policy-namespaces.yaml" "$tmp/policy-ceph.yaml"; do
   not_contains "$rendered" 'resources: ["*"]'
   not_contains "$rendered" 'verbs: ["*"]'
+  not_contains "$rendered" 'resources: ["roles"'
+  not_contains "$rendered" 'resources: ["clusterroles"'
+  not_contains "$rendered" 'resources: ["rolebindings"'
+  not_contains "$rendered" 'resources: ["clusterrolebindings"'
 done
+
+if helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set adminPolicyControl.installStorageWriterPermissions=true >"$tmp/invalid-policy-install.yaml" 2>&1; then
+  fail "writer ceiling unexpectedly rendered without policy control"
+fi
+contains "$tmp/invalid-policy-install.yaml" "requires adminPolicyControl.enabled"
+
+if helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set adminPolicyControl.enabled=true \
+  --set adminPolicyControl.ceiling.longhornWrites=true >"$tmp/invalid-policy-ceiling.yaml" 2>&1; then
+  fail "policy ceiling unexpectedly rendered without writer permission installation"
+fi
+contains "$tmp/invalid-policy-ceiling.yaml" "require installStorageWriterPermissions"
+
+if helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set adminPolicyControl.enabled=true \
+  --set adminPolicyControl.installStorageWriterPermissions=true \
+  --set adminPolicyControl.ceiling.allowCephPoolDelete=true >"$tmp/invalid-policy-parent.yaml" 2>&1; then
+  fail "Ceph pool delete ceiling unexpectedly rendered without Ceph writes"
+fi
+contains "$tmp/invalid-policy-parent.yaml" "requires the Rook/Ceph write ceiling"
 
 if helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
   --set-json 'networkPolicy.kubernetesApiCIDRs=[]' >"$tmp/invalid-network-policy.yaml" 2>&1; then

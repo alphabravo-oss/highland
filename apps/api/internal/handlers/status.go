@@ -19,6 +19,7 @@ func (h *HighlandAPI) Status(w http.ResponseWriter, r *http.Request) {
 
 	k8sVersion := ""
 	longhornVersion := ""
+	managerReachable := false
 	if h.K8s != nil {
 		if v, err := h.K8s.Discovery().ServerVersion(); err == nil {
 			k8sVersion = v.GitVersion
@@ -26,6 +27,9 @@ func (h *HighlandAPI) Status(w http.ResponseWriter, r *http.Request) {
 		if h.LonghornEnabled {
 			longhornVersion = longhornManagerVersion(ctx, h.K8s, h.longhornNamespace())
 		}
+	}
+	if h.LonghornEnabled {
+		managerReachable = h.managerReachable(ctx)
 	}
 
 	scrapeErr := ""
@@ -44,7 +48,7 @@ func (h *HighlandAPI) Status(w http.ResponseWriter, r *http.Request) {
 			"version":    orUnknown(longhornVersion),
 			"namespace":  h.longhornNamespace(),
 			"managerUrl": h.ManagerURL,
-			"reachable":  h.LonghornEnabled && h.managerReachable(ctx),
+			"reachable":  managerReachable,
 			"supported":  []string{"1.12.x", "1.11.x"},
 		},
 		"kubernetes": map[string]any{
@@ -52,7 +56,7 @@ func (h *HighlandAPI) Status(w http.ResponseWriter, r *http.Request) {
 		},
 		"components": map[string]any{
 			"api":            "ok",
-			"managerProxy":   componentStatus(h.LonghornEnabled, h.LonghornEnabled && h.managerReachable(ctx)),
+			"managerProxy":   componentStatus(h.LonghornEnabled, managerReachable),
 			"metricsScraper": componentStatus(h.LonghornEnabled, scrapeErr == ""),
 			"scrapeError":    scrapeErr,
 		},
@@ -64,6 +68,15 @@ func (h *HighlandAPI) Status(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.Storage != nil {
 		resp["storage"] = h.Storage.Status(r.Context())
+	}
+	if h.Policy != nil {
+		snapshot := h.Policy.Snapshot()
+		resp["storagePolicy"] = map[string]any{
+			"source": snapshot.Source, "effective": snapshot.Effective,
+			"generation": snapshot.Generation, "observedGeneration": snapshot.ObservedGeneration,
+			"observedAt": snapshot.ObservedAt, "stale": snapshot.Stale, "partial": snapshot.Partial,
+			"conditions": snapshot.Conditions,
+		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

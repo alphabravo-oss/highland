@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { highlandGet } from '@/api/client'
+import { useSseConnected } from '@/api/realtime'
 import { buildInsightQuery } from './insights'
 import type { StorageCondition } from './types'
 
@@ -125,7 +126,7 @@ export function canonicalGraphId(kind: string, provider: string, namespace: stri
 }
 
 export const storageContextClient = {
-  relationships: (query: RelationshipQuery) =>
+  relationships: (query: RelationshipQuery, signal?: AbortSignal) =>
     highlandGet<RelationshipGraph>(
       `/storage/relationships${buildInsightQuery({
         provider: query.provider,
@@ -133,23 +134,23 @@ export const storageContextClient = {
         namespace: query.namespace,
         depth: query.depth,
         limit: query.limit,
-      })}`,
+      })}`, { signal },
     ),
-  resourceRelationships: (kind: string, id: string, provider: string, depth = 4) =>
+  resourceRelationships: (kind: string, id: string, provider: string, depth = 4, signal?: AbortSignal) =>
     highlandGet<RelationshipGraph>(
       `/storage/resources/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/relationships${buildInsightQuery({
         provider,
         depth,
         limit: 200,
-      })}`,
+      })}`, { signal },
     ),
-  impact: (provider: string, kind: string, id: string, depth = 5) =>
+  impact: (provider: string, kind: string, id: string, depth = 5, signal?: AbortSignal) =>
     highlandGet<ImpactResult>(
-      `/storage/impact${buildInsightQuery({ provider, kind, id, depth })}`,
+      `/storage/impact${buildInsightQuery({ provider, kind, id, depth })}`, { signal },
     ),
-  drift: (provider: string, limit = 100) =>
+  drift: (provider: string, limit = 100, signal?: AbortSignal) =>
     highlandGet<DriftReport>(
-      `/providers/${encodeURIComponent(provider)}/drift${buildInsightQuery({ limit })}`,
+      `/providers/${encodeURIComponent(provider)}/drift${buildInsightQuery({ limit })}`, { signal },
     ),
 }
 
@@ -164,37 +165,41 @@ const contextKeys = {
 }
 
 export function useRelationships(query: RelationshipQuery) {
+  const connected = useSseConnected()
   return useQuery({
     queryKey: contextKeys.relationships(query),
-    queryFn: () => storageContextClient.relationships(query),
+    queryFn: ({ signal }) => storageContextClient.relationships(query, signal),
     enabled: Boolean(query.provider && query.kind),
-    refetchInterval: 30_000,
+    refetchInterval: connected ? 60_000 : 30_000,
   })
 }
 
 export function useResourceRelationships(provider: string, kind: string, id: string) {
+  const connected = useSseConnected()
   return useQuery({
     queryKey: contextKeys.resource(provider, kind, id),
-    queryFn: () => storageContextClient.resourceRelationships(kind, id, provider),
+    queryFn: ({ signal }) => storageContextClient.resourceRelationships(kind, id, provider, 4, signal),
     enabled: Boolean(provider && kind && id),
-    refetchInterval: 30_000,
+    refetchInterval: connected ? 60_000 : 30_000,
   })
 }
 
 export function useStorageImpact(provider: string, kind: string, id: string) {
+  const connected = useSseConnected()
   return useQuery({
     queryKey: contextKeys.impact(provider, kind, id),
-    queryFn: () => storageContextClient.impact(provider, kind, id),
+    queryFn: ({ signal }) => storageContextClient.impact(provider, kind, id, 5, signal),
     enabled: Boolean(provider && kind && id),
-    refetchInterval: 30_000,
+    refetchInterval: connected ? 60_000 : 30_000,
   })
 }
 
 export function useProviderDrift(provider: string) {
+  const connected = useSseConnected()
   return useQuery({
     queryKey: contextKeys.drift(provider),
-    queryFn: () => storageContextClient.drift(provider),
+    queryFn: ({ signal }) => storageContextClient.drift(provider, 100, signal),
     enabled: Boolean(provider),
-    refetchInterval: 30_000,
+    refetchInterval: connected ? 60_000 : 30_000,
   })
 }

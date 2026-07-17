@@ -5,6 +5,9 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
+RUN apk add --no-cache brotli \
+    && find /app/dist -type f \( -name '*.css' -o -name '*.html' -o -name '*.js' -o -name '*.json' -o -name '*.svg' -o -name '*.txt' -o -name '*.xml' \) -size +1024c -exec gzip -9 -k {} \; \
+    && find /app/dist -type f \( -name '*.css' -o -name '*.html' -o -name '*.js' -o -name '*.json' -o -name '*.svg' -o -name '*.txt' -o -name '*.xml' \) -size +1024c -exec brotli --quality=11 --keep {} \;
 
 # Unprivileged nginx: runs as uid 101 and listens on 8080 (no root needed to bind)
 FROM nginxinc/nginx-unprivileged:1.31-alpine

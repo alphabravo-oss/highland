@@ -163,7 +163,7 @@ func pvcName(bench string) string {
 	return jobName(bench) + "-pvc"
 }
 
-// RunJob provisions a Longhorn PVC (unless an existing PVC is referenced),
+// RunJob provisions a PVC from the selected StorageClass (unless an existing PVC is referenced),
 // launches an fio Job that benchmarks a file on that volume, waits for
 // completion (bounded), then parses the fio JSON logs into real results.
 // Any PVC it creates is cleaned up before returning.
@@ -294,6 +294,15 @@ func (k *K8sRunner) RunJob(ctx context.Context, b *Benchmark) (map[string]float6
 	if _, err := k.client.BatchV1().Jobs(k.namespace).Create(ctx, job, metav1.CreateOptions{}); err != nil {
 		return nil, "", fmt.Errorf("create job: %w", err)
 	}
+	// Results are captured from pod logs before RunJob returns, so the scratch
+	// Job does not need to remain for its full TTL. Removing it first lets
+	// Kubernetes release the pod's PVC reference and complete PVC/PV cleanup.
+	defer func() {
+		delCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		bg := metav1.DeletePropagationBackground
+		_ = k.client.BatchV1().Jobs(k.namespace).Delete(delCtx, name, metav1.DeleteOptions{PropagationPolicy: &bg})
+	}()
 
 	deadline := time.Now().Add(5 * time.Minute)
 	for time.Now().Before(deadline) {
@@ -318,7 +327,7 @@ func (k *K8sRunner) RunJob(ctx context.Context, b *Benchmark) (map[string]float6
 			runSucceeded = true
 			pvcNote := "existing PVC " + claimName
 			if createdPVC {
-				pvcNote = fmt.Sprintf("CSI PVC (%s, %s; %s)", sc, size, b.CSIDriver)
+				pvcNote = fmt.Sprintf("provisioned PVC (%s, %s; provisioner %s)", sc, size, b.CSIDriver)
 			}
 			return results, fmt.Sprintf("fio Job completed on %s", pvcNote), nil
 		}

@@ -102,6 +102,36 @@ test.describe('Phase 1 parity smoke', () => {
   })
 
   test('viewer cannot mutate volumes; admin can run benchmark', async ({ page }) => {
+    let benchmarkCreated = false
+    await page.route('**/api/v1/benchmarks**', async (route) => {
+      const benchmark = {
+        name: 'bench-e2e',
+        phase: 'Succeeded',
+        profile: 'quick',
+        storageClass: 'e2e-storage',
+        providerId: 'e2e-csi',
+        createdAt: new Date().toISOString(),
+        results: { seqReadMBps: 100 },
+      }
+      const created = route.request().method() === 'POST'
+      if (created) benchmarkCreated = true
+      await route.fulfill({
+        status: created ? 201 : 200,
+        contentType: 'application/json',
+        body: JSON.stringify(created
+          ? benchmark
+          : {
+              data: benchmarkCreated ? [benchmark] : [],
+              page: { limit: 50, total: benchmarkCreated ? 1 : 0 },
+              meta: {
+                benchmarkMode: 'kubernetes-job',
+                observedAt: new Date().toISOString(),
+                stale: false,
+                partial: false,
+              },
+            }),
+      })
+    })
     await page.route('**/api/v1/storage/classes**', async (route) => {
       await route.fulfill({
         status: 200,

@@ -23,9 +23,11 @@ export function ProviderComparisonPanel({
   isLoading = false,
   error,
   title = 'Storage placement guidance',
+  compact = false,
 }: AsyncPanelProps & {
   comparison?: ProviderComparison
   title?: string
+  compact?: boolean
 }) {
   if (isLoading) return <GuidanceSkeleton title={title} />
   if (error) return <GuidanceError title="Provider comparison unavailable" error={error} />
@@ -50,14 +52,38 @@ export function ProviderComparisonPanel({
         {comparison.conditions?.length ? (
           <GuidanceConditions title="Comparison limitations" conditions={comparison.conditions} />
         ) : null}
-        <div className="grid gap-4 xl:grid-cols-2">
-          {comparison.assessments.map((assessment) => (
-            <CandidateCard
-              key={`${assessment.candidate.providerId}:${assessment.candidate.storageClass}`}
-              assessment={assessment}
-            />
-          ))}
-        </div>
+        {compact ? (
+          <div className="overflow-x-auto rounded-md border border-[var(--color-border)]">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-[var(--color-muted)]/40 text-xs text-[var(--color-muted-foreground)]">
+                <tr>
+                  <th className="px-3 py-2 font-medium">StorageClass</th>
+                  <th className="px-3 py-2 font-medium">Eligibility</th>
+                  <th className="px-3 py-2 font-medium">Health</th>
+                  <th className="px-3 py-2 font-medium">Headroom</th>
+                  <th className="px-3 py-2 font-medium">Policy</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparison.assessments.map((assessment) => (
+                  <CompactCandidateRow
+                    key={`${assessment.candidate.providerId}:${assessment.candidate.storageClass}`}
+                    assessment={assessment}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {comparison.assessments.map((assessment) => (
+              <CandidateCard
+                key={`${assessment.candidate.providerId}:${assessment.candidate.storageClass}`}
+                assessment={assessment}
+              />
+            ))}
+          </div>
+        )}
         {comparison.observedAt ? (
           <p className="text-xs text-[var(--color-muted-foreground)]">
             Facts last observed {formatTimestamp(comparison.observedAt)}
@@ -65,6 +91,31 @@ export function ProviderComparisonPanel({
         ) : null}
       </CardContent>
     </Card>
+  )
+}
+
+function CompactCandidateRow({ assessment }: { assessment: CandidateAssessment }) {
+  const candidate = assessment.candidate
+  const failed = assessment.criteria.filter((criterion) => criterion.state === 'unsupported')
+  const unknown = assessment.criteria.filter((criterion) => criterion.state === 'unknown')
+  const policy = failed.length
+    ? failed.map((criterion) => criterion.reason).join('; ')
+    : unknown.length
+      ? `${unknown.length} requirement${unknown.length === 1 ? '' : 's'} unknown`
+      : 'All requested requirements met'
+  return (
+    <tr className="border-t border-[var(--color-border)] first:border-t-0">
+      <td className="px-3 py-3">
+        <div className="font-medium">{candidate.storageClass}</div>
+        <div className="text-xs text-[var(--color-muted-foreground)]">
+          {candidate.testedProfile.driver || candidate.providerName || candidate.providerId}
+        </div>
+      </td>
+      <td className="px-3 py-3"><Badge tone={eligibilityTone(assessment.eligibility)}>{assessment.eligibility}</Badge></td>
+      <td className="px-3 py-3">{candidate.health?.status || 'Unavailable'}</td>
+      <td className="px-3 py-3 tabular-nums">{candidate.headroom ? `${candidate.headroom.percent.toFixed(1)}%` : 'Unavailable'}</td>
+      <td className="max-w-md px-3 py-3 text-xs text-[var(--color-muted-foreground)]">{policy}</td>
+    </tr>
   )
 }
 

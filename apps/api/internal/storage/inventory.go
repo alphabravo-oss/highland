@@ -485,11 +485,6 @@ func (i *Inventory) Drivers(ctx context.Context) ([]DriverSummary, error) {
 			Name: name, ProviderID: i.registry.ResolveDriver(name), SupportLevel: SupportDetected,
 			NodeCount: nodeCounts[name], StorageClassCount: classCounts[name], PersistentVolCount: volumeCounts[name],
 		}
-		if provider, ok := i.registry.Provider(summary.ProviderID); ok {
-			if desc, err := provider.Descriptor(ctx); err == nil {
-				summary.SupportLevel = desc.SupportLevel
-			}
-		}
 		if obj != nil {
 			summary.AttachRequired = obj.Spec.AttachRequired
 			summary.PodInfoOnMount = obj.Spec.PodInfoOnMount
@@ -510,19 +505,58 @@ func (i *Inventory) Drivers(ctx context.Context) ([]DriverSummary, error) {
 		}
 		out = append(out, summary)
 	}
+	names := make([]string, 0, len(out))
+	for index := range out {
+		names = append(names, out[index].Name)
+	}
+	descriptors, _, _ := i.registry.DescriptorSnapshot(ctx, names)
+	support := make(map[string]SupportLevel, len(descriptors))
+	for _, descriptor := range descriptors {
+		support[descriptor.ID] = descriptor.SupportLevel
+	}
+	for index := range out {
+		if level, ok := support[out[index].ProviderID]; ok {
+			out[index].SupportLevel = level
+		}
+	}
 	sort.Slice(out, func(a, b int) bool { return out[a].Name < out[b].Name })
 	return out, nil
 }
 
 func (i *Inventory) DiscoveredDriverNames() ([]string, error) {
-	drivers, err := i.Drivers(context.Background())
-	if err != nil {
+	if err := i.requireReady(); err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(drivers))
-	for _, driver := range drivers {
-		names = append(names, driver.Name)
+	namesSet := map[string]struct{}{}
+	for _, obj := range informerObjects(i.driver, nil) {
+		if driver, ok := obj.(*storagev1.CSIDriver); ok && driver.Name != "" {
+			namesSet[driver.Name] = struct{}{}
+		}
 	}
+	for _, obj := range informerObjects(i.sc, nil) {
+		if class, ok := obj.(*storagev1.StorageClass); ok && class.Provisioner != "" {
+			namesSet[class.Provisioner] = struct{}{}
+		}
+	}
+	for _, obj := range informerObjects(i.pv, nil) {
+		if pv, ok := obj.(*corev1.PersistentVolume); ok && pv.Spec.CSI != nil && pv.Spec.CSI.Driver != "" {
+			namesSet[pv.Spec.CSI.Driver] = struct{}{}
+		}
+	}
+	for _, obj := range informerObjects(i.node, nil) {
+		if node, ok := obj.(*storagev1.CSINode); ok {
+			for _, driver := range node.Spec.Drivers {
+				if driver.Name != "" {
+					namesSet[driver.Name] = struct{}{}
+				}
+			}
+		}
+	}
+	names := make([]string, 0, len(namesSet))
+	for name := range namesSet {
+		names = append(names, name)
+	}
+	sort.Strings(names)
 	return names, nil
 }
 

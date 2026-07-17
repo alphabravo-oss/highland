@@ -158,10 +158,11 @@ export type StorageEvent = {
 }
 
 export type PageMeta = { limit: number; continue?: string; total: number }
-export type StoragePage<T> = { data: T[]; page: PageMeta; conditions?: StorageCondition[] }
+export type ResponseMeta = { observedAt: string; stale: boolean; partial: boolean; requestId?: string }
+export type StoragePage<T> = { data: T[]; page: PageMeta; meta?: ResponseMeta; conditions?: StorageCondition[] }
 export type ProviderList = {
   data: ProviderDescriptor[]
-  meta: { lastSync: string; snapshotApi: boolean; conditions?: StorageCondition[] }
+  meta: { lastSync: string; snapshotApi: boolean; observedAt?: string; stale?: boolean; partial?: boolean; requestId?: string; conditions?: StorageCondition[] }
 }
 
 export type StorageFilters = {

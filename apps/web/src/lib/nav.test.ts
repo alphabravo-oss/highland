@@ -62,8 +62,10 @@ describe('workspace navigation', () => {
   })
 
   it('shows the legacy operational tree only in the Longhorn workspace', () => {
-    const ids = itemIds(navigationForWorkspace(longhorn, 'admin'))
-    expect(ids).toEqual(expect.arrayContaining(['longhorn-dashboard', 'volumes', 'nodes', 'backups', 'backing-images', 'support-bundle', 'settings']))
+    const groups = navigationForWorkspace(longhorn, 'admin')
+    const ids = itemIds(groups)
+    expect(ids).toEqual(expect.arrayContaining(['longhorn-dashboard', 'longhorn-provider-details', 'volumes', 'nodes', 'backups', 'backing-images', 'support-bundle', 'settings']))
+    expect(groups.flatMap((group) => group.items).find((item) => item.id === 'longhorn-provider-details')?.label).toBe('Provider details')
     expect(ids.some((id) => id.endsWith('-pools'))).toBe(false)
     expect(ids).not.toContain('storage-providers')
   })
@@ -71,7 +73,8 @@ describe('workspace navigation', () => {
   it('shows Ceph resources and provider-filtered Kubernetes inventory only for Rook/Ceph', () => {
     const groups = navigationForWorkspace(rook, 'operator')
     const ids = itemIds(groups)
-    expect(ids).toEqual(expect.arrayContaining(['rook-ceph-pools', 'rook-ceph-osds', 'rook-ceph-filesystems', 'rook-ceph-rbd-images', 'rook-ceph-claims']))
+    expect(ids).toEqual(expect.arrayContaining(['rook-ceph-dashboard', 'rook-ceph-pools', 'rook-ceph-osds', 'rook-ceph-filesystems', 'rook-ceph-rbd-images', 'rook-ceph-claims']))
+    expect(groups.flatMap((group) => group.items).find((item) => item.id === 'rook-ceph-dashboard')?.label).toBe('Dashboard')
     expect(ids).not.toContain('volumes')
     expect(ids).not.toContain('backups')
     const claims = groups.flatMap((group) => group.items).find((item) => item.id === 'rook-ceph-claims')
@@ -80,7 +83,7 @@ describe('workspace navigation', () => {
 
   it('keeps a detected CSI workspace capability-scoped', () => {
     const ids = itemIds(navigationForWorkspace(generic, 'viewer'))
-    expect(ids).toEqual(expect.arrayContaining(['csi-example-provider-overview', 'csi-example-classes', 'csi-example-claims', 'csi-example-volumes', 'csi-example-capacity']))
+    expect(ids).toEqual(expect.arrayContaining(['csi-example-dashboard', 'csi-example-classes', 'csi-example-claims', 'csi-example-volumes', 'csi-example-capacity']))
     expect(ids).not.toContain('csi-example-snapshots')
     expect(ids).not.toContain('admin')
   })
@@ -89,9 +92,10 @@ describe('workspace navigation', () => {
     const groups = navigationForWorkspace(openebs, 'operator')
     const ids = itemIds(groups)
     expect(ids).toEqual(expect.arrayContaining([
-      'openebs-components', 'openebs-hostpath-volumes', 'openebs-zfs-nodes',
+      'openebs-dashboard', 'openebs-components', 'openebs-hostpath-volumes', 'openebs-zfs-nodes',
       'openebs-zfs-volumes', 'openebs-zfs-snapshots', 'openebs-claims',
     ]))
+    expect(groups.flatMap((group) => group.items).find((item) => item.id === 'openebs-dashboard')?.label).toBe('Dashboard')
     expect(ids).not.toContain('openebs-disk-pools')
     expect(ids).not.toContain('openebs-lvm-volumes')
     expect(groups.find((group) => group.id === 'openebs-hostpath')?.label).toBe('HostPath')
@@ -124,6 +128,10 @@ describe('workspace navigation', () => {
     expect(findNavItem('/admin')?.label).toBe('Administration')
     expect(findNavItem('/admin/users')?.label).toBe('Users')
     expect(findNavItem('/volumes/vol-1')?.id).toBe('volumes')
+    expect(findNavItem('/storage/providers/longhorn')?.label).toBe('Provider details')
+    expect(findNavItem('/storage/providers/rook-ceph')?.label).toBe('Dashboard')
+    expect(findNavItem('/storage/providers/openebs')?.label).toBe('Dashboard')
+    expect(findNavItem('/storage/providers/csi-example')?.label).toBe('Dashboard')
     expect(findNavItem('/storage/providers/rook-ceph/ceph/pools/replicapool')?.label).toBe('Block Pools')
     expect(findNavItem('/storage/providers/openebs/openebs/hostpath-volumes')?.label).toBe('Hostpath Volumes')
   })

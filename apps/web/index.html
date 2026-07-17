@@ -18,11 +18,56 @@
           document.documentElement.classList.toggle('dark', dark);
           document.documentElement.dataset.theme = stored;
         } catch (_) {}
+        var pending = {};
+        function warm(path) {
+          if (!pending[path]) {
+            pending[path] = fetch(path, { credentials: 'include' }).catch(function () { return null; });
+          }
+        }
+        window.__highlandBootstrap = pending;
+        warm('/auth/me');
+        var path = location.pathname;
+        if (path === '/benchmarks') {
+          warm('/api/v1/benchmarks?fields=summary&limit=50');
+          warm('/api/v1/storage/classes?limit=500');
+          warm('/api/v1/lh/nodes');
+        } else if (path === '/status') {
+          warm('/api/v1/status');
+        } else if (path.indexOf('/storage') === 0) {
+          warm('/api/v1/storage/providers');
+        }
       })();
     </script>
+    <style>
+      #highland-boot {
+        align-items: center;
+        background: #f8fafc;
+        color: #475569;
+        display: flex;
+        font: 500 14px/1.5 ui-sans-serif, system-ui, sans-serif;
+        inset: 0;
+        justify-content: center;
+        position: fixed;
+      }
+      .dark #highland-boot { background: #09090b; color: #a1a1aa; }
+      #highland-boot > div { align-items: center; display: flex; gap: 12px; }
+      #highland-boot span {
+        animation: highland-pulse 1.4s ease-in-out infinite;
+        background: #2563eb;
+        border-radius: 999px;
+        height: 10px;
+        width: 10px;
+      }
+      @keyframes highland-pulse { 50% { opacity: .35; transform: scale(.8); } }
+      @media (prefers-reduced-motion: reduce) { #highland-boot span { animation: none; } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="highland-boot" role="status" aria-live="polite">
+        <div><span aria-hidden="true"></span>Loading Highland…</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

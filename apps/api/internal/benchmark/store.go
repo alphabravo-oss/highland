@@ -55,6 +55,11 @@ type Store struct {
 	items   map[string]*Benchmark
 	runner  *K8sRunner
 	persist Persister
+	publish ChangePublisher
+}
+
+type ChangePublisher interface {
+	PublishHighlandChange(eventType string, keys []string, resource, name string, entity any)
 }
 
 // NewStore creates a store; runner may be nil (offline synthetic only).
@@ -67,6 +72,21 @@ func (s *Store) SetPersister(p Persister) {
 	s.mu.Lock()
 	s.persist = p
 	s.mu.Unlock()
+}
+
+func (s *Store) SetPublisher(p ChangePublisher) {
+	s.mu.Lock()
+	s.publish = p
+	s.mu.Unlock()
+}
+
+func (s *Store) publishItem(eventType, name string, entity any) {
+	s.mu.RLock()
+	p := s.publish
+	s.mu.RUnlock()
+	if p != nil {
+		p.PublishHighlandChange(eventType, []string{"benchmarks"}, "benchmarks", name, entity)
+	}
 }
 
 // Load hydrates in-memory items from the persister (call once at startup).
@@ -170,16 +190,20 @@ func (s *Store) Create(b Benchmark) (*Benchmark, error) {
 	s.persistItem(b.Name)
 
 	cp := b
+	s.publishItem("benchmark.created", b.Name, &cp)
 	go s.run(b.Name)
 	return &cp, nil
 }
 
 func (s *Store) Delete(name string) bool {
 	s.mu.Lock()
-	_, ok := s.items[name]
+	deleted, ok := s.items[name]
 	delete(s.items, name)
 	s.mu.Unlock()
 	s.persistItem(name) // item gone -> removes the persisted record
+	if ok {
+		s.publishItem("benchmark.deleted", name, deleted)
+	}
 	if ok && s.runner != nil && s.runner.Available() {
 		// Tear down any cluster resources (Job + PVC we created) for this run.
 		go func() {
@@ -200,21 +224,13 @@ func (s *Store) run(name string) {
 	}
 	b.Phase = PhaseRunning
 	mode := b.Mode
-	req := Benchmark{
-		Name:            b.Name,
-		NodeName:        b.NodeName,
-		Profile:         b.Profile,
-		StorageClass:    b.StorageClass,
-		Size:            b.Size,
-		PVCName:         b.PVCName,
-		AccessMode:      b.AccessMode,
-		VolumeMode:      b.VolumeMode,
-		RetainFailedPVC: b.RetainFailedPVC,
-		FioCmd:          b.FioCmd,
-	}
+	req := executionRequest(b)
 	profile := b.Profile
 	s.mu.Unlock()
 	s.persistItem(name) // Running
+	if running, found := s.Get(name); found {
+		s.publishItem("benchmark.running", name, running)
+	}
 
 	if mode == "kubernetes-job" && s.runner != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
@@ -240,6 +256,13 @@ func (s *Store) run(name string) {
 		}
 		s.mu.Unlock()
 		s.persistItem(name)
+		if completed, found := s.Get(name); found {
+			eventType := "benchmark.succeeded"
+			if completed.Phase == PhaseFailed {
+				eventType = "benchmark.failed"
+			}
+			s.publishItem(eventType, name, completed)
+		}
 		return
 	}
 
@@ -280,6 +303,26 @@ func (s *Store) run(name string) {
 	}
 	s.mu.Unlock()
 	s.persistItem(name)
+	if completed, found := s.Get(name); found {
+		s.publishItem("benchmark.succeeded", name, completed)
+	}
+}
+
+func executionRequest(b *Benchmark) Benchmark {
+	return Benchmark{
+		Name:            b.Name,
+		NodeName:        b.NodeName,
+		Profile:         b.Profile,
+		StorageClass:    b.StorageClass,
+		Size:            b.Size,
+		PVCName:         b.PVCName,
+		CSIDriver:       b.CSIDriver,
+		ProviderID:      b.ProviderID,
+		AccessMode:      b.AccessMode,
+		VolumeMode:      b.VolumeMode,
+		RetainFailedPVC: b.RetainFailedPVC,
+		FioCmd:          b.FioCmd,
+	}
 }
 
 // fioCmdFor builds an fio command that runs four sequential (stonewalled) jobs —

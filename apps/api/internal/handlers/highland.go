@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/highland-io/highland/apps/api/internal/audit"
 	"github.com/highland-io/highland/apps/api/internal/auth"
 	"github.com/highland-io/highland/apps/api/internal/benchmark"
 	"github.com/highland-io/highland/apps/api/internal/metrics"
 	"github.com/highland-io/highland/apps/api/internal/middleware"
+	"github.com/highland-io/highland/apps/api/internal/policy"
 	"github.com/highland-io/highland/apps/api/internal/storage"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -38,6 +40,7 @@ type HighlandAPI struct {
 	SessionBackend                  string
 	BenchmarkMode                   string
 	Storage                         *storage.HTTPAPI
+	Policy                          interface{ Snapshot() policy.Snapshot }
 }
 
 // RevealCephDashboardCredential POST /api/v1/admin/providers/rook-ceph/dashboard-credential/reveal
@@ -244,12 +247,58 @@ func (h *HighlandAPI) AllMetrics(w http.ResponseWriter, r *http.Request) {
 
 // ListBenchmarks GET /api/v1/benchmarks
 func (h *HighlandAPI) ListBenchmarks(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"data": h.Benchmarks.List()})
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 200 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be between 1 and 200"})
+			return
+		}
+		limit = parsed
+	}
+	offset, err := storage.DecodePageOffset(r.URL.Query().Get("continue"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	all := h.Benchmarks.List()
+	if offset > len(all) {
+		offset = len(all)
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	data := append([]benchmark.Benchmark(nil), all[offset:end]...)
+	if r.URL.Query().Get("fields") == "summary" {
+		for index := range data {
+			data[index].FioCmd = ""
+		}
+	}
+	page := storage.PageMeta{Limit: limit, Total: len(all)}
+	if end < len(all) {
+		page.Continue = storage.EncodePageOffset(end)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data": data,
+		"page": page,
+		"meta": map[string]any{
+			"observedAt": time.Now().UTC(), "stale": false, "partial": false,
+			"benchmarkMode": orUnknown(h.BenchmarkMode), "requestId": chimw.GetReqID(r.Context()),
+		},
+	})
 }
 
 // CreateBenchmark POST /api/v1/benchmarks
 func (h *HighlandAPI) CreateBenchmark(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.UserFromContext(r.Context())
+	if h.BenchmarkMode != "kubernetes-job" {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": "real benchmark execution is disabled; enable benchmark.kubernetesJobEnabled to run fio Jobs",
+			"mode":  orUnknown(h.BenchmarkMode),
+		})
+		return
+	}
 	var body benchmark.Benchmark
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})

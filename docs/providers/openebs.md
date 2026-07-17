@@ -1,5 +1,9 @@
 # OpenEBS provider
 
+OpenEBS remains native read-only. Provider ID `openebs` may be selected for
+portable Kubernetes PVC/snapshot workflows supported by its detected CSI
+driver; this does not expose an OpenEBS-native mutation API.
+
 The OpenEBS provider is an opt-in, read-only managed provider. It discovers installed engines from
 documented provisioners, CSI drivers, controller workloads, and OpenEBS CRDs.
 

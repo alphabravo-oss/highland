@@ -1,0 +1,28 @@
+apiVersion: highland.io/v1alpha1
+kind: HighlandPolicy
+metadata:
+  name: highland
+status:
+  effective:
+    acceptNewOperations: true
+    portableKubernetesWrites: false
+    portableKubernetesProviderIds: []
+    longhornWrites: false
+    rookCephWrites: false
+    allowCephStorageClassDelete: false
+    allowCephPoolDelete: false
+  observedGeneration: 2
+  conditions:
+    - type: PermissionCeilingSatisfied
+      status: "False"
+      reason: RequestedCapabilityNotInstalled
+      message: portableKubernetesWrites is requested but outside the Helm-installed ceiling
+spec:
+  storage:
+    acceptNewOperations: true
+    portableKubernetesWrites: true
+    portableKubernetesProviderIds: [longhorn]
+    longhornWrites: false
+    rookCephWrites: false
+    allowCephStorageClassDelete: false
+    allowCephPoolDelete: false

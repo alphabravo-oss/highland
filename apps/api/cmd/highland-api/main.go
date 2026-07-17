@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,12 +17,14 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/handlers"
 	"github.com/highland-io/highland/apps/api/internal/kube"
 	"github.com/highland-io/highland/apps/api/internal/observability"
+	"github.com/highland-io/highland/apps/api/internal/policy"
 	longhornprovider "github.com/highland-io/highland/apps/api/internal/providers/longhorn"
 	openebsprovider "github.com/highland-io/highland/apps/api/internal/providers/openebs"
 	"github.com/highland-io/highland/apps/api/internal/providers/rookceph"
 	"github.com/highland-io/highland/apps/api/internal/storage"
 	storageoperations "github.com/highland-io/highland/apps/api/internal/storage/operations"
 	"github.com/highland-io/highland/apps/api/internal/watch"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -114,9 +117,13 @@ func main() {
 		k8sRunner = benchmark.NewK8sRunner(kubeClients.Core, kubeClients.RESTConfig)
 	}
 	benchStore := benchmark.NewStore(k8sRunner)
-	benchmarkMode := "synthetic"
+	benchmarkMode := "disabled"
 	var k8sClient kubernetes.Interface
 	var hub *watch.Hub
+	runtimeNamespace := os.Getenv("HIGHLAND_NAMESPACE")
+	if runtimeNamespace == "" {
+		runtimeNamespace = "highland-system"
+	}
 	watchCtx, cancelWatch := context.WithCancel(context.Background())
 	defer cancelWatch()
 	if kubeClients != nil {
@@ -129,6 +136,46 @@ func main() {
 		hub.SetMetrics(obsMetrics)
 		obsMetrics.RegisterSSEClientSource(hub.ClientCount)
 		hub.Start(watchCtx)
+		benchStore.SetPublisher(hub)
+	}
+	storageRegistry := storage.NewRegistry()
+	staticPolicy := policy.StoragePolicy{
+		AcceptNewOperations:         cfg.StorageWritesEnabled,
+		PortableKubernetesWrites:    cfg.StorageWritesEnabled,
+		LonghornWrites:              cfg.StorageWritesEnabled,
+		RookCephWrites:              cfg.StorageWritesEnabled && cfg.RookCephWritesEnabled,
+		AllowCephStorageClassDelete: cfg.StorageWritesEnabled && cfg.RookCephWritesEnabled && cfg.RookCephAllowStorageClassDelete,
+		AllowCephPoolDelete:         cfg.StorageWritesEnabled && cfg.RookCephWritesEnabled && cfg.RookCephAllowPoolDelete,
+	}
+	policyCeiling := policy.Ceiling{
+		PortableKubernetesWrites:    cfg.StorageWritesEnabled,
+		LonghornWrites:              cfg.StorageWritesEnabled,
+		RookCephWrites:              cfg.StorageWritesEnabled && cfg.RookCephWritesEnabled,
+		AllowCephStorageClassDelete: cfg.StorageWritesEnabled && cfg.RookCephWritesEnabled && cfg.RookCephAllowStorageClassDelete,
+		AllowCephPoolDelete:         cfg.StorageWritesEnabled && cfg.RookCephWritesEnabled && cfg.RookCephAllowPoolDelete,
+	}
+	if cfg.AdminPolicyControlEnabled {
+		policyCeiling = policy.Ceiling{
+			PortableKubernetesWrites:    cfg.PolicyCeilingPortableWrites,
+			LonghornWrites:              cfg.PolicyCeilingLonghornWrites,
+			RookCephWrites:              cfg.PolicyCeilingRookCephWrites,
+			AllowCephStorageClassDelete: cfg.PolicyCeilingCephSCDelete,
+			AllowCephPoolDelete:         cfg.PolicyCeilingCephPoolDelete,
+		}
+	}
+	var policyManager *policy.Manager
+	policyManager, err = policy.NewManager(policy.Config{
+		Dynamic: kubeClientsDynamic(kubeClients), Namespace: runtimeNamespace,
+		Enabled: cfg.AdminPolicyControlEnabled, Ceiling: policyCeiling,
+		StaticRequested: staticPolicy, Publisher: hub, Observer: obsMetrics,
+	})
+	if err != nil {
+		slog.Error("storage policy manager init failed", "err", err)
+		os.Exit(1)
+	}
+	policyManager.SetOnChange(storageRegistry.InvalidateDescriptors)
+	if startErr := policyManager.Start(watchCtx); startErr != nil {
+		slog.Warn("runtime storage policy unavailable; writes fail closed", "err", startErr)
 	}
 	if k8sRunner != nil && k8sRunner.Available() {
 		// Persist benchmark records as ConfigMaps (etcd) so they survive restarts.
@@ -137,12 +184,11 @@ func main() {
 		benchmarkMode = "kubernetes-job"
 		slog.Info("benchmark mode", "mode", "kubernetes-job", "persistence", "configmap")
 	} else if cfg.KubernetesBenchmarkEnabled {
-		slog.Info("benchmark mode", "mode", "synthetic", "persistence", "memory")
+		benchmarkMode = "unavailable"
+		slog.Warn("benchmark mode", "mode", benchmarkMode, "reason", "Kubernetes client unavailable")
 	} else {
-		benchmarkMode = "synthetic-read-only"
 		slog.Info("benchmark mode", "mode", benchmarkMode, "reason", "Kubernetes Job/PVC workflow disabled")
 	}
-	storageRegistry := storage.NewRegistry()
 	if longhornAdapter != nil {
 		if registerErr := storageRegistry.Register(context.Background(), longhornAdapter); registerErr != nil {
 			slog.Error("longhorn provider registration failed", "err", registerErr)
@@ -192,6 +238,13 @@ func main() {
 			ID: "rook-ceph", Namespace: cfg.RookCephNamespace, ClusterName: cfg.RookCephClusterName,
 			Dynamic: kubeClients.Dynamic, Discovery: kubeClients.Discovery, Dashboard: dashboard, DashboardPublicURL: cfg.RookCephDashboardPublicURL, Prometheus: prometheus, Publisher: hub, Observer: obsMetrics,
 			WritesEnabled: cfg.StorageWritesEnabled && cfg.RookCephWritesEnabled, AllowStorageClassDelete: cfg.RookCephAllowStorageClassDelete, AllowPoolDelete: cfg.RookCephAllowPoolDelete,
+			WritePolicy: func() (bool, bool, bool) {
+				if policyManager == nil {
+					return false, false, false
+				}
+				effective := policyManager.Snapshot().Effective
+				return effective.AcceptNewOperations && effective.RookCephWrites, effective.AllowCephStorageClassDelete, effective.AllowCephPoolDelete
+			},
 		})
 		if err != nil {
 			slog.Error("Rook/Ceph provider init failed", "err", err)
@@ -206,6 +259,12 @@ func main() {
 			slog.Warn("Rook/Ceph watches unavailable", "err", startErr)
 		}
 	}
+	// Warm managed provider descriptors before serving navigation requests.
+	// Discovered generic CSI drivers are merged asynchronously after inventory
+	// sync; the shell can use this managed snapshot immediately.
+	descriptorContext, cancelDescriptors := context.WithTimeout(context.Background(), 4*time.Second)
+	_, _, _ = storageRegistry.DescriptorSnapshot(descriptorContext, nil)
+	cancelDescriptors()
 	if k8sRunner != nil {
 		k8sRunner.SetProviderResolver(storageRegistry.ResolveDriver)
 	}
@@ -245,12 +304,14 @@ func main() {
 		return result
 	})
 	var storageOperationsAPI *storageoperations.API
+	var operationStore *storageoperations.Store
 	if cfg.StorageEnabled && kubeClients != nil {
-		operationNamespace := os.Getenv("HIGHLAND_NAMESPACE")
-		if operationNamespace == "" {
-			operationNamespace = "highland-system"
+		operationNamespace := runtimeNamespace
+		var storeErr error
+		operationStore, storeErr = storageoperations.NewStore(kubeClients.Dynamic, operationNamespace)
+		if storeErr == nil {
+			operationStore.SetPublisher(hub)
 		}
-		operationStore, storeErr := storageoperations.NewStore(kubeClients.Dynamic, operationNamespace)
 		var operationSafety storageoperations.SafetyVerifier
 		if rookCephAdapter != nil {
 			operationSafety = rookCephAdapter
@@ -260,6 +321,14 @@ func main() {
 			Secret: secret, RookNamespace: cfg.RookCephNamespace, RookClusterName: cfg.RookCephClusterName,
 			Safety: operationSafety, PlanDryRun: true, ImpactAnalyzer: storageAPI.ImpactAnalyzer(),
 			ProviderForDriver: storageRegistry.ResolveDriver, RequireImpactAnalysis: true,
+			Longhorn: storageoperations.NewLonghornManagerClient(cfg.ManagerURL),
+			PolicyVersion: func() string {
+				if policyManager == nil {
+					return "static"
+				}
+				snapshot := policyManager.Snapshot()
+				return fmt.Sprintf("%s:%s:%d", snapshot.Source, snapshot.ResourceVersion, snapshot.ObservedGeneration)
+			},
 		})
 		if storeErr != nil || plannerErr != nil {
 			slog.Warn("durable storage operations unavailable", "storeErr", storeErr, "plannerErr", plannerErr)
@@ -307,14 +376,44 @@ func main() {
 			operationController, controllerErr := storageoperations.NewController(kubeClients.Core, kubeClients.Dynamic, operationStore, operationPlanner, operationNamespace, obsMetrics, auditStore)
 			if controllerErr != nil {
 				slog.Warn("storage operation controller unavailable", "err", controllerErr)
-			} else if cfg.StorageWritesEnabled || cfg.StorageOperationRecoveryEnabled {
+			} else if cfg.StorageWritesEnabled || cfg.StorageOperationRecoveryEnabled || (cfg.AdminPolicyControlEnabled && cfg.AdminPolicyInstallWriterRBAC) {
 				operationController.Start(watchCtx)
 			}
 			var cephVersionCheck func(context.Context) bool
 			if rookCephAdapter != nil {
 				cephVersionCheck = rookCephAdapter.WriteSupported
 			}
-			storageOperationsAPI = storageoperations.NewAPI(storageoperations.APIConfig{Store: operationStore, Planner: operationPlanner, Audit: auditStore, Observer: obsMetrics, WritesEnabled: cfg.StorageWritesEnabled, CephWritesEnabled: cfg.RookCephWritesEnabled, AllowStorageClassDelete: cfg.RookCephAllowStorageClassDelete, AllowPoolDelete: cfg.RookCephAllowPoolDelete, CephPoolVerified: rookCephAdapter != nil && rookCephAdapter.PoolVerificationAvailable(), CephVersionCheck: cephVersionCheck})
+			storageOperationsAPI = storageoperations.NewAPI(storageoperations.APIConfig{Store: operationStore, Planner: operationPlanner, Audit: auditStore, Observer: obsMetrics, WritesEnabled: cfg.StorageWritesEnabled, CephWritesEnabled: cfg.RookCephWritesEnabled, AllowStorageClassDelete: cfg.RookCephAllowStorageClassDelete, AllowPoolDelete: cfg.RookCephAllowPoolDelete, CephPoolVerified: rookCephAdapter != nil && rookCephAdapter.PoolVerificationAvailable(), CephVersionCheck: cephVersionCheck, Policy: policyManager})
+		}
+	}
+	var storagePolicyAPI *policy.API
+	if policyManager != nil {
+		storagePolicyAPI, err = policy.NewAPI(policy.APIConfig{
+			Store: policyManager, Audit: auditStore, Secret: secret,
+			ClusterIdentity: cfg.ClusterIdentity, ImpactResolver: storageoperations.PolicyImpact,
+			Observer: obsMetrics,
+			ActiveCount: func(ctx context.Context) (int, error) {
+				if operationStore == nil {
+					return 0, nil
+				}
+				operations, listErr := operationStore.List(ctx, map[string]string{}, 500)
+				if listErr != nil {
+					return 0, listErr
+				}
+				active := 0
+				for _, operation := range operations {
+					switch operation.Status.Phase {
+					case "Succeeded", "Failed", "Cancelled":
+					default:
+						active++
+					}
+				}
+				return active, nil
+			},
+		})
+		if err != nil {
+			slog.Error("storage policy API init failed", "err", err)
+			os.Exit(1)
 		}
 	}
 
@@ -332,6 +431,8 @@ func main() {
 		LonghornNamespace: cfg.LonghornNamespace,
 		Storage:           storageAPI,
 		StorageOperations: storageOperationsAPI,
+		StoragePolicy:     storagePolicyAPI,
+		PolicySnapshot:    policyManager,
 		SessionBackend:    "stateless",
 		BenchmarkMode:     benchmarkMode,
 		// Share the exact session-signing key so CSRF tokens verify against it.
@@ -384,4 +485,11 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("highland-api stopped")
+}
+
+func kubeClientsDynamic(clients *kube.Clients) dynamic.Interface {
+	if clients == nil {
+		return nil
+	}
+	return clients.Dynamic
 }

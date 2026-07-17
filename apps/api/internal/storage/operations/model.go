@@ -83,6 +83,7 @@ type Plan struct {
 	Warnings           []string          `json:"warnings,omitempty"`
 	BlastRadius        string            `json:"blastRadius"`
 	Hash               string            `json:"hash"`
+	PolicyVersion      string            `json:"policyVersion,omitempty"`
 	Challenge          string            `json:"challenge"`
 	ChallengeExpiresAt time.Time         `json:"challengeExpiresAt"`
 	ObservedAt         time.Time         `json:"observedAt"`

@@ -15,6 +15,20 @@ const jsonHeaders = { 'Content-Type': 'application/json' }
 const CSRF_COOKIE = 'highland_csrf'
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
+declare global {
+  interface Window {
+    __highlandBootstrap?: Record<string, Promise<Response | null>>
+  }
+}
+
+async function takeBootstrapResponse(path: string): Promise<Response | undefined> {
+  const pending = window.__highlandBootstrap?.[path]
+  if (!pending) return undefined
+  delete window.__highlandBootstrap?.[path]
+  const response = await pending
+  return response ?? undefined
+}
+
 function readCookie(name: string): string {
   return (
     document.cookie
@@ -75,9 +89,7 @@ export async function logout(): Promise<void> {
 }
 
 export async function me(): Promise<HighlandUser | null> {
-  const res = await fetch('/auth/me', {
-    credentials: 'include',
-  })
+  const res = (await takeBootstrapResponse('/auth/me')) ?? await fetch('/auth/me', { credentials: 'include' })
   if (res.status === 401) return null
   if (!res.ok) {
     throw new Error(await parseError(res))
@@ -120,15 +132,16 @@ async function highlandFetch<T>(
 ): Promise<T> {
   const path = toHighlandPath(pathOrUrl)
   const method = (init?.method ?? 'GET').toUpperCase()
-  const res = await fetch(path, {
-    credentials: 'include',
-    ...init,
-    headers: {
-      ...(init?.body ? jsonHeaders : {}),
-      ...(UNSAFE_METHODS.has(method) ? { 'X-CSRF-Token': readCookie(CSRF_COOKIE) } : {}),
-      ...init?.headers,
-    },
-  })
+  const bootResponse = method === 'GET' ? await takeBootstrapResponse(path) : undefined
+  const res = bootResponse ?? await fetch(path, {
+      credentials: 'include',
+      ...init,
+      headers: {
+        ...(init?.body ? jsonHeaders : {}),
+        ...(UNSAFE_METHODS.has(method) ? { 'X-CSRF-Token': readCookie(CSRF_COOKIE) } : {}),
+        ...init?.headers,
+      },
+    })
   if (!res.ok) {
     throw new Error(await parseError(res))
   }
@@ -169,9 +182,9 @@ export async function lhDelete<T = unknown>(path: string): Promise<T> {
 }
 
 /** Highland-native API (not Longhorn proxy). */
-export async function highlandGet<T = unknown>(path: string): Promise<T> {
+export async function highlandGet<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const clean = path.startsWith('/') ? path : `/${path}`
-  return highlandFetch<T>(`/api/v1${clean}`)
+  return highlandFetch<T>(`/api/v1${clean}`, init)
 }
 
 export async function highlandPost<T = unknown>(path: string, body?: unknown): Promise<T> {

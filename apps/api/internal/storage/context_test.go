@@ -106,6 +106,18 @@ func (p *contextFixtureProvider) GetProviderResource(context.Context, string, st
 	return nil, ErrNotFound
 }
 
+type nonCephContextFixtureProvider struct {
+	*contextFixtureProvider
+}
+
+func (p *nonCephContextFixtureProvider) Descriptor(context.Context) (ProviderDescriptor, error) {
+	return ProviderDescriptor{ID: "longhorn", Kind: "longhorn", DisplayName: "Longhorn", SupportLevel: SupportManaged, Drivers: []string{"driver.longhorn.io"}, Health: ProviderHealth{Status: SeverityOK, ObservedAt: p.now}}, nil
+}
+
+func (p *nonCephContextFixtureProvider) ResourceKinds(context.Context) []string {
+	return []string{"volumes", "nodes", "backups"}
+}
+
 func newContextFixtureAPI(t *testing.T, partial, missingPool, runtimeOnly bool) *HTTPAPI {
 	t.Helper()
 	now := time.Now().UTC()
@@ -308,6 +320,30 @@ func TestEmptyDriftReportSerializesDataAsArray(t *testing.T) {
 	}
 	if strings.Contains(string(encoded), `"data":null`) {
 		t.Fatalf("empty drift data must be a JSON array: %s", encoded)
+	}
+}
+
+func TestDriftSkipsCephOnlyKindsForOtherProviders(t *testing.T) {
+	now := time.Now().UTC()
+	registry := NewRegistry()
+	if err := registry.Register(context.Background(), &nonCephContextFixtureProvider{contextFixtureProvider: &contextFixtureProvider{now: now}}); err != nil {
+		t.Fatal(err)
+	}
+	api := NewHTTPAPI(contextFixtureInventory{now: now}, registry)
+	report, err := api.context.driftReport(context.Background(), "longhorn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Incomplete {
+		t.Fatalf("unsupported Ceph kinds must not make Longhorn drift partial: %#v", report.Conditions)
+	}
+	if report.Summary.Total != 0 || len(report.Data) != 0 {
+		t.Fatalf("unexpected Longhorn drift: summary=%#v data=%#v", report.Summary, report.Data)
+	}
+	for _, condition := range report.Conditions {
+		if condition.Reason == "ResourceKindUnavailable" {
+			t.Fatalf("Ceph-only resource probe leaked into Longhorn drift: %#v", condition)
+		}
 	}
 }
 

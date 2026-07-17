@@ -80,11 +80,13 @@ func watchedEntries() []watchEntry {
 type frame struct {
 	version    int
 	cluster    string
+	eventType  string
 	providerID string
 	namespace  string
 	kind       string
 	keys       []string
 	name       string
+	entity     json.RawMessage
 }
 
 // Registration describes a dynamic informer and the cache scopes it invalidates.
@@ -258,8 +260,28 @@ func (h *Hub) mark(keys []string, name string) {
 // PublishStorageChange implements storage.ChangePublisher. Inventory changes
 // are already informer-backed, so they publish directly without a second watch.
 func (h *Hub) PublishStorageChange(providerID, namespace, kind, name string) {
-	keys := []string{"storage", "storage-" + kind}
-	h.markScoped(providerID, namespace, kind, name, keys)
+	h.markScoped(providerID, namespace, kind, name, nil)
+}
+
+// PublishHighlandChange sends application-native lifecycle events through the
+// same authenticated stream as Kubernetes inventory changes.
+func (h *Hub) PublishHighlandChange(eventType string, keys []string, resource, name string, entity any) {
+	if h == nil {
+		return
+	}
+	var encoded json.RawMessage
+	if entity != nil {
+		if payload, err := json.Marshal(entity); err == nil {
+			encoded = payload
+		}
+	}
+	h.mu.Lock()
+	scopeKey := strings.Join([]string{"highland", eventType, resource, name}, "\x00")
+	h.pending[scopeKey] = frame{
+		version: 2, cluster: h.clusterID, eventType: eventType,
+		kind: resource, name: name, keys: append([]string(nil), keys...), entity: encoded,
+	}
+	h.mu.Unlock()
 }
 
 func (h *Hub) markScoped(providerID, namespace, kind, name string, keys []string) {
@@ -445,8 +467,9 @@ func (h *Hub) ServeSSE(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		case fr := <-c.ch:
 			payload, _ := json.Marshal(map[string]any{
-				"version": fr.version, "cluster": fr.cluster, "providerId": fr.providerID,
-				"namespace": fr.namespace, "resource": fr.kind, "keys": fr.keys, "name": fr.name,
+				"version": fr.version, "cluster": fr.cluster, "eventType": fr.eventType,
+				"providerId": fr.providerID, "namespace": fr.namespace, "resource": fr.kind,
+				"keys": fr.keys, "name": fr.name, "entity": fr.entity,
 			})
 			var b strings.Builder
 			b.WriteString("event: change\n")

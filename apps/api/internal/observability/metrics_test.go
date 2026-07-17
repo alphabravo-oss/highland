@@ -24,6 +24,8 @@ func TestNilMetricsIsSafe(t *testing.T) {
 	m.IncWatchError()
 	m.ObserveManagerRequest("GET", 200, time.Millisecond)
 	m.OperationPostflightMismatch("rook-ceph", "CephBlockPool")
+	m.PolicyObserved(map[string]bool{"longhorn": true}, 2, time.Now(), false)
+	m.PolicyUpdate("ok")
 	m.RegisterSSEClientSource(func() int { return 1 })
 
 	// Handler on nil serves 404 rather than dereferencing a nil registry.
@@ -52,6 +54,10 @@ func TestHandlerExposesRecordedMetrics(t *testing.T) {
 	m.IncCSRFRejection()
 	m.ObserveManagerRequest("GET", 200, 5*time.Millisecond)
 	m.OperationPostflightMismatch("rook-ceph", "CephBlockPool")
+	m.OperationAuthorizationFailure("longhorn", "create-pvc")
+	m.PolicyObserved(map[string]bool{"longhorn": true, "rook-ceph": false}, 7, time.Unix(100, 0), true)
+	m.PolicyProvidersObserved([]string{"longhorn", "rook-ceph"})
+	m.PolicyUpdate("conflict")
 
 	rec := httptest.NewRecorder()
 	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
@@ -65,11 +71,35 @@ func TestHandlerExposesRecordedMetrics(t *testing.T) {
 		"highland_csrf_rejections_total 1",
 		`highland_longhorn_proxy_requests_total{method="GET",status_class="2xx"} 1`,
 		`highland_storage_postflight_mismatches_total{kind="CephBlockPool",provider="rook-ceph"} 1`,
+		`highland_storage_policy_enabled{capability="longhorn"} 1`,
+		`highland_storage_policy_enabled{capability="rook-ceph"} 0`,
+		`highland_storage_policy_updates_total{result="conflict"} 1`,
+		`highland_storage_operation_authorization_failures_total{action="create-pvc",provider="longhorn"} 1`,
+		"highland_storage_policy_observed_generation 7",
+		"highland_storage_policy_ceiling_mismatch 1",
+		`highland_storage_policy_portable_provider_enabled{provider="longhorn"} 1`,
+		`highland_storage_policy_portable_provider_enabled{provider="rook-ceph"} 1`,
+		"highland_storage_policy_legacy_wildcard 0",
 		"go_goroutines", // Go collector registered
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("metrics output missing %q", want)
 		}
+	}
+}
+
+func TestPolicyProviderMetricsReplaceOldLabelsAndFlagWildcard(t *testing.T) {
+	m := New()
+	m.PolicyProvidersObserved([]string{"longhorn", "rook-ceph"})
+	m.PolicyProvidersObserved([]string{"*"})
+	recorder := httptest.NewRecorder()
+	m.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := recorder.Body.String()
+	if strings.Contains(body, `highland_storage_policy_portable_provider_enabled{provider="longhorn"}`) {
+		t.Fatal("removed provider metric label remained after policy observation")
+	}
+	if !strings.Contains(body, "highland_storage_policy_legacy_wildcard 1") {
+		t.Fatal("legacy wildcard metric was not set")
 	}
 }
 

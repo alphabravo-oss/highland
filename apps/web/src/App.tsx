@@ -13,6 +13,7 @@ import { AuthenticatedLayout } from '@/routes/ProtectedRoute'
 import { LoginPage } from '@/routes/LoginPage'
 import { NotFoundPage } from '@/routes/NotFoundPage'
 import { useStorageProviders } from '@/api/storage/hooks'
+import { BenchmarksPage } from '@/features/performance/PerformancePage'
 
 const DashboardPage = lazy(() =>
   import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })),
@@ -60,10 +61,7 @@ const OrphansPage = lazy(() =>
   import('@/features/orphans/OrphansPage').then((m) => ({ default: m.OrphansPage })),
 )
 const PerformancePage = lazy(() =>
-  import('@/features/performance/PerformancePage').then((m) => ({ default: m.PerformancePage })),
-)
-const BenchmarksPage = lazy(() =>
-  import('@/features/performance/PerformancePage').then((m) => ({ default: m.BenchmarksPage })),
+  import('@/features/performance/LiveIOPage').then((m) => ({ default: m.LiveIOPage })),
 )
 const AdminPage = lazy(() =>
   import('@/features/admin/AdminPage').then((m) => ({ default: m.AdminPage })),
@@ -79,6 +77,9 @@ const PreflightPage = lazy(() =>
 )
 const SSOConfigPage = lazy(() =>
   import('@/features/admin/SSOConfigPage').then((m) => ({ default: m.SSOConfigPage })),
+)
+const StoragePolicyPage = lazy(() =>
+  import('@/features/admin/StoragePolicyPage').then((m) => ({ default: m.StoragePolicyPage })),
 )
 const StatusPage = lazy(() =>
   import('@/features/status/StatusPage').then((m) => ({ default: m.StatusPage })),
@@ -160,6 +161,7 @@ export default function App() {
                     <Route path="admin/users" element={<AdminUsersPage />} />
                     <Route path="admin/sso" element={<SSOConfigPage />} />
                     <Route path="admin/audit" element={<AuditPage />} />
+                    <Route path="admin/storage-policy" element={<StoragePolicyPage />} />
                     <Route path="preflight" element={<PreflightPage />} />
                     <Route path="status" element={<StatusPage />} />
                     <Route path="storage/providers" element={<StorageProvidersPage />} />

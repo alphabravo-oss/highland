@@ -24,35 +24,43 @@ var latencyBuckets = []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10}
 type Metrics struct {
 	registry *prometheus.Registry
 
-	httpRequests                *prometheus.CounterVec // {method, route, status_class}
-	httpDuration                *prometheus.HistogramVec
-	httpInFlight                prometheus.Gauge
-	proxyRequests               *prometheus.CounterVec // {method, status_class}
-	proxyDuration               *prometheus.HistogramVec
-	proxyErrors                 *prometheus.CounterVec // {reason}
-	loginAttempts               *prometheus.CounterVec // {result}
-	sessionFails                *prometheus.CounterVec // {reason}
-	authzDenials                *prometheus.CounterVec // {reason}
-	csrfRejects                 prometheus.Counter
-	watchErrors                 prometheus.Counter
-	storageProviderUp           *prometheus.GaugeVec
-	storageInventoryObjects     *prometheus.GaugeVec
-	storageSyncTimestamp        *prometheus.GaugeVec
-	storageWatchErrors          *prometheus.CounterVec
-	storageProviderDuration     *prometheus.HistogramVec
-	storageProviderErrors       *prometheus.CounterVec
-	storageOperations           *prometheus.CounterVec
-	storageOperationDuration    *prometheus.HistogramVec
-	storageOperationsInProgress *prometheus.GaugeVec
-	storageOperationRetries     *prometheus.CounterVec
-	storagePreflightDenials     *prometheus.CounterVec
-	storagePostflightMismatches *prometheus.CounterVec
-	storageOperationLeader      prometheus.Gauge
-	storageGraphDuration        *prometheus.HistogramVec
-	storageUnresolvedRelations  *prometheus.GaugeVec
-	storageDriftRecords         *prometheus.GaugeVec
-	storageImpactFailures       *prometheus.CounterVec
-	storageForecastSufficient   *prometheus.GaugeVec
+	httpRequests                  *prometheus.CounterVec // {method, route, status_class}
+	httpDuration                  *prometheus.HistogramVec
+	httpInFlight                  prometheus.Gauge
+	proxyRequests                 *prometheus.CounterVec // {method, status_class}
+	proxyDuration                 *prometheus.HistogramVec
+	proxyErrors                   *prometheus.CounterVec // {reason}
+	loginAttempts                 *prometheus.CounterVec // {result}
+	sessionFails                  *prometheus.CounterVec // {reason}
+	authzDenials                  *prometheus.CounterVec // {reason}
+	csrfRejects                   prometheus.Counter
+	watchErrors                   prometheus.Counter
+	storageProviderUp             *prometheus.GaugeVec
+	storageInventoryObjects       *prometheus.GaugeVec
+	storageSyncTimestamp          *prometheus.GaugeVec
+	storageWatchErrors            *prometheus.CounterVec
+	storageProviderDuration       *prometheus.HistogramVec
+	storageProviderErrors         *prometheus.CounterVec
+	storageOperations             *prometheus.CounterVec
+	storageOperationDuration      *prometheus.HistogramVec
+	storageOperationsInProgress   *prometheus.GaugeVec
+	storageOperationRetries       *prometheus.CounterVec
+	storageOperationAuthFailures  *prometheus.CounterVec
+	storagePreflightDenials       *prometheus.CounterVec
+	storagePostflightMismatches   *prometheus.CounterVec
+	storageOperationLeader        prometheus.Gauge
+	storageGraphDuration          *prometheus.HistogramVec
+	storageUnresolvedRelations    *prometheus.GaugeVec
+	storageDriftRecords           *prometheus.GaugeVec
+	storageImpactFailures         *prometheus.CounterVec
+	storageForecastSufficient     *prometheus.GaugeVec
+	storagePolicyEnabled          *prometheus.GaugeVec
+	storagePolicyUpdates          *prometheus.CounterVec
+	storagePolicyGeneration       prometheus.Gauge
+	storagePolicyObservedAt       prometheus.Gauge
+	storagePolicyCeilingMismatch  prometheus.Gauge
+	storagePolicyPortableProvider *prometheus.GaugeVec
+	storagePolicyLegacyWildcard   prometheus.Gauge
 }
 
 // New builds and registers all collectors (plus Go/process runtime metrics).
@@ -111,6 +119,7 @@ func New() *Metrics {
 	m.storageOperationDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: namespace, Name: "storage_operation_duration_seconds", Help: "Durable storage operation duration.", Buckets: []float64{1, 5, 15, 30, 60, 300, 900, 1800}}, []string{"provider", "action"})
 	m.storageOperationsInProgress = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: namespace, Name: "storage_operations_in_progress", Help: "Storage operations currently reconciling."}, []string{"provider", "action"})
 	m.storageOperationRetries = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: namespace, Name: "storage_operation_retries_total", Help: "Storage operation reconciliation retries."}, []string{"provider", "reason"})
+	m.storageOperationAuthFailures = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: namespace, Name: "storage_operation_authorization_failures_total", Help: "Durable storage operations blocked by missing installed Kubernetes permissions."}, []string{"provider", "action"})
 	m.storagePreflightDenials = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: namespace, Name: "storage_preflight_denials_total", Help: "Storage operation preflight denials."}, []string{"provider", "reason"})
 	m.storagePostflightMismatches = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: namespace, Name: "storage_postflight_mismatches_total", Help: "Storage operations whose authoritative postflight state did not match the approved result."}, []string{"provider", "kind"})
 	m.storageOperationLeader = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: namespace, Name: "storage_operation_controller_leader", Help: "Whether this Highland API replica is the elected storage operation controller."})
@@ -119,6 +128,13 @@ func New() *Metrics {
 	m.storageDriftRecords = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: namespace, Name: "storage_drift_records", Help: "Active desired/runtime drift records by bounded severity."}, []string{"provider", "severity"})
 	m.storageImpactFailures = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: namespace, Name: "storage_impact_failures_total", Help: "Impact queries that failed or returned incomplete required evidence."}, []string{"provider", "reason"})
 	m.storageForecastSufficient = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: namespace, Name: "storage_forecast_sufficient", Help: "Whether a provider capacity measure has enough fresh history for forecasting."}, []string{"provider", "measure"})
+	m.storagePolicyEnabled = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: namespace, Name: "storage_policy_enabled", Help: "Effective runtime storage policy capability state."}, []string{"capability"})
+	m.storagePolicyUpdates = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: namespace, Name: "storage_policy_updates_total", Help: "Runtime storage policy update attempts by bounded result."}, []string{"result"})
+	m.storagePolicyGeneration = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: namespace, Name: "storage_policy_observed_generation", Help: "Latest observed HighlandPolicy generation."})
+	m.storagePolicyObservedAt = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: namespace, Name: "storage_policy_observed_timestamp_seconds", Help: "Unix timestamp of the latest authoritative policy observation."})
+	m.storagePolicyCeilingMismatch = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: namespace, Name: "storage_policy_ceiling_mismatch", Help: "Whether requested runtime policy exceeds the installed permission ceiling."})
+	m.storagePolicyPortableProvider = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: namespace, Name: "storage_policy_portable_provider_enabled", Help: "Providers explicitly enabled for portable Kubernetes storage workflows."}, []string{"provider"})
+	m.storagePolicyLegacyWildcard = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: namespace, Name: "storage_policy_legacy_wildcard", Help: "Whether portable Kubernetes workflows use the legacy all-provider wildcard."})
 
 	m.registry.MustRegister(
 		m.httpRequests, m.httpDuration, m.httpInFlight,
@@ -127,15 +143,70 @@ func New() *Metrics {
 		m.storageProviderUp, m.storageInventoryObjects, m.storageSyncTimestamp,
 		m.storageWatchErrors, m.storageProviderDuration, m.storageProviderErrors,
 		m.storageOperations, m.storageOperationDuration, m.storageOperationsInProgress,
-		m.storageOperationRetries, m.storagePreflightDenials,
+		m.storageOperationRetries, m.storageOperationAuthFailures, m.storagePreflightDenials,
 		m.storagePostflightMismatches,
 		m.storageOperationLeader,
 		m.storageGraphDuration, m.storageUnresolvedRelations, m.storageDriftRecords,
 		m.storageImpactFailures, m.storageForecastSufficient,
+		m.storagePolicyEnabled, m.storagePolicyUpdates, m.storagePolicyGeneration,
+		m.storagePolicyObservedAt, m.storagePolicyCeilingMismatch,
+		m.storagePolicyPortableProvider, m.storagePolicyLegacyWildcard,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
 	return m
+}
+
+func (m *Metrics) PolicyProvidersObserved(providerIDs []string) {
+	if m == nil {
+		return
+	}
+	m.storagePolicyPortableProvider.Reset()
+	m.storagePolicyLegacyWildcard.Set(0)
+	for index, providerID := range providerIDs {
+		if index >= 64 {
+			break
+		}
+		if providerID == "*" {
+			m.storagePolicyLegacyWildcard.Set(1)
+			continue
+		}
+		m.storagePolicyPortableProvider.WithLabelValues(providerID).Set(1)
+	}
+}
+
+func (m *Metrics) PolicyObserved(capabilities map[string]bool, generation int64, observedAt time.Time, ceilingMismatch bool) {
+	if m == nil {
+		return
+	}
+	for _, capability := range []string{"accept-new-operations", "portable-kubernetes", "longhorn", "rook-ceph", "ceph-storageclass-delete", "ceph-pool-delete"} {
+		value := 0.0
+		if capabilities[capability] {
+			value = 1
+		}
+		m.storagePolicyEnabled.WithLabelValues(capability).Set(value)
+	}
+	m.storagePolicyGeneration.Set(float64(generation))
+	if !observedAt.IsZero() {
+		m.storagePolicyObservedAt.Set(float64(observedAt.Unix()))
+	}
+	if ceilingMismatch {
+		m.storagePolicyCeilingMismatch.Set(1)
+	} else {
+		m.storagePolicyCeilingMismatch.Set(0)
+	}
+}
+
+func (m *Metrics) PolicyUpdate(result string) {
+	if m == nil {
+		return
+	}
+	switch result {
+	case "ok", "denied", "conflict", "error":
+	default:
+		result = "error"
+	}
+	m.storagePolicyUpdates.WithLabelValues(result).Inc()
 }
 
 // Handler serves the Prometheus exposition format.
@@ -316,6 +387,13 @@ func (m *Metrics) OperationRetry(provider, reason string) {
 		return
 	}
 	m.storageOperationRetries.WithLabelValues(provider, reason).Inc()
+}
+
+func (m *Metrics) OperationAuthorizationFailure(provider, action string) {
+	if m == nil {
+		return
+	}
+	m.storageOperationAuthFailures.WithLabelValues(provider, action).Inc()
 }
 
 func (m *Metrics) PreflightDenied(provider, reason string) {

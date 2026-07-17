@@ -10,6 +10,7 @@ import { navigationForWorkspace, providerWorkspaceFromLocation, workspaceLanding
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/ui'
 import { useStorageProviders } from '@/api/storage/hooks'
+import { prefetchRoute } from '@/lib/routePrefetch'
 
 type SidebarProps = {
   className?: string
@@ -138,6 +139,8 @@ export function Sidebar({ className }: SidebarProps) {
                         to={item.path}
                         end={item.end}
                         title={label}
+                        onPointerEnter={() => prefetchRoute(item.path)}
+                        onFocus={() => prefetchRoute(item.path)}
                         onClick={() => setMobileSidebarOpen(false)}
                         className={({ isActive }) =>
                           cn(

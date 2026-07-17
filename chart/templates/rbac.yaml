@@ -1,3 +1,10 @@
+{{- $policyController := and .Values.adminPolicyControl.enabled .Values.adminPolicyControl.installStorageWriterPermissions (or .Values.adminPolicyControl.ceiling.portableKubernetesWrites .Values.adminPolicyControl.ceiling.longhornWrites .Values.adminPolicyControl.ceiling.rookCephWrites) -}}
+{{- $operationController := or .Values.storage.writes.enabled .Values.storage.writes.recoveryEnabled $policyController -}}
+{{- $operationCreate := or .Values.storage.writes.enabled $policyController -}}
+{{- $portableWriter := or .Values.storage.writes.enabled .Values.storage.writes.recoveryEnabled (and .Values.adminPolicyControl.enabled .Values.adminPolicyControl.installStorageWriterPermissions .Values.adminPolicyControl.ceiling.portableKubernetesWrites) -}}
+{{- $cephWriter := or (and .Values.storage.writes.enabled .Values.providers.rookCeph.writes.enabled) (and .Values.adminPolicyControl.enabled .Values.adminPolicyControl.installStorageWriterPermissions .Values.adminPolicyControl.ceiling.rookCephWrites) -}}
+{{- $cephSCDelete := or .Values.providers.rookCeph.writes.allowStorageClassDelete .Values.adminPolicyControl.ceiling.allowCephStorageClassDelete -}}
+{{- $cephPoolDelete := or .Values.providers.rookCeph.writes.allowPoolDelete .Values.adminPolicyControl.ceiling.allowCephPoolDelete -}}
 {{- if .Values.storage.enabled }}
 {{- if eq .Values.storage.scope.mode "cluster" }}
 apiVersion: rbac.authorization.k8s.io/v1
@@ -70,6 +77,40 @@ roleRef:
 ---
 {{- end }}
 {{- end }}
+{{- if and .Values.storage.enabled .Values.adminPolicyControl.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "highland.fullname" . }}-policy
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: ["highland.io"]
+    resources: ["highlandpolicies"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["highland.io"]
+    resources: ["highlandpolicies"]
+    resourceNames: ["highland"]
+    verbs: ["update", "patch"]
+  - apiGroups: ["highland.io"]
+    resources: ["highlandpolicies/status"]
+    resourceNames: ["highland"]
+    verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-policy
+  namespace: {{ .Release.Namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "highland.fullname" . }}-policy
+---
+{{- end }}
 {{- end }}
 {{- if .Values.storage.enabled }}
 apiVersion: rbac.authorization.k8s.io/v1
@@ -99,7 +140,7 @@ roleRef:
   name: {{ include "highland.fullname" . }}-storage-operations-read
 ---
 {{- end }}
-{{- if and .Values.storage.enabled (or .Values.storage.writes.enabled .Values.storage.writes.recoveryEnabled) }}
+{{- if and .Values.storage.enabled $operationController }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -110,7 +151,7 @@ rules:
     resources: ["storageoperations"]
     # Delete is required by the elected controller's terminal-object retention
     # job. Audit records are stored separately and are never deleted here.
-    verbs: ["get", "list", "watch", "delete"{{ if .Values.storage.writes.enabled }}, "create"{{ end }}]
+    verbs: ["get", "list", "watch", "delete"{{ if $operationCreate }}, "create"{{ end }}]
   - apiGroups: ["highland.io"]
     resources: ["storageoperations/status"]
     verbs: ["get", "update", "patch"]
@@ -138,7 +179,7 @@ roleRef:
   kind: Role
   name: {{ include "highland.fullname" . }}-storage-operation-controller
 ---
-{{- if or .Values.storage.writes.enabled .Values.storage.writes.recoveryEnabled }}
+{{- if $portableWriter }}
 {{- if eq .Values.storage.scope.mode "cluster" }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -196,7 +237,8 @@ roleRef:
 ---
 {{- end }}
 {{- end }}
-{{- if and .Values.storage.enabled (or .Values.storage.writes.enabled .Values.storage.writes.recoveryEnabled) .Values.providers.rookCeph.enabled .Values.providers.rookCeph.writes.enabled }}
+{{- end }}
+{{- if and .Values.storage.enabled $operationController .Values.providers.rookCeph.enabled $cephWriter }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -204,7 +246,7 @@ metadata:
 rules:
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"{{ if .Values.providers.rookCeph.writes.allowStorageClassDelete }}, "delete"{{ end }}]
+    verbs: ["get", "list", "watch", "create", "update", "patch"{{ if $cephSCDelete }}, "delete"{{ end }}]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -227,7 +269,7 @@ metadata:
 rules:
   - apiGroups: ["ceph.rook.io"]
     resources: ["cephblockpools"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"{{ if .Values.providers.rookCeph.writes.allowPoolDelete }}, "delete"{{ end }}]
+    verbs: ["get", "list", "watch", "create", "update", "patch"{{ if $cephPoolDelete }}, "delete"{{ end }}]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -243,7 +285,6 @@ roleRef:
   kind: Role
   name: {{ include "highland.fullname" . }}-ceph-pool-writer
 ---
-{{- end }}
 {{- end }}
 {{- end }}
 {{- if .Values.providers.openebs.enabled }}

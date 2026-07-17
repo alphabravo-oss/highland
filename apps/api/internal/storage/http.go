@@ -91,7 +91,10 @@ func (a *HTTPAPI) Status(ctx context.Context) map[string]any {
 		status["condition"] = err.Error()
 		return status
 	}
-	status["providers"] = a.registry.Descriptors(ctx, drivers)
+	providers, observedAt, stale := a.registry.DescriptorSnapshot(ctx, drivers)
+	status["providers"] = providers
+	status["providersObservedAt"] = observedAt
+	status["providersStale"] = stale
 	return status
 }
 
@@ -155,13 +158,17 @@ func (a *HTTPAPI) ListProviders(w http.ResponseWriter, r *http.Request) {
 		a.writeInventoryError(w, r, err)
 		return
 	}
-	providers := a.registry.Descriptors(r.Context(), drivers)
+	providers, observedAt, stale := a.registry.DescriptorSnapshot(r.Context(), drivers)
 	for _, provider := range providers {
 		a.observerSetProvider(provider)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"data": providers,
-		"meta": map[string]any{"lastSync": a.inventory.LastSync(), "snapshotApi": a.inventory.SnapshotAvailable(), "conditions": a.coreConditions()},
+		"meta": map[string]any{
+			"lastSync": a.inventory.LastSync(), "snapshotApi": a.inventory.SnapshotAvailable(),
+			"conditions": a.coreConditions(), "observedAt": observedAt, "stale": stale, "partial": false,
+			"requestId": chimw.GetReqID(r.Context()),
+		},
 	})
 }
 
@@ -175,7 +182,8 @@ func (a *HTTPAPI) GetProvider(w http.ResponseWriter, r *http.Request) {
 		a.writeInventoryError(w, r, err)
 		return
 	}
-	for _, provider := range a.registry.Descriptors(r.Context(), drivers) {
+	providers, _, _ := a.registry.DescriptorSnapshot(r.Context(), drivers)
+	for _, provider := range providers {
 		if provider.ID == id {
 			writeJSON(w, http.StatusOK, provider)
 			return
@@ -349,7 +357,7 @@ func (a *HTTPAPI) ListProviderResources(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, http.StatusBadGateway, "PROVIDER_READ_FAILED", err.Error(), true, nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": data, "page": meta})
+	writeJSON(w, http.StatusOK, map[string]any{"data": data, "page": meta, "meta": a.responseMeta(r, nil)})
 }
 
 func (a *HTTPAPI) GetProviderResource(w http.ResponseWriter, r *http.Request) {
@@ -432,7 +440,27 @@ func listResponse[T any](a *HTTPAPI, w http.ResponseWriter, r *http.Request, kin
 	if kind == "snapshots" && !a.inventory.SnapshotAvailable() {
 		conditions = append(conditions, Condition{Type: "SnapshotAPIAvailable", Status: "False", Severity: SeverityInfo, Reason: "APIAbsent", Message: "snapshot.storage.k8s.io/v1 is not served; common inventory remains available.", ObservedAt: time.Now().UTC()})
 	}
-	writeJSON(w, http.StatusOK, Page[T]{Data: paged, Page: meta, Conditions: conditions})
+	writeJSON(w, http.StatusOK, Page[T]{Data: paged, Page: meta, Meta: a.responseMeta(r, conditions), Conditions: conditions})
+}
+
+func (a *HTTPAPI) responseMeta(r *http.Request, conditions []Condition) ResponseMeta {
+	observedAt := time.Now().UTC()
+	if a != nil && a.inventory != nil && !a.inventory.LastSync().IsZero() {
+		observedAt = a.inventory.LastSync()
+	}
+	partial := false
+	for _, condition := range conditions {
+		if condition.Severity == SeverityWarning || condition.Severity == SeverityError {
+			partial = true
+			break
+		}
+	}
+	return ResponseMeta{
+		ObservedAt: observedAt,
+		Stale:      time.Since(observedAt) > 2*time.Minute,
+		Partial:    partial,
+		RequestID:  chimw.GetReqID(r.Context()),
+	}
 }
 
 func (a *HTTPAPI) coreConditions() []Condition {
@@ -527,6 +555,12 @@ func continuationOffset(token string) (int, error) {
 		return 0, fmt.Errorf("invalid continue token")
 	}
 	return offset, nil
+}
+
+// DecodePageOffset accepts the common opaque continuation token for native
+// Highland collections that live outside the storage package.
+func DecodePageOffset(token string) (int, error) {
+	return continuationOffset(token)
 }
 
 // EncodePageOffset gives provider adapters the common opaque continuation

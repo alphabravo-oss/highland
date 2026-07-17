@@ -1,5 +1,5 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { AlertTriangle, GitBranch, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Boxes, GitBranch, Layers3, Server, ShieldCheck, Users } from 'lucide-react'
 import {
   useProviderDrift,
   useRelationships,
@@ -14,7 +14,8 @@ import {
   useStorageTimeline,
   type CapacityMeasure,
 } from '@/api/storage/insights'
-import { useStorageProviders } from '@/api/storage/hooks'
+import { useStorageProvider, useStorageProviders } from '@/api/storage/hooks'
+import type { ProviderDescriptor, StorageCondition } from '@/api/storage/types'
 import { useProviderComparison, useStorageRemediations } from '@/api/storage/guidance'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
@@ -74,6 +75,8 @@ export function StorageInsightsPage() {
 export function ProviderContextPage() {
   const { providerId = '' } = useParams()
   const provider = decodeURIComponent(providerId)
+  const descriptor = useStorageProvider(provider)
+  const providers = useStorageProviders()
   const graph = useRelationships({ provider, kind: 'provider', depth: 4, limit: 200 })
   const drift = useProviderDrift(provider)
   const timeline = useStorageTimeline({ provider, limit: 50 })
@@ -81,17 +84,138 @@ export function ProviderContextPage() {
   const forecast = useCapacityForecast(provider, { measure: forecastMeasure, horizon: '720h' })
   const comparison = useProviderComparison({ providers: [provider], requireHealthy: true, requireExpansion: true, limit: 100 })
   const remediations = useStorageRemediations({ provider, limit: 100 })
+  const providerInfo = descriptor.data
+  const providerList = providers.data?.data ?? []
+  const displayName = providerInfo?.displayName || provider
   return <div data-testid="provider-context-page">
-    <PageHeader title={`${provider} context`} description="Kubernetes-to-backend relationships, desired/runtime drift, incident history, and capacity ownership for this provider." />
-    <div className="grid gap-4 xl:grid-cols-2">
-      <RelationshipPanel graph={graph.data} isLoading={graph.isLoading} error={graph.error as Error | null} />
-      <DriftPanel report={drift.data} isLoading={drift.isLoading} error={drift.error as Error | null} />
+    <PageHeader
+      title={`${displayName} context`}
+      description={`A provider-specific view of ${displayName}'s storage surface, Kubernetes bindings, consumers, health evidence, and operational guidance.`}
+      actions={<>
+        {providerInfo?.version ? <Badge>{providerInfo.version}</Badge> : null}
+        {providerInfo?.supportLevel ? <Badge tone="info">{providerInfo.supportLevel}</Badge> : null}
+        {providerInfo?.health ? <Badge tone={healthTone(providerInfo.health.status)}>{providerInfo.health.status}</Badge> : null}
+      </>}
+    />
+    <ProviderContextSummary
+      provider={providerInfo}
+      graph={graph.data}
+      drift={drift.data}
+      providers={providerList}
+      isLoading={descriptor.isLoading || graph.isLoading}
+    />
+    <ProviderEvidenceGaps graph={graph.data} drift={drift.data} />
+    <div className="mt-4 grid gap-4 xl:grid-cols-2">
+      <div className="xl:col-span-2">
+        <RelationshipPanel
+          graph={graph.data}
+          isLoading={graph.isLoading}
+          error={graph.error as Error | null}
+          provider={providerInfo}
+          providers={providerList}
+          workspace
+          showPartialAlert={false}
+        />
+      </div>
+      <DriftPanel report={drift.data} isLoading={drift.isLoading} error={drift.error as Error | null} showPartialAlert={false} />
       <TimelinePanel timeline={timeline.data} isLoading={timeline.isLoading} error={timeline.error as Error | null} title="Provider timeline" />
-      <CapacityOwnershipPanel ownership={capacity.data} forecast={forecast.data} isLoading={capacity.isLoading} error={capacity.error as Error | null} />
-      <div className="xl:col-span-2"><ProviderComparisonPanel comparison={comparison.data} isLoading={comparison.isLoading} error={comparison.error as Error | null} /></div>
+      <div className="xl:col-span-2"><CapacityOwnershipPanel ownership={capacity.data} forecast={forecast.data} isLoading={capacity.isLoading} error={capacity.error as Error | null} /></div>
+      <div className="xl:col-span-2"><ProviderComparisonPanel comparison={comparison.data} isLoading={comparison.isLoading} error={comparison.error as Error | null} compact /></div>
       <div className="xl:col-span-2"><RemediationGuidancePanel result={remediations.data} isLoading={remediations.isLoading} error={remediations.error as Error | null} /></div>
     </div>
   </div>
+}
+
+function ProviderContextSummary({
+  provider,
+  graph,
+  drift,
+  providers,
+  isLoading,
+}: {
+  provider?: ProviderDescriptor
+  graph?: ReturnType<typeof useRelationships>['data']
+  drift?: ReturnType<typeof useProviderDrift>['data']
+  providers: ProviderDescriptor[]
+  isLoading: boolean
+}) {
+  const nodes = graph?.nodes ?? []
+  const consumers = nodes.filter((node) => consumerKinds.has(node.kind))
+  const externalConsumers = consumers.filter((node) => Boolean(crossProvider(node, provider?.id, providers)))
+  const backendResources = nodes.filter((node) => nodeRole(node) === 'provider')
+  const evidenceComplete = !graph?.incomplete && !drift?.incomplete
+  return <Card data-testid="provider-context-summary">
+    <CardContent className="grid gap-4 pt-4 sm:grid-cols-2 xl:grid-cols-5">
+      <ContextFact icon={Server} label="Provider" value={provider?.displayName || (isLoading ? 'Loading…' : 'Unavailable')} detail={provider?.kind || 'CSI provider'} />
+      <ContextFact icon={Boxes} label="Provider surface" value={backendResources.length} detail="driver, classes, and backend objects" />
+      <ContextFact icon={Users} label="Consumers" value={consumers.length} detail={externalConsumers.length ? `${externalConsumers.length} cross-provider` : 'within workload namespaces'} />
+      <ContextFact icon={AlertTriangle} label="Active drift" value={drift?.summary.total ?? 0} detail={drift?.summary.error ? `${drift.summary.error} errors` : 'no critical drift'} />
+      <ContextFact icon={ShieldCheck} label="Evidence" value={evidenceComplete ? 'Complete' : 'Partial'} detail={graph?.observedAt ? `observed ${formatContextTime(graph.observedAt)}` : 'collecting evidence'} tone={evidenceComplete ? 'success' : 'warning'} />
+    </CardContent>
+  </Card>
+}
+
+function ContextFact({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  icon: typeof Server
+  label: string
+  value: string | number
+  detail: string
+  tone?: 'success' | 'warning'
+}) {
+  return <div className="min-w-0 rounded-md bg-[var(--color-muted)]/45 p-3">
+    <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-muted-foreground)]"><Icon size={15} /> {label}</div>
+    <div className={`mt-1 text-xl font-semibold ${tone === 'success' ? 'text-emerald-700 dark:text-emerald-300' : tone === 'warning' ? 'text-amber-800 dark:text-amber-300' : ''}`}>{value}</div>
+    <div className="mt-0.5 truncate text-xs text-[var(--color-muted-foreground)]" title={detail}>{detail}</div>
+  </div>
+}
+
+function ProviderEvidenceGaps({
+  graph,
+  drift,
+}: {
+  graph?: ReturnType<typeof useRelationships>['data']
+  drift?: ReturnType<typeof useProviderDrift>['data']
+}) {
+  const conditions = [
+    ...(graph?.conditions ?? []),
+    ...(graph?.nodes.flatMap((node) => node.conditions ?? []) ?? []),
+    ...(drift?.conditions ?? []),
+  ]
+  const reasons = Array.from(new Set(
+    conditions
+      .filter((condition) => condition.severity !== 'ok' && (condition.status === 'False' || condition.status === 'Unknown' || condition.severity === 'warning' || condition.severity === 'error'))
+      .map(conditionMessage)
+      .filter(Boolean),
+  ))
+  if (!graph?.incomplete && !drift?.incomplete && reasons.length === 0) return null
+  return <Alert tone="warning" className="mt-4" data-testid="provider-evidence-gaps">
+    <AlertTitle>Evidence gaps</AlertTitle>
+    <AlertDescription>
+      <span>Highland keeps uncertain relationships informational and blocks destructive guidance that depends on missing evidence.</span>
+      {reasons.length ? <ul className="mt-2 list-disc space-y-1 pl-5">{reasons.slice(0, 5).map((reason) => <li key={reason}>{reason}</li>)}</ul> : null}
+    </AlertDescription>
+  </Alert>
+}
+
+function conditionMessage(condition: StorageCondition) {
+  return condition.message || condition.reason || condition.type
+}
+
+function healthTone(status: ProviderDescriptor['health']['status']): 'success' | 'warning' | 'danger' | 'default' {
+  if (status === 'ok') return 'success'
+  if (status === 'warning' || status === 'info') return 'warning'
+  if (status === 'error') return 'danger'
+  return 'default'
+}
+
+function formatContextTime(value: string) {
+  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 export function ResourceRelationshipsPage() {
@@ -115,17 +239,37 @@ export function RelationshipPanel({
   graph,
   isLoading,
   error,
+  provider,
+  providers = [],
+  workspace = false,
+  showPartialAlert = true,
 }: {
   graph?: ReturnType<typeof useRelationships>['data']
   isLoading: boolean
   error: Error | null
+  provider?: ProviderDescriptor
+  providers?: ProviderDescriptor[]
+  workspace?: boolean
+  showPartialAlert?: boolean
 }) {
+  const groups = workspace && graph ? relationshipGroups(graph.nodes) : []
   return <Card data-testid="relationship-panel">
-    <CardHeader><CardTitle className="flex items-center gap-2"><GitBranch size={18} /> Relationship graph</CardTitle></CardHeader>
+    <CardHeader>
+      <CardTitle className="flex items-center gap-2"><GitBranch size={18} /> Storage relationships</CardTitle>
+      {workspace ? <p className="text-xs text-[var(--color-muted-foreground)]">The selected provider stays central. Kubernetes bindings and consuming workloads are separated so they are not mistaken for provider-owned resources.</p> : null}
+    </CardHeader>
     <CardContent>
       <QueryState isLoading={isLoading} error={error}>
-        {graph?.incomplete ? <Alert tone="warning"><AlertTitle>Partial relationship evidence</AlertTitle><AlertDescription>One or more sources were unavailable or bounded. Unknown relationships are not promoted to confirmed.</AlertDescription></Alert> : null}
-        {graph?.nodes?.length ? <div className="overflow-x-auto">
+        {showPartialAlert && graph?.incomplete ? <Alert tone="warning"><AlertTitle>Partial relationship evidence</AlertTitle><AlertDescription>One or more sources were unavailable or bounded. Unknown relationships are not promoted to confirmed.</AlertDescription></Alert> : null}
+        {workspace && graph?.nodes?.length ? <div className="space-y-5">
+          {groups.map((group) => <RelationshipGroup
+            key={group.role}
+            group={group}
+            graph={graph}
+            provider={provider}
+            providers={providers}
+          />)}
+        </div> : graph?.nodes?.length ? <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead><tr className="border-b border-[var(--color-border)] text-xs text-[var(--color-muted-foreground)]"><th className="py-2">Resource</th><th>Kind</th><th>Freshness</th><th>Relationships</th></tr></thead>
             <tbody>{graph.nodes.map((node) => <GraphRow key={node.id} node={node} graph={graph} />)}</tbody>
@@ -135,6 +279,127 @@ export function RelationshipPanel({
       </QueryState>
     </CardContent>
   </Card>
+}
+
+const consumerKinds = new Set(['pvc', 'pod', 'workload'])
+const kubernetesBindingKinds = new Set(['pv', 'volumeattachment', 'snapshot', 'volumesnapshot'])
+
+type RelationshipRole = 'provider' | 'binding' | 'consumer'
+
+function nodeRole(node: GraphNode): RelationshipRole {
+  if (consumerKinds.has(node.kind)) return 'consumer'
+  if (kubernetesBindingKinds.has(node.kind)) return 'binding'
+  return 'provider'
+}
+
+function relationshipGroups(nodes: GraphNode[]) {
+  const definitions: Array<{ role: RelationshipRole; title: string; description: string; icon: typeof Server }> = [
+    { role: 'provider', title: 'Provider surface', description: 'CSI driver, StorageClasses, and backend resources owned or served by this provider.', icon: Server },
+    { role: 'binding', title: 'Kubernetes storage bindings', description: 'Portable Kubernetes objects that connect claims to the selected provider.', icon: Layers3 },
+    { role: 'consumer', title: 'Workloads consuming this provider', description: 'Claims and workloads backed by this provider, including explicit cross-provider dependencies.', icon: Users },
+  ]
+  return definitions
+    .map((definition) => ({ ...definition, nodes: nodes.filter((node) => nodeRole(node) === definition.role) }))
+    .filter((group) => group.nodes.length > 0)
+}
+
+function RelationshipGroup({
+  group,
+  graph,
+  provider,
+  providers,
+}: {
+  group: ReturnType<typeof relationshipGroups>[number]
+  graph: NonNullable<ReturnType<typeof useRelationships>['data']>
+  provider?: ProviderDescriptor
+  providers: ProviderDescriptor[]
+}) {
+  const Icon = group.icon
+  return <section aria-labelledby={`relationship-${group.role}`}>
+    <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h4 id={`relationship-${group.role}`} className="flex items-center gap-2 text-sm font-semibold"><Icon size={16} /> {group.title}</h4>
+        <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">{group.description}</p>
+      </div>
+      <Badge>{group.nodes.length}</Badge>
+    </div>
+    <div className="overflow-x-auto rounded-md border border-[var(--color-border)]">
+      <table className="w-full text-left text-sm">
+        <thead className="bg-[var(--color-muted)]/40 text-xs text-[var(--color-muted-foreground)]">
+          <tr><th className="px-3 py-2 font-medium">Resource</th><th className="px-3 py-2 font-medium">Role</th><th className="px-3 py-2 font-medium">Evidence</th><th className="px-3 py-2 font-medium">Connections</th></tr>
+        </thead>
+        <tbody>{group.nodes.map((node) => <WorkspaceGraphRow key={node.id} node={node} graph={graph} provider={provider} providers={providers} />)}</tbody>
+      </table>
+    </div>
+  </section>
+}
+
+function WorkspaceGraphRow({
+  node,
+  graph,
+  provider,
+  providers,
+}: {
+  node: GraphNode
+  graph: NonNullable<ReturnType<typeof useRelationships>['data']>
+  provider?: ProviderDescriptor
+  providers: ProviderDescriptor[]
+}) {
+  const edges = (graph.edges ?? []).filter((edge) => edge.from === node.id || edge.to === node.id)
+  const confidence = weakestConfidence(edges.map((edge) => edge.confidence))
+  const relationTypes = Array.from(new Set(edges.map((edge) => edge.type.replaceAll('-', ' '))))
+  const otherProvider = crossProvider(node, provider?.id, providers)
+  const role = nodeRole(node) === 'consumer'
+    ? otherProvider
+      ? `Cross-provider consumer · ${otherProvider.displayName}`
+      : node.namespace
+        ? `Consumer · ${node.namespace}`
+        : 'Consumer'
+    : nodeRole(node) === 'binding'
+      ? 'Kubernetes binding'
+      : node.kind === 'storageclass' || node.kind === 'csidriver'
+        ? 'CSI surface'
+        : 'Provider owned'
+  return <tr className="border-t border-[var(--color-border)] first:border-t-0">
+    <td className="px-3 py-3 pr-5">
+      <div className="font-medium">{node.namespace ? `${node.namespace}/` : ''}{node.name}</div>
+      <div className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">{resourceKindLabel(node.kind)}</div>
+      <details className="mt-1 text-[10px] text-[var(--color-muted-foreground)]">
+        <summary className="cursor-pointer select-none">Canonical identity</summary>
+        <span className="break-all font-mono">{node.id}</span>
+      </details>
+    </td>
+    <td className="px-3 py-3 pr-5"><Badge tone={otherProvider ? 'info' : 'default'}>{role}</Badge></td>
+    <td className="px-3 py-3 pr-5"><div className="flex flex-wrap gap-1"><Badge tone={node.freshness === 'fresh' ? 'success' : node.freshness === 'stale' ? 'warning' : 'default'}>{node.freshness}</Badge>{edges.length ? <Badge tone={confidence === 'authoritative' ? 'success' : 'warning'}>{confidence}</Badge> : null}</div></td>
+    <td className="max-w-sm px-3 py-3 text-xs text-[var(--color-muted-foreground)]">{edges.length ? `${edges.length} · ${relationTypes.join(', ')}` : 'No observed connection'}</td>
+  </tr>
+}
+
+function crossProvider(node: GraphNode, selectedProviderId: string | undefined, providers: ProviderDescriptor[]) {
+  if (!node.namespace) return undefined
+  return providers.find((candidate) =>
+    candidate.id !== selectedProviderId
+    && Boolean(candidate.namespace)
+    && candidate.namespace === node.namespace,
+  )
+}
+
+function resourceKindLabel(kind: string) {
+  const labels: Record<string, string> = {
+    provider: 'Provider',
+    csidriver: 'CSI driver',
+    storageclass: 'StorageClass',
+    pv: 'PersistentVolume',
+    pvc: 'PersistentVolumeClaim',
+    pod: 'Pod',
+    workload: 'Workload',
+    volumeattachment: 'VolumeAttachment',
+    'longhorn-volume': 'Longhorn volume',
+    'ceph-rbd-image': 'Ceph RBD image',
+    'ceph-block-pool': 'Ceph block pool',
+    'ceph-filesystem': 'Ceph filesystem',
+  }
+  return labels[kind] || kind.replaceAll('-', ' ')
 }
 
 function GraphRow({ node, graph }: { node: GraphNode; graph: NonNullable<ReturnType<typeof useRelationships>['data']> }) {
@@ -148,16 +413,17 @@ function GraphRow({ node, graph }: { node: GraphNode; graph: NonNullable<ReturnT
   </tr>
 }
 
-function DriftPanel({ report, isLoading, error }: {
+function DriftPanel({ report, isLoading, error, showPartialAlert = true }: {
   report?: ReturnType<typeof useProviderDrift>['data']
   isLoading: boolean
   error: Error | null
+  showPartialAlert?: boolean
 }) {
   return <Card data-testid="drift-panel">
     <CardHeader><CardTitle className="flex items-center justify-between gap-3"><span className="flex items-center gap-2"><AlertTriangle size={18} /> Desired/runtime drift</span>{report ? <Badge tone={report.summary.error ? 'danger' : report.summary.warning ? 'warning' : 'success'}>{report.summary.total} active</Badge> : null}</CardTitle></CardHeader>
     <CardContent>
       <QueryState isLoading={isLoading} error={error}>
-        {report?.incomplete ? <Alert tone="warning"><AlertTitle>Drift evidence is partial</AlertTitle><AlertDescription>Runtime or desired-state evidence is unavailable; Highland will not recommend destructive action from incomplete data.</AlertDescription></Alert> : null}
+        {showPartialAlert && report?.incomplete ? <Alert tone="warning"><AlertTitle>Drift evidence is partial</AlertTitle><AlertDescription>Runtime or desired-state evidence is unavailable; Highland will not recommend destructive action from incomplete data.</AlertDescription></Alert> : null}
         {report?.data.length ? <ul className="space-y-2">{report.data.map((item) => <li key={item.id} className="rounded-md border border-[var(--color-border)] p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium">{item.category}</span><Badge tone={item.severity === 'error' ? 'danger' : item.severity === 'warning' ? 'warning' : 'default'}>{item.severity}</Badge></div><p className="mt-1">{item.message}</p><p className="mt-1 text-xs text-[var(--color-muted-foreground)]">{item.duration} · action surface: {item.actionSurface}{item.actionable ? '' : ' · informational only'}</p></li>)}</ul> : <p className="flex items-center gap-2 text-sm text-[var(--color-muted-foreground)]"><ShieldCheck size={16} /> No supported desired/runtime drift is active.</p>}
       </QueryState>
     </CardContent>

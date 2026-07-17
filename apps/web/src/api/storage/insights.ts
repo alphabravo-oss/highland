@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { highlandGet } from '@/api/client'
+import { useSseConnected } from '@/api/realtime'
 
 export type EvidenceStrength = 'authoritative' | 'derived' | 'potential' | 'unknown'
 export type TimelineSource =
@@ -178,7 +179,7 @@ export function buildInsightQuery(values: Record<string, QueryValue>): string {
 }
 
 export const storageInsightClient = {
-  timeline: (query: TimelineQuery = {}) =>
+  timeline: (query: TimelineQuery = {}, signal?: AbortSignal) =>
     highlandGet<StorageTimeline>(
       `/storage/timeline${buildInsightQuery({
         provider: query.provider,
@@ -191,9 +192,9 @@ export const storageInsightClient = {
         since: query.since,
         until: query.until,
         limit: query.limit,
-      })}`,
+      })}`, { signal },
     ),
-  capacityOwnership: (query: CapacityOwnershipQuery = {}) =>
+  capacityOwnership: (query: CapacityOwnershipQuery = {}, signal?: AbortSignal) =>
     highlandGet<CapacityOwnership>(
       `/storage/capacity/ownership${buildInsightQuery({
         provider: query.provider,
@@ -201,14 +202,14 @@ export const storageInsightClient = {
         measure: query.measures,
         authoritativeOnly: query.authoritativeOnly,
         limit: query.limit,
-      })}`,
+      })}`, { signal },
     ),
-  capacityForecast: (providerId: string, query: CapacityForecastQuery) =>
+  capacityForecast: (providerId: string, query: CapacityForecastQuery, signal?: AbortSignal) =>
     highlandGet<CapacityForecast>(
       `/providers/${encodeURIComponent(providerId)}/capacity/forecast${buildInsightQuery({
         measure: query.measure,
         horizon: query.horizon,
-      })}`,
+      })}`, { signal },
     ),
 }
 
@@ -222,29 +223,32 @@ export const storageInsightKeys = {
 }
 
 export function useStorageTimeline(query: TimelineQuery = {}) {
+  const connected = useSseConnected()
   return useQuery({
     queryKey: storageInsightKeys.timeline(query),
-    queryFn: () => storageInsightClient.timeline(query),
+    queryFn: ({ signal }) => storageInsightClient.timeline(query, signal),
     placeholderData: (previous) => previous,
-    refetchInterval: 30_000,
+    refetchInterval: connected ? 60_000 : 30_000,
   })
 }
 
 export function useCapacityOwnership(query: CapacityOwnershipQuery = {}) {
+  const connected = useSseConnected()
   return useQuery({
     queryKey: storageInsightKeys.capacityOwnership(query),
-    queryFn: () => storageInsightClient.capacityOwnership(query),
+    queryFn: ({ signal }) => storageInsightClient.capacityOwnership(query, signal),
     placeholderData: (previous) => previous,
-    refetchInterval: 30_000,
+    refetchInterval: connected ? 60_000 : 30_000,
   })
 }
 
 export function useCapacityForecast(providerId: string, query: CapacityForecastQuery) {
+  const connected = useSseConnected()
   return useQuery({
     queryKey: storageInsightKeys.capacityForecast(providerId, query),
-    queryFn: () => storageInsightClient.capacityForecast(providerId, query),
+    queryFn: ({ signal }) => storageInsightClient.capacityForecast(providerId, query, signal),
     enabled: Boolean(providerId && query.measure),
     placeholderData: (previous) => previous,
-    refetchInterval: 60_000,
+    refetchInterval: connected ? 120_000 : 60_000,
   })
 }

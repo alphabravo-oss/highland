@@ -49,11 +49,18 @@ type Registry struct {
 	mu          sync.RWMutex
 	providers   map[string]Provider
 	driverOwner map[string]string
+	cache       []ProviderDescriptor
+	cacheKey    string
+	cacheAt     time.Time
+	refreshing  bool
+	refreshDone chan struct{}
 }
 
 func NewRegistry() *Registry {
 	return &Registry{providers: map[string]Provider{}, driverOwner: map[string]string{}}
 }
+
+var providerDescriptorTTL = 10 * time.Second
 
 func (r *Registry) Register(ctx context.Context, p Provider) error {
 	if p == nil {
@@ -81,6 +88,8 @@ func (r *Registry) Register(ctx context.Context, p Provider) error {
 	for _, driver := range d.Drivers {
 		r.driverOwner[driver] = d.ID
 	}
+	r.cache = nil
+	r.cacheAt = time.Time{}
 	return nil
 }
 
@@ -89,6 +98,14 @@ func (r *Registry) Provider(id string) (Provider, bool) {
 	defer r.mu.RUnlock()
 	p, ok := r.providers[id]
 	return p, ok
+}
+
+func (r *Registry) InvalidateDescriptors() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cache = nil
+	r.cacheAt = time.Time{}
+	r.cacheKey = ""
 }
 
 func (r *Registry) ResolveDriver(driver string) string {
@@ -102,6 +119,81 @@ func (r *Registry) ResolveDriver(driver string) string {
 }
 
 func (r *Registry) Descriptors(ctx context.Context, discoveredDrivers []string) []ProviderDescriptor {
+	descriptors, _, _ := r.DescriptorSnapshot(ctx, discoveredDrivers)
+	return descriptors
+}
+
+// DescriptorSnapshot makes navigation reads cheap and stable. The first caller
+// performs one bounded refresh; warm callers receive the cached snapshot
+// immediately. An expired snapshot is returned as stale while one asynchronous
+// refresh runs, preventing slow provider probes from blocking the application
+// shell or multiplying under concurrent requests.
+func (r *Registry) DescriptorSnapshot(ctx context.Context, discoveredDrivers []string) ([]ProviderDescriptor, time.Time, bool) {
+	drivers := append([]string(nil), discoveredDrivers...)
+	sort.Strings(drivers)
+	key := strings.Join(drivers, "\x00")
+
+	r.mu.Lock()
+	if len(r.cache) > 0 {
+		stale := time.Since(r.cacheAt) >= providerDescriptorTTL || r.cacheKey != key
+		snapshot, observedAt := cloneDescriptors(r.cache, stale), r.cacheAt
+		if stale && !r.refreshing {
+			r.refreshing = true
+			r.refreshDone = make(chan struct{})
+			go r.refreshDescriptors(drivers, key)
+		}
+		r.mu.Unlock()
+		return snapshot, observedAt, stale
+	}
+	if r.refreshing {
+		done := r.refreshDone
+		r.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return nil, time.Time{}, true
+		case <-done:
+			r.mu.RLock()
+			snapshot, observedAt := cloneDescriptors(r.cache, false), r.cacheAt
+			r.mu.RUnlock()
+			return snapshot, observedAt, len(snapshot) == 0
+		}
+	}
+	r.refreshing = true
+	r.refreshDone = make(chan struct{})
+	r.mu.Unlock()
+
+	refreshContext, cancel := context.WithTimeout(ctx, 4*time.Second)
+	snapshot := r.computeDescriptors(refreshContext, drivers)
+	cancel()
+	r.finishRefresh(snapshot, key)
+	r.mu.RLock()
+	result, observedAt := cloneDescriptors(r.cache, false), r.cacheAt
+	r.mu.RUnlock()
+	return result, observedAt, len(result) == 0
+}
+
+func (r *Registry) refreshDescriptors(drivers []string, key string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	r.finishRefresh(r.computeDescriptors(ctx, drivers), key)
+}
+
+func (r *Registry) finishRefresh(snapshot []ProviderDescriptor, key string) {
+	r.mu.Lock()
+	if len(snapshot) > 0 {
+		r.cache = cloneDescriptors(snapshot, false)
+		r.cacheKey = key
+		r.cacheAt = time.Now().UTC()
+	}
+	r.refreshing = false
+	if r.refreshDone != nil {
+		close(r.refreshDone)
+		r.refreshDone = nil
+	}
+	r.mu.Unlock()
+}
+
+func (r *Registry) computeDescriptors(ctx context.Context, discoveredDrivers []string) []ProviderDescriptor {
 	r.mu.RLock()
 	providers := make([]Provider, 0, len(r.providers))
 	claimed := make(map[string]struct{}, len(r.driverOwner))
@@ -113,19 +205,37 @@ func (r *Registry) Descriptors(ctx context.Context, discoveredDrivers []string) 
 	}
 	r.mu.RUnlock()
 
+	type result struct {
+		descriptor ProviderDescriptor
+		ok         bool
+	}
+	results := make(chan result, len(providers))
+	var wg sync.WaitGroup
+	for _, provider := range providers {
+		wg.Add(1)
+		go func(p Provider) {
+			defer wg.Done()
+			d, err := p.Descriptor(ctx)
+			if err != nil {
+				results <- result{}
+				return
+			}
+			if len(d.Capabilities) == 0 {
+				d.Capabilities = dedupeCapabilities(p.Capabilities(ctx))
+			}
+			if d.Health.ObservedAt.IsZero() {
+				d.Health = p.Health(ctx)
+			}
+			results <- result{descriptor: d, ok: true}
+		}(provider)
+	}
+	wg.Wait()
+	close(results)
 	out := make([]ProviderDescriptor, 0, len(providers)+len(discoveredDrivers))
-	for _, p := range providers {
-		d, err := p.Descriptor(ctx)
-		if err != nil {
-			continue
+	for item := range results {
+		if item.ok {
+			out = append(out, item.descriptor)
 		}
-		d.Capabilities = dedupeCapabilities(p.Capabilities(ctx))
-		// Descriptor may add version/support conditions to live provider health.
-		// Fall back to Health only for minimal provider implementations.
-		if d.Health.ObservedAt.IsZero() {
-			d.Health = p.Health(ctx)
-		}
-		out = append(out, d)
 	}
 	for _, driver := range discoveredDrivers {
 		if _, ok := claimed[driver]; ok || driver == "" {
@@ -135,6 +245,24 @@ func (r *Registry) Descriptors(ctx context.Context, discoveredDrivers []string) 
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
+}
+
+func cloneDescriptors(source []ProviderDescriptor, stale bool) []ProviderDescriptor {
+	result := make([]ProviderDescriptor, len(source))
+	for i := range source {
+		result[i] = source[i]
+		result[i].Drivers = append([]string(nil), source[i].Drivers...)
+		result[i].Capabilities = append([]Capability(nil), source[i].Capabilities...)
+		result[i].Health.Conditions = append([]Condition(nil), source[i].Health.Conditions...)
+		result[i].Health.Stale = source[i].Health.Stale || stale
+		if source[i].Metadata != nil {
+			result[i].Metadata = make(map[string]string, len(source[i].Metadata))
+			for key, value := range source[i].Metadata {
+				result[i].Metadata[key] = value
+			}
+		}
+	}
+	return result
 }
 
 func GenericProviderID(driver string) string {

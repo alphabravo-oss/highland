@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { highlandGet } from '@/api/client'
+import { useSseConnected } from '@/api/realtime'
 import type {
   EvidenceStrength,
   InsightCondition,
@@ -158,7 +159,7 @@ export type RemediationQuery = {
 }
 
 export const storageGuidanceClient = {
-  comparison: (query: ComparisonQuery = {}) =>
+  comparison: (query: ComparisonQuery = {}, signal?: AbortSignal) =>
     highlandGet<ProviderComparison>(
       `/storage/comparison${buildInsightQuery({
         provider: query.providers,
@@ -173,9 +174,9 @@ export const storageGuidanceClient = {
         minimumHeadroom: query.minimumHeadroomPercent,
         minimumSupport: query.minimumSupportLevel,
         limit: query.limit,
-      })}`,
+      })}`, { signal },
     ),
-  remediations: (query: RemediationQuery = {}) =>
+  remediations: (query: RemediationQuery = {}, signal?: AbortSignal) =>
     highlandGet<RemediationResult>(
       `/storage/remediations${buildInsightQuery({
         provider: query.provider,
@@ -185,7 +186,7 @@ export const storageGuidanceClient = {
         severity: query.severity,
         condition: query.condition,
         limit: query.limit,
-      })}`,
+      })}`, { signal },
     ),
 }
 
@@ -196,19 +197,21 @@ export const storageGuidanceKeys = {
 }
 
 export function useProviderComparison(query: ComparisonQuery = {}) {
+  const connected = useSseConnected()
   return useQuery({
     queryKey: storageGuidanceKeys.comparison(query),
-    queryFn: () => storageGuidanceClient.comparison(query),
+    queryFn: ({ signal }) => storageGuidanceClient.comparison(query, signal),
     placeholderData: (previous) => previous,
-    refetchInterval: 60_000,
+    refetchInterval: connected ? 120_000 : 60_000,
   })
 }
 
 export function useStorageRemediations(query: RemediationQuery = {}) {
+  const connected = useSseConnected()
   return useQuery({
     queryKey: storageGuidanceKeys.remediations(query),
-    queryFn: () => storageGuidanceClient.remediations(query),
+    queryFn: ({ signal }) => storageGuidanceClient.remediations(query, signal),
     placeholderData: (previous) => previous,
-    refetchInterval: 30_000,
+    refetchInterval: connected ? 60_000 : 30_000,
   })
 }

@@ -72,7 +72,41 @@ spec:
           annotations:
             summary: Highland storage impact analysis is repeatedly incomplete
             description: Provider {{ "{{" }} $labels.provider {{ "}}" }} impact checks report {{ "{{" }} $labels.reason {{ "}}" }}.
-        {{- if or .Values.storage.writes.enabled .Values.storage.writes.recoveryEnabled }}
+        {{- if .Values.adminPolicyControl.enabled }}
+        - alert: HighlandStoragePolicyNotObserved
+          expr: time() - highland_storage_policy_observed_timestamp_seconds > 300
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: Highland has not observed its runtime storage policy
+            description: New storage plans and submissions fail closed until the singleton HighlandPolicy is authoritative.
+        - alert: HighlandStoragePolicyCeilingMismatch
+          expr: highland_storage_policy_ceiling_mismatch > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Requested storage policy exceeds installed permissions
+            description: Review the Admin storage policy page and either narrow the request or change the Helm-installed permission ceiling through GitOps.
+        - alert: HighlandStoragePolicyUpdateFailures
+          expr: increase(highland_storage_policy_updates_total{result=~"error|conflict"}[15m]) > 3
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Runtime storage policy updates are repeatedly failing
+            description: Check policy resourceVersion conflicts, API connectivity, and HighlandPolicy status conditions.
+        - alert: HighlandStoragePolicyLegacyWildcard
+          expr: highland_storage_policy_legacy_wildcard > 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: Highland portable storage policy still allows every provider
+            description: Replace the legacy wildcard with explicit provider IDs on the Admin storage policy page so future or generic CSI drivers are not authorized implicitly.
+        {{- end }}
+        {{- if or .Values.storage.writes.enabled .Values.storage.writes.recoveryEnabled .Values.adminPolicyControl.enabled }}
         - alert: HighlandStorageOperationLeaderAbsent
           expr: sum(highland_storage_operation_controller_leader) < 1
           for: 2m
@@ -97,6 +131,14 @@ spec:
           annotations:
             summary: Highland storage operations are repeatedly retrying
             description: Provider {{ "{{" }} $labels.provider {{ "}}" }} has repeated {{ "{{" }} $labels.reason {{ "}}" }} retries.
+        - alert: HighlandStorageOperationPermissionDenied
+          expr: increase(highland_storage_operation_authorization_failures_total[15m]) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: A Highland storage operation lacks an installed Kubernetes permission
+            description: Provider {{ "{{" }} $labels.provider {{ "}}" }} action {{ "{{" }} $labels.action {{ "}}" }} was denied by Kubernetes authorization. Restore the reviewed Helm-installed permission ceiling; changing runtime policy cannot grant RBAC.
         - alert: HighlandStorageCephPostflightMismatch
           expr: increase(highland_storage_postflight_mismatches_total{provider="rook-ceph",kind="CephBlockPool"}[15m]) > 0
           for: 1m

@@ -1,0 +1,38 @@
+{{- if and .Values.adminPolicyControl.installStorageWriterPermissions (not .Values.adminPolicyControl.enabled) }}
+{{- fail "adminPolicyControl.installStorageWriterPermissions requires adminPolicyControl.enabled" }}
+{{- end }}
+{{- if and (or .Values.adminPolicyControl.ceiling.portableKubernetesWrites .Values.adminPolicyControl.ceiling.longhornWrites .Values.adminPolicyControl.ceiling.rookCephWrites .Values.adminPolicyControl.ceiling.allowCephStorageClassDelete .Values.adminPolicyControl.ceiling.allowCephPoolDelete) (not .Values.adminPolicyControl.installStorageWriterPermissions) }}
+{{- fail "adminPolicyControl ceiling values require installStorageWriterPermissions" }}
+{{- end }}
+{{- if and .Values.adminPolicyControl.ceiling.rookCephWrites (not .Values.providers.rookCeph.enabled) }}
+{{- fail "adminPolicyControl.ceiling.rookCephWrites requires providers.rookCeph.enabled" }}
+{{- end }}
+{{- if and .Values.adminPolicyControl.ceiling.allowCephStorageClassDelete (not .Values.adminPolicyControl.ceiling.rookCephWrites) }}
+{{- fail "allowCephStorageClassDelete requires the Rook/Ceph write ceiling" }}
+{{- end }}
+{{- if and .Values.adminPolicyControl.ceiling.allowCephPoolDelete (not .Values.adminPolicyControl.ceiling.rookCephWrites) }}
+{{- fail "allowCephPoolDelete requires the Rook/Ceph write ceiling" }}
+{{- end }}
+{{- if .Values.adminPolicyControl.enabled }}
+{{- $existing := lookup "highland.io/v1alpha1" "HighlandPolicy" .Release.Namespace "highland" }}
+apiVersion: highland.io/v1alpha1
+kind: HighlandPolicy
+metadata:
+  name: highland
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+spec:
+  {{- if and $existing $existing.spec }}
+  {{- toYaml $existing.spec | nindent 2 }}
+  {{- else }}
+  storage:
+    acceptNewOperations: {{ .Values.storage.writes.enabled }}
+    portableKubernetesWrites: {{ and .Values.storage.writes.enabled .Values.adminPolicyControl.ceiling.portableKubernetesWrites }}
+    portableKubernetesProviderIds: {{ ternary (list "*") (list) (and .Values.storage.writes.enabled .Values.adminPolicyControl.ceiling.portableKubernetesWrites) | toJson }}
+    longhornWrites: {{ and .Values.storage.writes.enabled .Values.adminPolicyControl.ceiling.longhornWrites }}
+    rookCephWrites: {{ and .Values.storage.writes.enabled .Values.providers.rookCeph.writes.enabled .Values.adminPolicyControl.ceiling.rookCephWrites }}
+    allowCephStorageClassDelete: {{ and .Values.storage.writes.enabled .Values.providers.rookCeph.writes.enabled .Values.providers.rookCeph.writes.allowStorageClassDelete .Values.adminPolicyControl.ceiling.allowCephStorageClassDelete }}
+    allowCephPoolDelete: {{ and .Values.storage.writes.enabled .Values.providers.rookCeph.writes.enabled .Values.providers.rookCeph.writes.allowPoolDelete .Values.adminPolicyControl.ceiling.allowCephPoolDelete }}
+  {{- end }}
+{{- end }}

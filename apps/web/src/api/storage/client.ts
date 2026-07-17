@@ -29,26 +29,26 @@ function query(filters: StorageFilters = {}): string {
 
 export const storageClient = {
   revealCephDashboardCredential: () => highlandPost<{ username: string; password: string }>('/admin/providers/rook-ceph/dashboard-credential/reveal'),
-  providers: () => highlandGet<ProviderList>('/storage/providers'),
-  provider: (id: string) => highlandGet<ProviderDescriptor>(`/storage/providers/${encodeURIComponent(id)}`),
-  summary: <T>(id: string) => highlandGet<T>(`/providers/${encodeURIComponent(id)}/summary`),
-  drivers: (filters?: StorageFilters) => highlandGet<StoragePage<DriverSummary>>(`/storage/drivers${query(filters)}`),
-  classes: (filters?: StorageFilters) => highlandGet<StoragePage<StorageClassSummary>>(`/storage/classes${query(filters)}`),
-  claims: (filters?: StorageFilters) => highlandGet<StoragePage<ClaimSummary>>(`/storage/claims${query(filters)}`),
-  claim: (namespace: string, name: string) => highlandGet<ClaimSummary>(`/storage/claims/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`),
-  volumes: (filters?: StorageFilters) => highlandGet<StoragePage<PersistentVolumeSummary>>(`/storage/volumes${query(filters)}`),
-  volume: (name: string) => highlandGet<PersistentVolumeSummary>(`/storage/volumes/${encodeURIComponent(name)}`),
-  snapshots: (filters?: StorageFilters) => highlandGet<StoragePage<SnapshotSummary>>(`/storage/snapshots${query(filters)}`),
-  attachments: (filters?: StorageFilters) => highlandGet<StoragePage<AttachmentSummary>>(`/storage/attachments${query(filters)}`),
-  capacity: (filters?: StorageFilters) => highlandGet<StoragePage<CapacitySummary>>(`/storage/capacity${query(filters)}`),
-  events: (filters?: StorageFilters) => highlandGet<StoragePage<StorageEvent>>(`/storage/events${query(filters)}`),
-  resources: <T>(providerId: string, kind: string, filters?: StorageFilters) =>
-    highlandGet<StoragePage<T>>(`/providers/${encodeURIComponent(providerId)}/resources/${encodeURIComponent(kind)}${query(filters)}`),
-  resource: <T>(providerId: string, kind: string, id: string) =>
-    highlandGet<T>(`/providers/${encodeURIComponent(providerId)}/resources/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`),
-  actions: () => highlandGet<{ data: ActionAvailability[]; writesEnabled: boolean }>('/storage/actions'),
-  operations: (filters?: StorageFilters & { action?: string; state?: string; user?: string }) => highlandGet<{ data: StorageOperation[] }>(`/storage/operations${query(filters)}`),
-  operation: (id: string) => highlandGet<StorageOperation>(`/storage/operations/${encodeURIComponent(id)}`),
+  providers: (signal?: AbortSignal) => highlandGet<ProviderList>('/storage/providers', { signal }),
+  provider: (id: string, signal?: AbortSignal) => highlandGet<ProviderDescriptor>(`/storage/providers/${encodeURIComponent(id)}`, { signal }),
+  summary: <T>(id: string, signal?: AbortSignal) => highlandGet<T>(`/providers/${encodeURIComponent(id)}/summary`, { signal }),
+  drivers: (filters?: StorageFilters, signal?: AbortSignal) => highlandGet<StoragePage<DriverSummary>>(`/storage/drivers${query(filters)}`, { signal }),
+  classes: (filters?: StorageFilters, signal?: AbortSignal) => highlandGet<StoragePage<StorageClassSummary>>(`/storage/classes${query(filters)}`, { signal }),
+  claims: (filters?: StorageFilters, signal?: AbortSignal) => highlandGet<StoragePage<ClaimSummary>>(`/storage/claims${query(filters)}`, { signal }),
+  claim: (namespace: string, name: string, signal?: AbortSignal) => highlandGet<ClaimSummary>(`/storage/claims/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`, { signal }),
+  volumes: (filters?: StorageFilters, signal?: AbortSignal) => highlandGet<StoragePage<PersistentVolumeSummary>>(`/storage/volumes${query(filters)}`, { signal }),
+  volume: (name: string, signal?: AbortSignal) => highlandGet<PersistentVolumeSummary>(`/storage/volumes/${encodeURIComponent(name)}`, { signal }),
+  snapshots: (filters?: StorageFilters, signal?: AbortSignal) => highlandGet<StoragePage<SnapshotSummary>>(`/storage/snapshots${query(filters)}`, { signal }),
+  attachments: (filters?: StorageFilters, signal?: AbortSignal) => highlandGet<StoragePage<AttachmentSummary>>(`/storage/attachments${query(filters)}`, { signal }),
+  capacity: (filters?: StorageFilters, signal?: AbortSignal) => highlandGet<StoragePage<CapacitySummary>>(`/storage/capacity${query(filters)}`, { signal }),
+  events: (filters?: StorageFilters, signal?: AbortSignal) => highlandGet<StoragePage<StorageEvent>>(`/storage/events${query(filters)}`, { signal }),
+  resources: <T>(providerId: string, kind: string, filters?: StorageFilters, signal?: AbortSignal) =>
+    highlandGet<StoragePage<T>>(`/providers/${encodeURIComponent(providerId)}/resources/${encodeURIComponent(kind)}${query(filters)}`, { signal }),
+  resource: <T>(providerId: string, kind: string, id: string, signal?: AbortSignal) =>
+    highlandGet<T>(`/providers/${encodeURIComponent(providerId)}/resources/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, { signal }),
+  actions: (signal?: AbortSignal) => highlandGet<{ data: ActionAvailability[]; writesEnabled: boolean; portableProviderIds: string[]; policySource?: string; policyGeneration?: number }>('/storage/actions', { signal }),
+  operations: (filters?: StorageFilters & { action?: string; state?: string; user?: string }, signal?: AbortSignal) => highlandGet<{ data: StorageOperation[] }>(`/storage/operations${query(filters)}`, { signal }),
+  operation: (id: string, signal?: AbortSignal) => highlandGet<StorageOperation>(`/storage/operations/${encodeURIComponent(id)}`, { signal }),
   plan: (request: OperationRequest) => highlandPost<OperationPlan>('/storage/plans', request),
   submit: (request: OperationRequest) => {
     const ns = encodeURIComponent(request.target.namespace ?? '')
@@ -60,7 +60,9 @@ export const storageClient = {
       'create-ceph-rbd-storageclass': [`/providers/${provider}/ceph/storage-classes`, 'POST'], 'create-cephfs-storageclass': [`/providers/${provider}/ceph/storage-classes`, 'POST'], 'delete-ceph-storageclass': [`/providers/${provider}/ceph/storage-classes/${name}`, 'DELETE'],
       'create-ceph-blockpool': [`/providers/${provider}/ceph/block-pools`, 'POST'], 'delete-ceph-blockpool': [`/providers/${provider}/ceph/block-pools/${ns}/${name}`, 'DELETE'],
     }
-    const route = routes[request.actionId]
+    const route = request.actionId.startsWith('longhorn-')
+      ? [`/providers/${provider}/longhorn/operations/${encodeURIComponent(request.actionId)}`, 'POST'] as [string, string]
+      : routes[request.actionId]
     if (!route) throw new Error('Unsupported storage action')
     return highlandRequest<{ operationId: string; operation: StorageOperation }>(route[0], route[1], request)
   },

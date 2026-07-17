@@ -17,6 +17,7 @@ data:
       "metricsInterval": {{ .Values.config.metricsInterval | quote }},
       "oidcMock": {{ .Values.config.oidcMock }},
       "version": {{ .Values.config.version | quote }},
+      "clusterIdentity": {{ default (printf "%s/%s" .Release.Namespace .Release.Name) .Values.clusterIdentity | quote }},
       "oidcIssuer": {{ .Values.auth.oidc.issuerURL | quote }},
       "oidcClientId": {{ .Values.auth.oidc.clientID | quote }},
       "oidcRedirectUrl": {{ .Values.auth.oidc.redirectURL | quote }},
@@ -32,6 +33,17 @@ data:
           "recoveryEnabled": {{ .Values.storage.writes.recoveryEnabled }}
         },
         "requiredProviders": {{ .Values.storage.requiredProviders | toJson }}
+      },
+      "adminPolicyControl": {
+        "enabled": {{ .Values.adminPolicyControl.enabled }},
+        "installStorageWriterPermissions": {{ .Values.adminPolicyControl.installStorageWriterPermissions }},
+        "ceiling": {
+          "portableKubernetesWrites": {{ .Values.adminPolicyControl.ceiling.portableKubernetesWrites }},
+          "longhornWrites": {{ .Values.adminPolicyControl.ceiling.longhornWrites }},
+          "rookCephWrites": {{ .Values.adminPolicyControl.ceiling.rookCephWrites }},
+          "allowCephStorageClassDelete": {{ .Values.adminPolicyControl.ceiling.allowCephStorageClassDelete }},
+          "allowCephPoolDelete": {{ .Values.adminPolicyControl.ceiling.allowCephPoolDelete }}
+        }
       },
       "providers": {
         "longhorn": {

@@ -94,6 +94,7 @@ const adminPageGroups: NavGroup[] = [
       { id: 'admin-users', labelKey: 'nav.users', label: 'Users', path: '/admin/users', icon: Shield, roles: ['admin'], end: true },
       { id: 'sso', labelKey: 'nav.sso', label: 'Enterprise SSO', path: '/admin/sso', icon: Shield, roles: ['admin'], end: true },
       { id: 'audit', labelKey: 'nav.auditLog', label: 'Audit Log', path: '/admin/audit', icon: Shield, roles: ['admin'], end: true },
+      { id: 'storage-policy', labelKey: 'nav.storagePolicy', label: 'Storage change policy', path: '/admin/storage-policy', icon: Shield, roles: ['admin'], end: true },
     ],
   },
 ]
@@ -105,7 +106,7 @@ const longhornGroups: NavGroup[] = [
     label: 'Longhorn',
     items: [
       { id: 'longhorn-dashboard', labelKey: 'nav.dashboard', label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-      { id: 'longhorn-provider', labelKey: 'nav.providerOverview', label: 'Provider overview', path: '/storage/providers/longhorn', icon: ListTree, end: true },
+      { id: 'longhorn-provider-details', labelKey: 'nav.providerDetails', label: 'Provider details', path: '/storage/providers/longhorn', icon: ListTree, end: true },
       { id: 'longhorn-context', labelKey: 'nav.storageInsights', label: 'Context & insights', path: '/storage/providers/longhorn/context', icon: GitBranch, end: true },
       { id: 'longhorn-operations', labelKey: 'nav.storageOperations', label: 'Operations', path: '/storage/operations?provider=longhorn', icon: Workflow },
     ],
@@ -214,7 +215,7 @@ function rookCephGroups(provider: WorkspaceProvider): NavGroup[] {
       labelKey: 'nav.rookCeph',
       label: 'Rook / Ceph',
       items: [
-        { id: `${provider.id}-provider-overview`, labelKey: 'nav.clusterHealth', label: 'Cluster Health', path: providerPath, icon: LayoutDashboard, end: true },
+        { id: `${provider.id}-dashboard`, labelKey: 'nav.dashboard', label: 'Dashboard', path: providerPath, icon: LayoutDashboard, end: true },
         { id: `${provider.id}-context`, labelKey: 'nav.storageInsights', label: 'Context & insights', path: `${providerPath}/context`, icon: GitBranch, end: true },
         { id: `${provider.id}-operations`, labelKey: 'nav.storageOperations', label: 'Operations', path: providerFilter('/storage/operations', provider.id), icon: Workflow },
       ],
@@ -233,7 +234,7 @@ function openEBSGroups(provider: WorkspaceProvider): NavGroup[] {
       labelKey: 'nav.openebs',
       label: 'OpenEBS',
       items: [
-        { id: `${provider.id}-provider-overview`, labelKey: 'nav.providerOverview', label: 'Overview', path: providerPath, icon: LayoutDashboard, end: true },
+        { id: `${provider.id}-dashboard`, labelKey: 'nav.dashboard', label: 'Dashboard', path: providerPath, icon: LayoutDashboard, end: true },
         { id: `${provider.id}-components`, labelKey: 'nav.components', label: 'Components', path: `${providerPath}/openebs/components`, icon: Boxes },
         { id: `${provider.id}-context`, labelKey: 'nav.storageInsights', label: 'Context & insights', path: `${providerPath}/context`, icon: GitBranch, end: true },
         { id: `${provider.id}-operations`, labelKey: 'nav.storageOperations', label: 'Operations', path: providerFilter('/storage/operations', provider.id), icon: Workflow },
@@ -298,7 +299,7 @@ function genericProviderGroups(provider: WorkspaceProvider): NavGroup[] {
       labelKey: 'nav.csiProvider',
       label: 'CSI Provider',
       items: [
-        { id: `${provider.id}-provider-overview`, labelKey: 'nav.providerOverview', label: 'Provider overview', path: providerPath, icon: LayoutDashboard, end: true },
+        { id: `${provider.id}-dashboard`, labelKey: 'nav.dashboard', label: 'Dashboard', path: providerPath, icon: LayoutDashboard, end: true },
         { id: `${provider.id}-context`, labelKey: 'nav.storageInsights', label: 'Context & insights', path: `${providerPath}/context`, icon: GitBranch, end: true },
         { id: `${provider.id}-operations`, labelKey: 'nav.storageOperations', label: 'Operations', path: providerFilter('/storage/operations', provider.id), icon: Workflow },
       ],
@@ -417,6 +418,10 @@ export function findNavItem(pathname: string): NavItem | undefined {
   if (openEBSKind) {
     const label = openEBSKind.replaceAll('-', ' ').replace(/\b\w/g, (character) => character.toUpperCase())
     return { id: `openebs-${openEBSKind}`, labelKey: `nav.${openEBSKind}`, label, icon: Database, path: pathname }
+  }
+  const providerDashboard = pathname.match(/^\/storage\/providers\/([^/]+)\/?$/)?.[1]
+  if (providerDashboard && providerDashboard !== 'longhorn') {
+    return { id: `${providerDashboard}-dashboard`, labelKey: 'nav.dashboard', label: 'Dashboard', icon: LayoutDashboard, path: pathname }
   }
   return best
 }

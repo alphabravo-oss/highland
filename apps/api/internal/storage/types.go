@@ -273,10 +273,18 @@ type PageMeta struct {
 	Total    int    `json:"total"`
 }
 
+type ResponseMeta struct {
+	ObservedAt time.Time `json:"observedAt"`
+	Stale      bool      `json:"stale"`
+	Partial    bool      `json:"partial"`
+	RequestID  string    `json:"requestId,omitempty"`
+}
+
 type Page[T any] struct {
-	Data       []T         `json:"data"`
-	Page       PageMeta    `json:"page"`
-	Conditions []Condition `json:"conditions,omitempty"`
+	Data       []T          `json:"data"`
+	Page       PageMeta     `json:"page"`
+	Meta       ResponseMeta `json:"meta"`
+	Conditions []Condition  `json:"conditions,omitempty"`
 }
 
 type ErrorEnvelope struct {

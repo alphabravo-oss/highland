@@ -2,6 +2,7 @@ package operations
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -27,8 +29,26 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/auth"
 	appmw "github.com/highland-io/highland/apps/api/internal/middleware"
 	"github.com/highland-io/highland/apps/api/internal/observability"
+	"github.com/highland-io/highland/apps/api/internal/policy"
 	"github.com/highland-io/highland/apps/api/internal/storage"
 )
+
+type operationPolicyStub struct {
+	mu       sync.RWMutex
+	snapshot policy.Snapshot
+}
+
+func (s *operationPolicyStub) Snapshot() policy.Snapshot {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.snapshot
+}
+
+func (s *operationPolicyStub) set(value policy.StoragePolicy) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.snapshot.Effective = value
+}
 
 type operationObserverStub struct {
 	started, finished int
@@ -57,6 +77,45 @@ type poolSafetyStub struct {
 	err            error
 }
 
+type longhornCall struct {
+	method, collection, name, action string
+	body                             map[string]any
+}
+
+type longhornClientStub struct {
+	gets    map[string]map[string]any
+	lists   map[string][]map[string]any
+	actions map[string]map[string]any
+	calls   []longhornCall
+}
+
+func (s *longhornClientStub) Get(_ context.Context, collection, name string) (map[string]any, error) {
+	resource, ok := s.gets[collection+"/"+name]
+	if !ok {
+		return nil, &LonghornHTTPError{Status: http.StatusNotFound, Message: "not found"}
+	}
+	return resource, nil
+}
+
+func (s *longhornClientStub) List(_ context.Context, collection string) ([]map[string]any, error) {
+	return s.lists[collection], nil
+}
+
+func (s *longhornClientStub) Action(_ context.Context, collection, name, action string, body map[string]any) (map[string]any, error) {
+	s.calls = append(s.calls, longhornCall{method: "action", collection: collection, name: name, action: action, body: body})
+	return s.actions[collection+"/"+name+"?action="+action], nil
+}
+
+func (s *longhornClientStub) Create(_ context.Context, collection string, body map[string]any) (map[string]any, error) {
+	s.calls = append(s.calls, longhornCall{method: "create", collection: collection, body: body})
+	return body, nil
+}
+
+func (s *longhornClientStub) Update(_ context.Context, collection, name string, body map[string]any) (map[string]any, error) {
+	s.calls = append(s.calls, longhornCall{method: "update", collection: collection, name: name, body: body})
+	return body, nil
+}
+
 func (s poolSafetyStub) VerifyPoolEmpty(context.Context, string, string) (bool, string, error) {
 	return s.empty, s.reason, s.err
 }
@@ -68,11 +127,344 @@ func newPlanner(t *testing.T, objects ...runtime.Object) *Planner {
 	t.Helper()
 	core := kubernetesfake.NewSimpleClientset(objects...)
 	dynamic := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
-	planner, err := NewPlanner(PlannerConfig{Core: core, Dynamic: dynamic, Scope: storage.NewScope("cluster", nil), Secret: []byte("0123456789abcdef0123456789abcdef")})
+	planner, err := NewPlanner(PlannerConfig{
+		Core: core, Dynamic: dynamic, Scope: storage.NewScope("cluster", nil),
+		Secret:            []byte("0123456789abcdef0123456789abcdef"),
+		ProviderForDriver: storage.GenericProviderID,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return planner
+}
+
+func newLonghornPlanner(t *testing.T, client LonghornClient) *Planner {
+	t.Helper()
+	planner, err := NewPlanner(PlannerConfig{
+		Core: kubernetesfake.NewSimpleClientset(), Dynamic: dynamicfake.NewSimpleDynamicClient(runtime.NewScheme()),
+		Scope: storage.NewScope("cluster", nil), Secret: []byte("0123456789abcdef0123456789abcdef"),
+		Longhorn: client,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return planner
+}
+
+func TestLonghornActionRegistryRisksAndConfirmations(t *testing.T) {
+	expected := map[string]struct {
+		risk         RiskLevel
+		confirmation ConfirmationMode
+	}{
+		"longhorn-volume-attach":           {RiskMedium, ConfirmSummary},
+		"longhorn-volume-detach":           {RiskHigh, ConfirmTypedName},
+		"longhorn-volume-replica-count":    {RiskMedium, ConfirmSummary},
+		"longhorn-volume-backup":           {RiskLow, ConfirmSummary},
+		"longhorn-recurring-job-add":       {RiskLow, ConfirmSummary},
+		"longhorn-recurring-job-remove":    {RiskMedium, ConfirmTypedName},
+		"longhorn-volume-salvage":          {RiskCritical, ConfirmTypedName},
+		"longhorn-engine-upgrade":          {RiskHigh, ConfirmTypedName},
+		"longhorn-backup-target-configure": {RiskHigh, ConfirmTypedName},
+		"longhorn-backup-delete":           {RiskCritical, ConfirmTypedName},
+		"longhorn-backup-restore":          {RiskHigh, ConfirmTypedName},
+	}
+	for id, want := range expected {
+		action, ok := ActionByID(id)
+		if !ok {
+			t.Fatalf("missing Longhorn action %s", id)
+		}
+		if action.ProviderKind != "longhorn" || action.Risk != want.risk || action.Confirmation != want.confirmation {
+			t.Fatalf("%s = provider %q risk %q confirmation %q", id, action.ProviderKind, action.Risk, action.Confirmation)
+		}
+	}
+}
+
+func TestLonghornVolumePlansUseManagerContracts(t *testing.T) {
+	baseVolume := func(actions ...string) map[string]any {
+		actionMap := map[string]any{}
+		for _, action := range actions {
+			actionMap[action] = "/v1/volumes/data?action=" + action
+		}
+		return map[string]any{
+			"id": "data", "name": "data", "state": "attached", "robustness": "healthy",
+			"numberOfReplicas": 3, "actions": actionMap,
+		}
+	}
+	tests := []struct {
+		name, action, managerAction string
+		parameters                  map[string]any
+		volume                      map[string]any
+		setup                       func(*longhornClientStub)
+		assertBody                  func(*testing.T, map[string]any)
+	}{
+		{
+			name: "attach", action: "longhorn-volume-attach", managerAction: "attach",
+			parameters: map[string]any{"hostId": "node-a"},
+			volume:     map[string]any{"id": "data", "name": "data", "state": "detached", "actions": map[string]any{"attach": "url"}},
+			setup: func(s *longhornClientStub) {
+				s.lists["nodes"] = []map[string]any{{"name": "node-a"}}
+			},
+			assertBody: func(t *testing.T, body map[string]any) {
+				if body["hostId"] != "node-a" || body["disableFrontend"] != false {
+					t.Fatalf("attach body=%v", body)
+				}
+			},
+		},
+		{
+			name: "detach", action: "longhorn-volume-detach", managerAction: "detach",
+			parameters: map[string]any{"force": true}, volume: baseVolume("detach"),
+			assertBody: func(t *testing.T, body map[string]any) {
+				if body["forceDetach"] != true {
+					t.Fatalf("detach body=%v", body)
+				}
+				if _, wrong := body["forceAttachment"]; wrong {
+					t.Fatalf("detach used obsolete forceAttachment field: %v", body)
+				}
+			},
+		},
+		{
+			name: "replicas", action: "longhorn-volume-replica-count", managerAction: "updateReplicaCount",
+			parameters: map[string]any{"replicaCount": 2}, volume: baseVolume("updateReplicaCount"),
+			assertBody: func(t *testing.T, body map[string]any) {
+				if body["replicaCount"] != 2 {
+					t.Fatalf("replica body=%v", body)
+				}
+			},
+		},
+		{
+			name: "recurring job add", action: "longhorn-recurring-job-add", managerAction: "recurringJobAdd",
+			parameters: map[string]any{"jobName": "hourly"}, volume: baseVolume("recurringJobAdd"),
+			setup: func(s *longhornClientStub) {
+				s.gets["recurringjobs/hourly"] = map[string]any{"name": "hourly"}
+			},
+			assertBody: func(t *testing.T, body map[string]any) {
+				if body["name"] != "hourly" || body["isGroup"] != false {
+					t.Fatalf("recurring job body=%v", body)
+				}
+				if _, wrong := body["jobs"]; wrong {
+					t.Fatalf("recurring job used list wrapper: %v", body)
+				}
+			},
+		},
+		{
+			name: "engine upgrade", action: "longhorn-engine-upgrade", managerAction: "engineUpgrade",
+			parameters: map[string]any{"image": "engine:v2"}, volume: baseVolume("engineUpgrade"),
+			setup: func(s *longhornClientStub) {
+				s.lists["engineimages"] = []map[string]any{{"image": "engine:v2", "state": "deployed"}}
+			},
+			assertBody: func(t *testing.T, body map[string]any) {
+				if body["image"] != "engine:v2" {
+					t.Fatalf("engine body=%v", body)
+				}
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := &longhornClientStub{
+				gets:  map[string]map[string]any{"volumes/data": test.volume},
+				lists: map[string][]map[string]any{}, actions: map[string]map[string]any{},
+			}
+			if test.setup != nil {
+				test.setup(client)
+			}
+			plan, err := newLonghornPlanner(t, client).Plan(context.Background(), "admin", Request{
+				ActionID: test.action, ProviderID: "longhorn",
+				Target: ResourceTarget{Kind: "LonghornVolume", Name: "data"}, Parameters: test.parameters,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			resource := plan.Resources[0]
+			if resource.Operation != "longhorn-action" || resource.Manifest["action"] != test.managerAction {
+				t.Fatalf("resource=%+v", resource)
+			}
+			test.assertBody(t, resource.Manifest["parameters"].(map[string]any))
+		})
+	}
+}
+
+func TestLonghornBackupAndRecoveryPlans(t *testing.T) {
+	client := &longhornClientStub{
+		gets: map[string]map[string]any{
+			"volumes/data": {
+				"name": "data", "state": "attached",
+				"actions": map[string]any{"snapshotBackup": "url", "snapshotList": "url"},
+			},
+			"backuptargets/default": {
+				"id": "default", "name": "default", "backupTargetURL": "s3://old",
+				"actions": map[string]any{"backupTargetUpdate": "url"},
+			},
+			"backupvolumes/source": {
+				"name": "source", "size": "10Gi", "actions": map[string]any{"backupDelete": "url"},
+			},
+		},
+		lists: map[string][]map[string]any{},
+		actions: map[string]map[string]any{
+			"volumes/data?action=snapshotList":       {"data": []any{map[string]any{"name": "snap-1"}}},
+			"backupvolumes/source?action=backupList": {"data": []any{map[string]any{"name": "backup-1"}}},
+		},
+	}
+	planner := newLonghornPlanner(t, client)
+
+	backup, err := planner.Plan(context.Background(), "admin", Request{
+		ActionID: "longhorn-volume-backup", ProviderID: "longhorn",
+		Target:     ResourceTarget{Kind: "LonghornVolume", Name: "data"},
+		Parameters: map[string]any{"snapshotName": "snap-1", "backupMode": "incremental"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backup.Resources[0].Manifest["action"] != "snapshotBackup" {
+		t.Fatalf("backup plan=%+v", backup.Resources[0])
+	}
+
+	target, err := planner.Plan(context.Background(), "admin", Request{
+		ActionID: "longhorn-backup-target-configure", ProviderID: "longhorn",
+		Target:     ResourceTarget{Kind: "LonghornBackupTarget", Name: "default"},
+		Parameters: map[string]any{"url": "s3://new-bucket@us-east-1/", "pollInterval": "5m"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.Resources[0].Operation != "longhorn-action" || target.Resources[0].Manifest["action"] != "backupTargetUpdate" {
+		t.Fatalf("backup target plan=%+v", target.Resources[0])
+	}
+
+	deletion, err := planner.Plan(context.Background(), "admin", Request{
+		ActionID: "longhorn-backup-delete", ProviderID: "longhorn",
+		Target:     ResourceTarget{Kind: "LonghornBackup", Name: "backup-1"},
+		Parameters: map[string]any{"backupVolume": "source"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deletion.Resources[0].Manifest["action"] != "backupDelete" || deletion.Resources[0].Manifest["parameters"].(map[string]any)["name"] != "backup-1" {
+		t.Fatalf("delete backup plan=%+v", deletion.Resources[0])
+	}
+
+	restore, err := planner.Plan(context.Background(), "admin", Request{
+		ActionID: "longhorn-backup-restore", ProviderID: "longhorn",
+		Target:     ResourceTarget{Kind: "LonghornVolume", Name: "restored"},
+		Parameters: map[string]any{"backupVolume": "source", "backupName": "backup-1", "replicaCount": 2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := restore.Resources[0].Manifest["parameters"].(map[string]any)
+	if restore.Resources[0].Operation != "longhorn-create" || body["fromBackup"] != "backup://source/backup-1" || body["numberOfReplicas"] != 2 {
+		t.Fatalf("restore plan=%+v", restore.Resources[0])
+	}
+}
+
+func TestLonghornTypedConfirmationsAreEnforced(t *testing.T) {
+	client := &longhornClientStub{
+		gets: map[string]map[string]any{
+			"volumes/data": {"name": "data", "state": "attached", "actions": map[string]any{"detach": "url"}},
+		},
+		lists: map[string][]map[string]any{}, actions: map[string]map[string]any{},
+	}
+	planner := newLonghornPlanner(t, client)
+	request := Request{
+		ActionID: "longhorn-volume-detach", ProviderID: "longhorn",
+		Target: ResourceTarget{Kind: "LonghornVolume", Name: "data"},
+	}
+	plan, err := planner.Plan(context.Background(), "admin", request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Confirmation.Challenge = plan.Challenge
+	request.Confirmation.WarningsAcknowledged = true
+	var planError *PlanError
+	if err := planner.Verify("admin", request, plan); !errors.As(err, &planError) || planError.Code != "TYPED_NAME_MISMATCH" {
+		t.Fatalf("missing typed confirmation error=%v", err)
+	}
+	request.Confirmation.TypedName = "wrong"
+	if err := planner.Verify("admin", request, plan); !errors.As(err, &planError) || planError.Code != "TYPED_NAME_MISMATCH" {
+		t.Fatalf("wrong typed confirmation error=%v", err)
+	}
+	request.Confirmation.TypedName = "data"
+	if err := planner.Verify("admin", request, plan); err != nil {
+		t.Fatalf("exact typed confirmation rejected: %v", err)
+	}
+}
+
+func TestControllerExecutesLonghornManagerAction(t *testing.T) {
+	client := &longhornClientStub{
+		gets: map[string]map[string]any{}, lists: map[string][]map[string]any{},
+		actions: map[string]map[string]any{},
+	}
+	controller := &Controller{planner: newLonghornPlanner(t, client)}
+	operation := &Operation{
+		Name: "operation-detach",
+		Spec: Spec{
+			ActionID: "longhorn-volume-detach",
+			Target:   ResourceTarget{Kind: "LonghornVolume", Name: "data", UID: "data"},
+		},
+	}
+	plan := Plan{Resources: []PlannedResource{longhornPlannedResource(
+		"LonghornVolume", "data", "longhorn-action", "volumes", "detach",
+		map[string]any{"forceDetach": false, "hostId": "", "attachmentID": ""},
+		map[string]any{"state": "detached"},
+	)}}
+	reference, postflight, err := controller.executeLonghorn(context.Background(), operation, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !postflight || reference == nil || reference.Kind != "LonghornVolume" || len(client.calls) != 1 {
+		t.Fatalf("reference=%+v postflight=%v calls=%+v", reference, postflight, client.calls)
+	}
+	call := client.calls[0]
+	if call.collection != "volumes" || call.name != "data" || call.action != "detach" || call.body["forceDetach"] != false {
+		t.Fatalf("manager call=%+v", call)
+	}
+}
+
+func TestControllerWaitsForLonghornWorkflowPostflight(t *testing.T) {
+	client := &longhornClientStub{
+		gets: map[string]map[string]any{
+			"volumes/data": {"name": "data", "state": "detached", "robustness": "healthy"},
+		},
+		lists: map[string][]map[string]any{
+			"backupvolumes": {{"name": "data", "volumeName": "data"}},
+		},
+		actions: map[string]map[string]any{
+			"backupvolumes/data?action=backupList": {
+				"data": []any{map[string]any{"name": "backup-1", "snapshotName": "snap-1", "state": "complete"}},
+			},
+			"volumes/data?action=recurringJobList": {
+				"data": []any{map[string]any{"name": "hourly"}},
+			},
+		},
+	}
+	controller := &Controller{planner: newLonghornPlanner(t, client)}
+	tests := []struct {
+		actionID string
+		params   map[string]any
+		reason   string
+	}{
+		{"longhorn-volume-backup", map[string]any{"snapshotName": "snap-1"}, "BackupCompleted"},
+		{"longhorn-recurring-job-add", map[string]any{"jobName": "hourly"}, "RecurringJobAssigned"},
+		{"longhorn-volume-salvage", map[string]any{"replicas": []any{"replica-1"}}, "VolumeSalvaged"},
+	}
+	for _, test := range tests {
+		t.Run(test.actionID, func(t *testing.T) {
+			operation := &Operation{
+				Spec: Spec{
+					ActionID:   test.actionID,
+					Target:     ResourceTarget{Kind: "LonghornVolume", Name: "data"},
+					Parameters: test.params,
+				},
+			}
+			plan := Plan{Resources: []PlannedResource{longhornPlannedResource(
+				"LonghornVolume", "data", "longhorn-action", "volumes", "action", test.params, nil,
+			)}}
+			done, failed, reason, err := controller.inspectLonghorn(context.Background(), operation, plan)
+			if err != nil || !done || failed || reason != test.reason {
+				t.Fatalf("done=%v failed=%v reason=%q err=%v", done, failed, reason, err)
+			}
+		})
+	}
 }
 
 func TestActionRegistryAuthorizationMatrix(t *testing.T) {
@@ -146,6 +538,230 @@ func TestCephStorageClassDeleteHasIndependentDestructiveGate(t *testing.T) {
 		t.Fatal("StorageClass deletion remained disabled after its explicit gate was enabled")
 	}
 }
+
+func TestRuntimePolicyGatesEveryProviderFamily(t *testing.T) {
+	store := &operationPolicyStub{snapshot: policy.Snapshot{Effective: policy.StoragePolicy{
+		AcceptNewOperations: true, PortableKubernetesWrites: true, LonghornWrites: true,
+		RookCephWrites: true, AllowCephStorageClassDelete: true, AllowCephPoolDelete: true,
+	}}}
+	api := NewAPI(APIConfig{Policy: store, CephPoolVerified: true, CephVersionSafe: true})
+	for _, id := range []string{
+		"create-pvc", "longhorn-volume-attach", "create-ceph-rbd-storageclass",
+		"delete-ceph-storageclass", "delete-ceph-blockpool",
+	} {
+		action, _ := ActionByID(id)
+		if !api.featureEnabled(context.Background(), action) {
+			t.Errorf("%s unexpectedly disabled by fully enabled runtime policy", id)
+		}
+	}
+	store.set(policy.StoragePolicy{
+		PortableKubernetesWrites: true, LonghornWrites: true, RookCephWrites: true,
+		AllowCephStorageClassDelete: true, AllowCephPoolDelete: true,
+	})
+	for _, action := range Actions() {
+		if api.featureEnabled(context.Background(), action) {
+			t.Errorf("%s bypassed the master runtime gate", action.ID)
+		}
+	}
+}
+
+func TestPortableWorkflowPolicyIsScopedToAuthoritativeProvider(t *testing.T) {
+	store := &operationPolicyStub{snapshot: policy.Snapshot{Effective: policy.StoragePolicy{
+		AcceptNewOperations: true, PortableKubernetesWrites: true,
+		PortableKubernetesProviderIDs: []string{"longhorn"},
+	}}}
+	api := NewAPI(APIConfig{Policy: store})
+	portable, _ := ActionByID("create-pvc")
+	if err := api.authorizePlannedProvider(portable, Plan{ProviderID: "longhorn"}); err != nil {
+		t.Fatalf("enabled Longhorn portable workflow rejected: %v", err)
+	}
+	if err := api.authorizePlannedProvider(portable, Plan{ProviderID: "rook-ceph"}); err == nil {
+		t.Fatal("Rook/Ceph portable workflow bypassed Longhorn-only provider scope")
+	}
+	native, _ := ActionByID("longhorn-volume-attach")
+	if err := api.authorizePlannedProvider(native, Plan{ProviderID: "longhorn"}); err != nil {
+		t.Fatalf("native provider workflow was incorrectly evaluated as portable: %v", err)
+	}
+	store.set(policy.StoragePolicy{
+		AcceptNewOperations: true, PortableKubernetesWrites: true,
+		PortableKubernetesProviderIDs: []string{"*"},
+	})
+	if err := api.authorizePlannedProvider(portable, Plan{ProviderID: storage.GenericProviderID("vendor.example.csi")}); err != nil {
+		t.Fatalf("legacy wildcard scope rejected a generic CSI provider: %v", err)
+	}
+}
+
+func TestAuthorizationMatrixProviderWorkflowRoleAndPolicy(t *testing.T) {
+	tests := []struct {
+		name       string
+		actionID   string
+		role       auth.Role
+		policy     policy.StoragePolicy
+		providerID string
+		want       bool
+	}{
+		{name: "operator Longhorn portable", actionID: "create-pvc", role: auth.RoleOperator, policy: enabledPortable("longhorn"), providerID: "longhorn", want: true},
+		{name: "operator cannot cross to Ceph", actionID: "create-pvc", role: auth.RoleOperator, policy: enabledPortable("longhorn"), providerID: "rook-ceph", want: false},
+		{name: "operator Ceph portable", actionID: "create-pvc", role: auth.RoleOperator, policy: enabledPortable("rook-ceph"), providerID: "rook-ceph", want: true},
+		{name: "operator OpenEBS portable", actionID: "create-pvc", role: auth.RoleOperator, policy: enabledPortable("openebs"), providerID: "openebs", want: true},
+		{name: "generic default denied", actionID: "create-pvc", role: auth.RoleOperator, policy: enabledPortable("longhorn"), providerID: storage.GenericProviderID("vendor.example.csi"), want: false},
+		{name: "generic explicit opt in", actionID: "create-pvc", role: auth.RoleOperator, policy: enabledPortable(storage.GenericProviderID("vendor.example.csi")), providerID: storage.GenericProviderID("vendor.example.csi"), want: true},
+		{name: "viewer denied even when provider enabled", actionID: "create-pvc", role: auth.RoleViewer, policy: enabledPortable("longhorn"), providerID: "longhorn", want: false},
+		{name: "operator denied admin deletion", actionID: "delete-pvc", role: auth.RoleOperator, policy: enabledPortable("longhorn"), providerID: "longhorn", want: false},
+		{name: "admin deletion allowed", actionID: "delete-pvc", role: auth.RoleAdmin, policy: enabledPortable("longhorn"), providerID: "longhorn", want: true},
+		{name: "global gate wins", actionID: "create-pvc", role: auth.RoleAdmin, policy: policy.StoragePolicy{PortableKubernetesWrites: true, PortableKubernetesProviderIDs: []string{"longhorn"}}, providerID: "longhorn", want: false},
+		{name: "native Longhorn independent", actionID: "longhorn-volume-attach", role: auth.RoleOperator, policy: policy.StoragePolicy{AcceptNewOperations: true, LonghornWrites: true}, providerID: "longhorn", want: true},
+		{name: "native Longhorn gate off", actionID: "longhorn-volume-attach", role: auth.RoleAdmin, policy: enabledPortable("longhorn"), providerID: "longhorn", want: false},
+		{name: "native Ceph independent", actionID: "create-ceph-rbd-storageclass", role: auth.RoleAdmin, policy: policy.StoragePolicy{AcceptNewOperations: true, RookCephWrites: true}, providerID: "rook-ceph", want: true},
+		{name: "OpenEBS has no native action", actionID: "openebs-volume-create", role: auth.RoleAdmin, policy: enabledPortable("openebs"), providerID: "openebs", want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := &operationPolicyStub{snapshot: policy.Snapshot{Effective: test.policy}}
+			api := NewAPI(APIConfig{Policy: store, CephVersionSafe: true, CephPoolVerified: true})
+			action, found := ActionByID(test.actionID)
+			allowed := found && api.authorize(context.Background(), action, test.role) == nil && api.authorizePlannedProvider(action, Plan{ProviderID: test.providerID}) == nil
+			if allowed != test.want {
+				t.Fatalf("allowed=%v, want %v (action found=%v)", allowed, test.want, found)
+			}
+		})
+	}
+}
+
+func enabledPortable(providerIDs ...string) policy.StoragePolicy {
+	return policy.StoragePolicy{
+		AcceptNewOperations: true, PortableKubernetesWrites: true,
+		PortableKubernetesProviderIDs: providerIDs,
+	}
+}
+
+func TestPolicyImpactReportsProviderScopeChanges(t *testing.T) {
+	before := policy.StoragePolicy{
+		AcceptNewOperations: true, PortableKubernetesWrites: true,
+		PortableKubernetesProviderIDs: []string{"longhorn", "rook-ceph"},
+	}
+	after := policy.StoragePolicy{
+		AcceptNewOperations: true, PortableKubernetesWrites: true,
+		PortableKubernetesProviderIDs: []string{"longhorn", "openebs"},
+	}
+	impact := PolicyImpact(before, after)
+	if len(impact.ActionIDs) != 0 || len(impact.Roles) != 0 {
+		t.Fatalf("provider-only change incorrectly reported new workflow families: %#v", impact)
+	}
+	if len(impact.AddedPortableProviderIDs) != 1 || impact.AddedPortableProviderIDs[0] != "openebs" {
+		t.Fatalf("added provider impact=%#v", impact.AddedPortableProviderIDs)
+	}
+	if len(impact.RemovedPortableProviderIDs) != 1 || impact.RemovedPortableProviderIDs[0] != "rook-ceph" {
+		t.Fatalf("removed provider impact=%#v", impact.RemovedPortableProviderIDs)
+	}
+}
+
+func TestActionCatalogueExposesPortableProviderScopes(t *testing.T) {
+	store := &operationPolicyStub{snapshot: policy.Snapshot{Effective: enabledPortable("longhorn", "rook-ceph")}}
+	api := NewAPI(APIConfig{Planner: newPlanner(t), Policy: store})
+	recorder := httptest.NewRecorder()
+	api.ListActions(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/storage/actions", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var response struct {
+		PortableProviderIDs []string `json:"portableProviderIds"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(response.PortableProviderIDs, ",") != "longhorn,rook-ceph" {
+		t.Fatalf("portable provider metadata=%#v", response.PortableProviderIDs)
+	}
+}
+
+func TestPortablePlanRejectsForgedProviderHintAndSignsResolvedProvider(t *testing.T) {
+	planner := newPlanner(t, &storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: "fast"}, Provisioner: "example.csi.io"})
+	resolved := storage.GenericProviderID("example.csi.io")
+	request := Request{
+		ActionID: "create-pvc", ProviderID: "longhorn",
+		Target:     ResourceTarget{Kind: "PersistentVolumeClaim", Namespace: "tenant-a", Name: "data"},
+		Parameters: map[string]any{"storageClass": "fast", "size": "1Gi"},
+	}
+	_, err := planner.Plan(context.Background(), "alice", request)
+	var planError *PlanError
+	if !errors.As(err, &planError) || planError.Code != "PROVIDER_MISMATCH" {
+		t.Fatalf("forged provider error=%v", err)
+	}
+	request.ProviderID = resolved
+	plan, err := planner.Plan(context.Background(), "alice", request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.ProviderID != resolved {
+		t.Fatalf("plan provider=%q, want %q", plan.ProviderID, resolved)
+	}
+	request.ProviderID = ""
+	request.Confirmation.Challenge = plan.Challenge
+	if err := planner.Verify("alice", request, plan); err != nil {
+		t.Fatalf("confirmation did not bind to authoritative plan provider: %v", err)
+	}
+}
+
+func TestEveryPortableWorkflowBindsAuthoritativeProvider(t *testing.T) {
+	allowExpansion := true
+	class := &storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: "longhorn", UID: "sc-uid", ResourceVersion: "1"}, Provisioner: "driver.longhorn.io", AllowVolumeExpansion: &allowExpansion}
+	core := kubernetesfake.NewSimpleClientset(
+		class,
+		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "clone-source", Namespace: "tenant", UID: "clone-uid", ResourceVersion: "1"}, Spec: corev1.PersistentVolumeClaimSpec{StorageClassName: stringPointer("longhorn"), VolumeName: "pv-clone", Resources: corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")}}}},
+		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "expand", Namespace: "tenant", UID: "expand-uid", ResourceVersion: "1"}, Spec: corev1.PersistentVolumeClaimSpec{StorageClassName: stringPointer("longhorn"), Resources: corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")}}}},
+		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "delete", Namespace: "tenant", UID: "delete-uid", ResourceVersion: "1"}, Spec: corev1.PersistentVolumeClaimSpec{StorageClassName: stringPointer("longhorn")}},
+		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "snapshot-source", Namespace: "tenant", UID: "source-uid", ResourceVersion: "1"}, Spec: corev1.PersistentVolumeClaimSpec{StorageClassName: stringPointer("longhorn"), VolumeName: "pv-snapshot"}},
+		&corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: "pv-snapshot", UID: "pv-uid", ResourceVersion: "1"}, Spec: corev1.PersistentVolumeSpec{PersistentVolumeSource: corev1.PersistentVolumeSource{CSI: &corev1.CSIPersistentVolumeSource{Driver: "driver.longhorn.io", VolumeHandle: "vol"}}}},
+	)
+	snapshotClass := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "snapshot.storage.k8s.io/v1", "kind": "VolumeSnapshotClass", "metadata": map[string]any{"name": "longhorn", "uid": "vsc-uid", "resourceVersion": "1"}, "driver": "driver.longhorn.io", "deletionPolicy": "Delete"}}
+	restoreSource := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "snapshot.storage.k8s.io/v1", "kind": "VolumeSnapshot", "metadata": map[string]any{"name": "restore-source", "namespace": "tenant", "uid": "restore-uid", "resourceVersion": "1"}, "spec": map[string]any{"volumeSnapshotClassName": "longhorn"}, "status": map[string]any{"readyToUse": true, "restoreSize": "1Gi"}}}
+	deleteSnapshot := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "snapshot.storage.k8s.io/v1", "kind": "VolumeSnapshot", "metadata": map[string]any{"name": "delete-snapshot", "namespace": "tenant", "uid": "delete-snap-uid", "resourceVersion": "1"}, "spec": map[string]any{"volumeSnapshotClassName": "longhorn"}}}
+	dynamic := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{
+		snapshotGVR: "VolumeSnapshotList", snapshotClassGVR: "VolumeSnapshotClassList",
+	}, snapshotClass, restoreSource, deleteSnapshot)
+	planner, err := NewPlanner(PlannerConfig{
+		Core: core, Dynamic: dynamic, Scope: storage.NewScope("cluster", nil), Secret: []byte("0123456789abcdef0123456789abcdef"),
+		ProviderForDriver: func(driver string) string {
+			if driver == "driver.longhorn.io" {
+				return "longhorn"
+			}
+			return storage.GenericProviderID(driver)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []Request{
+		{ActionID: "create-pvc", Target: ResourceTarget{Kind: "PersistentVolumeClaim", Namespace: "tenant", Name: "create"}, Parameters: map[string]any{"storageClass": "longhorn", "size": "1Gi"}},
+		{ActionID: "clone-pvc", Target: ResourceTarget{Kind: "PersistentVolumeClaim", Namespace: "tenant", Name: "clone"}, Parameters: map[string]any{"storageClass": "longhorn", "size": "1Gi", "sourceClaim": "clone-source"}},
+		{ActionID: "restore-snapshot", Target: ResourceTarget{Kind: "PersistentVolumeClaim", Namespace: "tenant", Name: "restore"}, Parameters: map[string]any{"storageClass": "longhorn", "size": "1Gi", "sourceSnapshot": "restore-source"}},
+		{ActionID: "expand-pvc", Target: ResourceTarget{Kind: "PersistentVolumeClaim", Namespace: "tenant", Name: "expand"}, Parameters: map[string]any{"size": "2Gi"}},
+		{ActionID: "delete-pvc", Target: ResourceTarget{Kind: "PersistentVolumeClaim", Namespace: "tenant", Name: "delete"}},
+		{ActionID: "create-snapshot", Target: ResourceTarget{Kind: "VolumeSnapshot", Namespace: "tenant", Name: "create-snapshot"}, Parameters: map[string]any{"sourceClaim": "snapshot-source", "snapshotClass": "longhorn"}},
+		{ActionID: "delete-snapshot", Target: ResourceTarget{Kind: "VolumeSnapshot", Namespace: "tenant", Name: "delete-snapshot"}},
+	}
+	for _, request := range tests {
+		t.Run(request.ActionID, func(t *testing.T) {
+			plan, planErr := planner.Plan(context.Background(), "admin", request)
+			if planErr != nil {
+				t.Fatal(planErr)
+			}
+			if plan.ProviderID != "longhorn" {
+				t.Fatalf("provider=%q", plan.ProviderID)
+			}
+			foundAttribution := false
+			for _, check := range plan.Checks {
+				foundAttribution = foundAttribution || check.ID == "provider-attribution"
+			}
+			if !foundAttribution {
+				t.Fatalf("provider attribution check missing: %#v", plan.Checks)
+			}
+		})
+	}
+}
+
+func stringPointer(value string) *string { return &value }
 
 func TestDestructivePlanUsesSharedImpactResultAndFailsClosed(t *testing.T) {
 	class := &storagev1.StorageClass{
@@ -326,6 +942,81 @@ func TestPlanChallengeBindsUserPlanAndExpiry(t *testing.T) {
 	}
 	if plan.Resources[0].Manifest["spec"].(map[string]any)["resources"].(map[string]any)["requests"].(map[string]any)["storage"] != "9007199254740993" {
 		t.Fatal("quantity lost exact string representation")
+	}
+}
+
+func TestPlanChallengeBindsRuntimePolicyVersion(t *testing.T) {
+	allow := true
+	core := kubernetesfake.NewSimpleClientset(&storagev1.StorageClass{
+		ObjectMeta:  metav1.ObjectMeta{Name: "fast", UID: types.UID("class-uid"), ResourceVersion: "7"},
+		Provisioner: "example.csi.io", AllowVolumeExpansion: &allow,
+	})
+	version := "runtime-policy:rv-1:1"
+	planner, err := NewPlanner(PlannerConfig{
+		Core: core, Dynamic: dynamicfake.NewSimpleDynamicClient(runtime.NewScheme()),
+		Scope:         storage.NewScope("cluster", nil),
+		Secret:        []byte("0123456789abcdef0123456789abcdef"),
+		PolicyVersion: func() string { return version },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := Request{
+		ActionID:   "create-pvc",
+		Target:     ResourceTarget{Kind: "PersistentVolumeClaim", Namespace: "tenant-a", Name: "data"},
+		Parameters: map[string]any{"storageClass": "fast", "size": "1Gi"},
+	}
+	plan, err := planner.Plan(context.Background(), "alice", request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Confirmation.Challenge = plan.Challenge
+	if err := planner.Verify("alice", request, plan); err != nil {
+		t.Fatalf("current policy confirmation rejected: %v", err)
+	}
+	version = "runtime-policy:rv-2:2"
+	var planError *PlanError
+	if err := planner.Verify("alice", request, plan); !errors.As(err, &planError) || planError.Code != "STALE_CONFIRMATION" {
+		t.Fatalf("confirmation survived policy change: %v", err)
+	}
+}
+
+func TestAuthorizationFailureClassificationIsBounded(t *testing.T) {
+	for _, test := range []struct {
+		code    string
+		message string
+		want    bool
+	}{
+		{code: "DEPENDENCY_PERMISSION_DENIED", want: true},
+		{code: "EXECUTION_FAILED", message: "persistentvolumeclaims is forbidden", want: true},
+		{code: "EXECUTION_FAILED", message: "Unauthorized", want: true},
+		{code: "EXECUTION_FAILED", message: "provider timed out", want: false},
+	} {
+		if got := isAuthorizationFailure(test.code, test.message); got != test.want {
+			t.Fatalf("isAuthorizationFailure(%q, %q)=%v, want %v", test.code, test.message, got, test.want)
+		}
+	}
+}
+
+func TestActionRegistryHasExplicitSafetyAndPolicyMapping(t *testing.T) {
+	for _, action := range Actions() {
+		if action.ID == "" || action.Capability == "" || action.AuditAction == "" {
+			t.Errorf("action lacks identity/audit contract: %+v", action)
+		}
+		if action.MinimumRole != "operator" && action.MinimumRole != "admin" {
+			t.Errorf("%s has unsupported role %q", action.ID, action.MinimumRole)
+		}
+		if action.Risk == "" || action.Confirmation == "" || len(action.PreflightChecks) == 0 {
+			t.Errorf("%s lacks explicit risk, confirmation, or preflight", action.ID)
+		}
+		switch action.FeatureFlag {
+		case "storage.writes.enabled",
+			"providers.rookCeph.writes.enabled",
+			"providers.rookCeph.writes.allowStorageClassDelete",
+			"providers.rookCeph.writes.allowPoolDelete":
+		default:
+			t.Errorf("%s lacks a recognized runtime policy mapping: %q", action.ID, action.FeatureFlag)
+		}
 	}
 }
 
@@ -548,6 +1239,35 @@ func TestStoreCreateIsIdempotentAcrossConcurrentReplicas(t *testing.T) {
 	operations, err := store.List(context.Background(), nil, 100)
 	if err != nil || len(operations) != 1 || operations[0].Name != "storage-"+strings.Repeat("c", 24) {
 		t.Fatalf("operations=%#v err=%v", operations, err)
+	}
+}
+
+func TestStoreCreatePersistsPendingThroughStatusSubresource(t *testing.T) {
+	client := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+	client.PrependReactor("create", "storageoperations", func(action ktesting.Action) (bool, runtime.Object, error) {
+		create := action.(ktesting.CreateAction)
+		object := create.GetObject().(*unstructured.Unstructured)
+		// Real API servers strip status from create when the CRD exposes a
+		// status subresource.
+		delete(object.Object, "status")
+		return false, nil, nil
+	})
+	store, _ := NewStore(client, "highland-system")
+	operation, err := store.Create(context.Background(), Spec{
+		ActionID:      "create-pvc",
+		Target:        ResourceTarget{Kind: "PersistentVolumeClaim", Namespace: "default", Name: "data"},
+		ParameterHash: strings.Repeat("a", 64), PlanHash: strings.Repeat("b", 64),
+		IdempotencyHash: strings.Repeat("c", 64), Requester: "alice", RequesterRole: "operator",
+		Resources: []PlannedResource{{
+			APIVersion: "v1", Kind: "PersistentVolumeClaim", Namespace: "default",
+			Name: "data", Operation: "server-side-apply",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operation.Status.Phase != "Pending" || operation.Status.Step != "Queued" {
+		t.Fatalf("status was not initialized through subresource: %+v", operation.Status)
 	}
 }
 
