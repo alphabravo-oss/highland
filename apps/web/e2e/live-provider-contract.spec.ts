@@ -42,7 +42,10 @@ test.describe('live provider integration contract', () => {
 
         if (provider.supportLevel === 'managed') {
           await expectOK(page.request, `/api/v1/providers/${encodeURIComponent(provider.id)}/summary`)
-          await expectOK(page.request, `/api/v1/providers/${encodeURIComponent(provider.id)}/relationships`)
+          const relationshipKind = descriptor.resourceKinds?.[0]
+          if (relationshipKind) {
+            await expectOK(page.request, `/api/v1/providers/${encodeURIComponent(provider.id)}/relationships?kind=${encodeURIComponent(relationshipKind)}`)
+          }
           await expectOK(page.request, `/api/v1/providers/${encodeURIComponent(provider.id)}/drift`)
           await expectOK(page.request, `/api/v1/providers/${encodeURIComponent(provider.id)}/capacity/forecast`)
         }
@@ -62,4 +65,3 @@ test.describe('live provider integration contract', () => {
     }
   })
 })
-

@@ -17,19 +17,19 @@ import { useToast } from '@/components/ui/toast'
 export function SecuritySettingsPage() {
   const { isAdmin } = useAuth()
   const toast = useToast()
-  const query = useQuery({ queryKey: ['security-policy'], queryFn: () => highlandGet<SecurityPolicy>('/admin/security-policy'), enabled: isAdmin })
+  const query = useQuery({ queryKey: ['security-policy'], queryFn: () => highlandGet<SecurityPolicy>('/auth/security-policy'), enabled: isAdmin })
   const [policy, setPolicy] = useState<SecurityPolicy | null>(null)
   const [saving, setSaving] = useState(false)
   useEffect(() => { if (query.data) setPolicy(query.data) }, [query.data])
 
   if (!isAdmin) return <><PageHeader title="Authentication security" description="Administrator access is required." /><EmptyState icon={ShieldCheck} title="Administrators only" description="This page controls organization-wide authentication requirements." /></>
-  if (query.error) return <Alert tone="danger">{query.error instanceof Error ? query.error.message : 'Security policy unavailable'}</Alert>
+  if (query.error) return <><PageHeader title="Authentication security" description="Set organization-wide password and multi-factor authentication requirements." /><Alert tone="danger">{query.error instanceof Error ? query.error.message : 'Security policy unavailable'}</Alert></>
   if (!policy) return <div role="status" className="p-6 text-sm text-[var(--color-muted-foreground)]">Loading security policy…</div>
   const setNumber = (key: keyof SecurityPolicy, value: string) => setPolicy({ ...policy, [key]: Number(value) })
   const save = async () => {
     setSaving(true)
     try {
-      const updated = await highlandPut<SecurityPolicy>('/admin/security-policy', policy)
+      const updated = await highlandPut<SecurityPolicy>('/auth/security-policy', policy)
       setPolicy(updated)
       toast.success('Security policy saved', 'The new requirements apply to local Highland accounts.')
     } catch (cause) {

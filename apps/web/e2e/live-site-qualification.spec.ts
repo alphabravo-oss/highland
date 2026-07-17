@@ -61,7 +61,7 @@ test.describe('live site qualification', () => {
     const routes = new Set<string>(['/account', '/admin', '/admin/users', '/admin/security', '/admin/sso', '/admin/audit', '/admin/storage-policy'])
     for (const root of workspaceRoots) {
       await page.goto(root, { waitUntil: 'domcontentloaded' })
-      await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toBeVisible()
+      await expect(page.getByRole('main').getByRole('heading', { level: 1 }), `${route} page heading`).toBeVisible()
       const statusSummary = page.getByRole('main').getByRole('heading', { level: 2 }).first()
       await expect(statusSummary).toBeVisible()
       const sectionPositions: number[] = []
