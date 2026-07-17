@@ -53,7 +53,7 @@ export type NavGroup = {
 
 export type WorkspaceProvider = Pick<
   ProviderDescriptor,
-  'id' | 'kind' | 'displayName' | 'supportLevel' | 'capabilities' | 'health' | 'metadata'
+  'id' | 'kind' | 'displayName' | 'supportLevel' | 'capabilities' | 'resourceKinds' | 'health' | 'metadata'
 >
 
 const allStorageGroups: NavGroup[] = [
@@ -93,6 +93,7 @@ const adminPageGroups: NavGroup[] = [
     roles: ['admin'],
     items: [
       { id: 'admin-users', labelKey: 'nav.users', label: 'Users', path: '/admin/users', icon: Shield, roles: ['admin'], end: true },
+      { id: 'admin-security', labelKey: 'nav.security', label: 'Authentication security', path: '/admin/security', icon: Shield, roles: ['admin'], end: true },
       { id: 'sso', labelKey: 'nav.sso', label: 'Enterprise SSO', path: '/admin/sso', icon: Shield, roles: ['admin'], end: true },
       { id: 'audit', labelKey: 'nav.auditLog', label: 'Audit Log', path: '/admin/audit', icon: Shield, roles: ['admin'], end: true },
       { id: 'storage-policy', labelKey: 'nav.storagePolicy', label: 'Storage change policy', path: '/admin/storage-policy', icon: Shield, roles: ['admin'], end: true },
@@ -197,19 +198,19 @@ function commonInventoryItems(provider: WorkspaceProvider): NavItem[] {
 
 function rookCephGroups(provider: WorkspaceProvider): NavGroup[] {
   const providerPath = `/storage/providers/${encodeURIComponent(provider.id)}`
-  const dashboardConfigured = provider.metadata?.dashboard === 'configured'
-  const cephItems: NavItem[] = [
-    { id: `${provider.id}-pools`, labelKey: 'nav.pools', label: 'Block Pools', path: `${providerPath}/ceph/pools`, icon: Layers3 },
-    { id: `${provider.id}-filesystems`, labelKey: 'nav.filesystems', label: 'CephFS Filesystems', path: `${providerPath}/ceph/filesystems`, icon: Database },
-    { id: `${provider.id}-mirroring`, labelKey: 'nav.mirroring', label: 'RBD Mirroring', path: `${providerPath}/ceph/mirroring`, icon: Network },
+  const supports = (kind: string) => provider.resourceKinds?.includes(kind) ?? false
+  const candidates: Array<[string, string, string, LucideIcon]> = [
+    ['clusters', 'nav.clusters', 'Ceph Clusters', Boxes],
+    ['quorum', 'nav.quorum', 'MON Quorum', Shield],
+    ['osds', 'nav.osds', 'OSDs', Server],
+    ['pools', 'nav.pools', 'Block Pools', Layers3],
+    ['filesystems', 'nav.filesystems', 'CephFS Filesystems', Database],
+    ['mirroring', 'nav.mirroring', 'RBD Mirroring', Network],
+    ['rbd-images', 'nav.rbdImages', 'RBD Images', HardDrive],
   ]
-  if (dashboardConfigured) {
-    cephItems.unshift(
-      { id: `${provider.id}-quorum`, labelKey: 'nav.quorum', label: 'MON Quorum', path: `${providerPath}/ceph/quorum`, icon: Shield },
-      { id: `${provider.id}-osds`, labelKey: 'nav.osds', label: 'OSDs', path: `${providerPath}/ceph/osds`, icon: Server },
-    )
-    cephItems.push({ id: `${provider.id}-rbd-images`, labelKey: 'nav.rbdImages', label: 'RBD Images', path: `${providerPath}/ceph/rbd-images`, icon: HardDrive })
-  }
+  const cephItems: NavItem[] = candidates.filter(([kind]) => supports(kind)).map(([kind, labelKey, label, icon]) => ({
+    id: `${provider.id}-${kind}`, labelKey, label, path: `${providerPath}/ceph/${kind}`, icon,
+  }))
   return [
     {
       id: `${provider.id}-overview`,

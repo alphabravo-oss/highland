@@ -199,6 +199,7 @@ ready until the embedded manager answers, which is expected during startup.
 | Deployment `*-web` | nginx SPA; proxies `/auth` and `/api` to the API Service |
 | ConfigMap `*-config` | Non-secret settings, including the manager URL |
 | Secret `*-admin` | Local admin username/password |
+| Secret `*-identity` | Durable local users, password policy, MFA state, and encrypted TOTP seeds; retained on Helm uninstall |
 | Service api + web | ClusterIP access for Highland |
 | RBAC | Benchmarks plus read/watch access in the effective Longhorn namespace |
 | NetworkPolicy | API egress to the effective Longhorn manager namespace |
@@ -308,7 +309,7 @@ docker compose -f deploy/docker-compose.yaml up --build
 # http://127.0.0.1:8088  admin / highland
 ```
 
-## 9. Optional Redis (multi-replica session HA)
+## 9. Optional Redis (centralized sessions)
 
 ```yaml
 replicaCount:
@@ -319,7 +320,11 @@ redis:
   passwordSecret: highland-redis
 ```
 
-Without Redis, use one API replica or sticky sessions at the Ingress.
+Redis is not required for multiple API replicas: Highland's signed-cookie backend is replica-safe
+when the chart-managed session signing Secret is stable. Redis is useful when centralized session
+storage and immediate backend-side deletion are operational requirements. Local user disable,
+password/email changes, role changes, deletion, and MFA reset invalidate signed-cookie sessions via
+the durable identity revision as well.
 
 ## 9. Benchmarks on cluster
 

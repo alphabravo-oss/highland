@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/highland-io/highland/apps/api/internal/audit"
 	"github.com/highland-io/highland/apps/api/internal/auth"
 	"github.com/highland-io/highland/apps/api/internal/config"
 	"github.com/highland-io/highland/apps/api/internal/middleware"
@@ -24,6 +25,8 @@ type API struct {
 	Auth        *auth.Authenticator
 	Store       *auth.Store
 	Users       *auth.UserStore
+	Challenge   *auth.MFAChallengeSigner
+	Audit       *audit.Store
 	OIDC        *auth.OIDCProvider // legacy pointer; prefer OIDCRuntime
 	OIDCRuntime *auth.OIDCRuntime  // runtime-configurable enterprise SSO
 	Limiter     *ratelimit.LoginLimiter
@@ -175,9 +178,9 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	id, user, err := a.Auth.Login(req.Username, req.Password)
+	user, err := a.Auth.Authenticate(r.Context(), req.Username, req.Password)
 	if err != nil {
-		if errors.Is(err, auth.ErrInvalidCredentials) {
+		if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrAccountDisabled) {
 			if a.Limiter != nil {
 				a.Limiter.RecordFailure(req.Username, r.RemoteAddr)
 			}
@@ -188,6 +191,22 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 		// Do NOT record a failure on backend errors — avoids locking admins out
 		// during an auth-backend outage.
 		a.Obs.IncLoginAttempt("error")
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "identity service unavailable"})
+		return
+	}
+	if user.MFAEnabled {
+		challenge, challengeErr := a.Challenge.Issue(user.Username)
+		if challengeErr != nil {
+			a.Obs.IncLoginAttempt("error")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "login failed"})
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"mfaRequired": true, "challengeToken": challenge})
+		return
+	}
+	id, err := a.Auth.IssueSession(*user)
+	if err != nil {
+		a.Obs.IncLoginAttempt("error")
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "login failed"})
 		return
 	}
@@ -195,17 +214,62 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 		a.Limiter.RecordSuccess(req.Username, r.RemoteAddr)
 	}
 	a.Obs.IncLoginAttempt("success")
-	http.SetCookie(w, &http.Cookie{
-		Name:     a.Cfg.CookieName,
-		Value:    id,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   a.Cfg.CookieSecure,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(a.Cfg.SessionTTL.Seconds()),
-	})
+	a.setSessionCookie(w, id)
+	a.Users.RecordAuthentication(context.Background(), user.Username)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user": user,
+	})
+}
+
+func (a *API) VerifyMFA(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		ChallengeToken string `json:"challengeToken"`
+		Code           string `json:"code"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return
+	}
+	username, err := a.Challenge.Verify(request.ChallengeToken)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid or expired verification challenge"})
+		return
+	}
+	if a.Limiter != nil {
+		if ok, retry := a.Limiter.Allow(username, r.RemoteAddr); !ok {
+			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retry.Seconds()))))
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many verification attempts, please try again later"})
+			return
+		}
+	}
+	user, err := a.Users.VerifySecondFactor(r.Context(), username, request.Code)
+	if err != nil {
+		if a.Limiter != nil {
+			a.Limiter.RecordFailure(username, r.RemoteAddr)
+		}
+		a.Obs.IncLoginAttempt("invalid_mfa")
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid verification code"})
+		return
+	}
+	id, err := a.Auth.IssueSession(*user)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "login failed"})
+		return
+	}
+	if a.Limiter != nil {
+		a.Limiter.RecordSuccess(username, r.RemoteAddr)
+	}
+	a.Obs.IncLoginAttempt("success")
+	a.setSessionCookie(w, id)
+	a.Users.RecordAuthentication(context.Background(), username)
+	writeJSON(w, http.StatusOK, map[string]any{"user": user})
+}
+
+func (a *API) setSessionCookie(w http.ResponseWriter, id string) {
+	http.SetCookie(w, &http.Cookie{
+		Name: a.Cfg.CookieName, Value: id, Path: "/", HttpOnly: true,
+		Secure: a.Cfg.CookieSecure, SameSite: http.SameSiteLaxMode,
+		MaxAge: int(a.Cfg.SessionTTL.Seconds()),
 	})
 }
 

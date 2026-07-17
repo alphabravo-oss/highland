@@ -28,6 +28,7 @@ export type ProviderDescriptor = {
   version?: string
   namespace?: string
   capabilities: Capability[]
+  resourceKinds?: string[]
   health: ProviderHealth
   metadata?: Record<string, string>
 }

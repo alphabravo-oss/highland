@@ -28,7 +28,7 @@ import { ConfirmDialog } from '@/components/data/ConfirmDialog'
 import { DataTable } from '@/components/data/DataTable'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
 
-type HighlandUser = { username: string; role: string }
+type HighlandUser = { username: string; email?: string; role: string; disabled: boolean; mfaEnabled: boolean; mfaRequired: boolean; lastAuthenticatedAt?: string }
 
 export function AdminPage() {
   const { t } = useAppTranslation()
@@ -59,6 +59,12 @@ export function AdminPage() {
       title: t('admin.sso.title'),
       description: t('admin.ssoSummary'),
       icon: KeyRound,
+    },
+    {
+      path: '/admin/security',
+      title: 'Authentication security',
+      description: 'Configure password requirements and optional or enforced two-factor authentication.',
+      icon: ShieldCheck,
     },
     {
       path: '/admin/audit',
@@ -115,11 +121,15 @@ export function AdminUsersPage() {
   const [open, setOpen] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [email, setEmail] = useState('')
   const [role, setRole] = useState('operator')
   const [error, setError] = useState<string | null>(null)
   const [deleteUser, setDeleteUser] = useState<string | null>(null)
-  const [editUser, setEditUser] = useState<{ username: string; role: string } | null>(null)
+  const [editUser, setEditUser] = useState<HighlandUser | null>(null)
   const [editRole, setEditRole] = useState('operator')
+  const [editEmail, setEditEmail] = useState('')
+  const [editDisabled, setEditDisabled] = useState(false)
+  const [editResetMfa, setEditResetMfa] = useState(false)
   const [editPassword, setEditPassword] = useState('')
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [selectedUsers, setSelectedUsers] = useState<HighlandUser[]>([])
@@ -132,6 +142,12 @@ export function AdminUsersPage() {
         header: t('common.username'),
         meta: { className: 'font-medium' },
         cell: ({ row }) => row.original.username,
+      },
+      {
+        id: 'email',
+        accessorFn: (u) => u.email ?? '',
+        header: 'Email',
+        cell: ({ row }) => row.original.email || <span className="text-[var(--color-muted-foreground)]">Not set</span>,
       },
       {
         id: 'role',
@@ -152,6 +168,26 @@ export function AdminUsersPage() {
         ),
       },
       {
+        id: 'status',
+        header: 'Account status',
+        accessorFn: (u) => u.disabled ? 'disabled' : 'active',
+        cell: ({ row }) => <Badge tone={row.original.disabled ? 'danger' : 'success'}>{row.original.disabled ? 'Disabled' : 'Active'}</Badge>,
+      },
+      {
+        id: 'mfa',
+        header: '2FA',
+        accessorFn: (u) => u.mfaEnabled ? 'enabled' : u.mfaRequired ? 'required' : 'not enabled',
+        cell: ({ row }) => <Badge tone={row.original.mfaEnabled ? 'success' : row.original.mfaRequired ? 'warning' : 'default'}>{row.original.mfaEnabled ? 'Enabled' : row.original.mfaRequired ? 'Required' : 'Not enabled'}</Badge>,
+      },
+      {
+        id: 'lastAuthenticatedAt',
+        header: 'Last sign-in',
+        accessorFn: (u) => u.lastAuthenticatedAt ?? '',
+        cell: ({ row }) => row.original.lastAuthenticatedAt
+          ? <span className="whitespace-nowrap text-xs">{new Date(row.original.lastAuthenticatedAt).toLocaleString()}</span>
+          : <span className="text-[var(--color-muted-foreground)]">Never</span>,
+      },
+      {
         id: 'actions',
         header: t('common.actions'),
         enableSorting: false,
@@ -164,9 +200,14 @@ export function AdminUsersPage() {
                 type="button"
                 size="sm"
                 variant="outline"
+                disabled={u.username === user?.username}
+                title={u.username === user?.username ? 'Manage your own credentials from My account' : undefined}
                 onClick={() => {
                   setEditUser(u)
                   setEditRole(u.role)
+                  setEditEmail(u.email ?? '')
+                  setEditDisabled(u.disabled)
+                  setEditResetMfa(false)
                 }}
               >
                 {t('common.edit')}
@@ -192,11 +233,12 @@ export function AdminUsersPage() {
   async function createUser() {
     setError(null)
     try {
-      await highlandPost('/users', { username, password, role })
+      await highlandPost('/users', { username, email, password, role })
       toast.success(t('admin.userCreated'), username)
       setOpen(false)
       setUsername('')
       setPassword('')
+      setEmail('')
       await qc.invalidateQueries({ queryKey: ['users'] })
     } catch (e) {
       setError(e instanceof Error ? e.message : t('admin.createFailed'))
@@ -208,11 +250,12 @@ export function AdminUsersPage() {
     try {
       await updateUserMut.mutateAsync({
         username: editUser.username,
-        body: { role: editRole, password: editPassword || undefined },
+        body: { email: editEmail, role: editRole, disabled: editDisabled, resetMfa: editResetMfa, password: editPassword || undefined },
       })
       toast.success(t('admin.userUpdated'), editUser.username)
       setEditUser(null)
       setEditPassword('')
+      setEditResetMfa(false)
     } catch (e) {
       toast.error(t('admin.updateFailed'), e instanceof Error ? e.message : undefined)
     }
@@ -330,6 +373,10 @@ export function AdminUsersPage() {
             <Input id="nu" value={username} onChange={(e) => setUsername(e.target.value)} />
           </div>
           <div className="space-y-1.5">
+            <Label htmlFor="ne">Email address <span className="font-normal text-[var(--color-muted-foreground)]">(optional)</span></Label>
+            <Input id="ne" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
             <Label htmlFor="np">{t('common.password')}</Label>
             <Input
               id="np"
@@ -337,6 +384,7 @@ export function AdminUsersPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            <p className="text-xs text-[var(--color-muted-foreground)]">Use a unique passphrase of at least 15 characters.</p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="nr">{t('admin.role')}</Label>
@@ -367,6 +415,10 @@ export function AdminUsersPage() {
       >
         <div className="space-y-3">
           <div className="space-y-1.5">
+            <Label htmlFor="edit-email">Email address</Label>
+            <Input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
             <Label>{t('admin.role')}</Label>
             <Select value={editRole} onChange={(e) => setEditRole(e.target.value)}>
               <option value="admin">admin</option>
@@ -374,6 +426,16 @@ export function AdminUsersPage() {
               <option value="viewer">viewer</option>
             </Select>
           </div>
+          <label className="flex items-start gap-3 rounded-md border border-[var(--color-border)] p-3 text-sm">
+            <input type="checkbox" className="mt-0.5" checked={editDisabled} disabled={editUser?.username === user?.username} onChange={(e) => setEditDisabled(e.target.checked)} />
+            <span><strong>Disable account</strong><span className="block text-[var(--color-muted-foreground)]">Immediately revokes this user’s sessions and prevents sign-in.</span></span>
+          </label>
+          {editUser?.mfaEnabled ? (
+            <label className="flex items-start gap-3 rounded-md border border-[var(--color-border)] p-3 text-sm">
+              <input type="checkbox" className="mt-0.5" checked={editResetMfa} onChange={(e) => setEditResetMfa(e.target.checked)} />
+              <span><strong>Reset two-factor authentication</strong><span className="block text-[var(--color-muted-foreground)]">Use only after verifying the user through an approved recovery process.</span></span>
+            </label>
+          ) : null}
           <div className="space-y-1.5">
             <Label>{t('admin.newPasswordOptional')}</Label>
             <Input

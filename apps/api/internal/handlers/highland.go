@@ -115,8 +115,13 @@ func (h *HighlandAPI) ListAudit(w http.ResponseWriter, r *http.Request) {
 
 // ListUsers GET /api/v1/users
 func (h *HighlandAPI) ListUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := h.Users.ListPublic(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "identity service unavailable"})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"data": h.Users.ListPublic(),
+		"data": users,
 	})
 }
 
@@ -124,6 +129,7 @@ func (h *HighlandAPI) ListUsers(w http.ResponseWriter, r *http.Request) {
 func (h *HighlandAPI) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Username string `json:"username"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 		Role     string `json:"role"`
 	}
@@ -131,7 +137,9 @@ func (h *HighlandAPI) CreateUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if err := h.Users.Create(body.Username, body.Password, auth.ParseRole(body.Role)); err != nil {
+	if err := h.Users.Create(r.Context(), auth.CreateUserRequest{
+		Username: body.Username, Email: body.Email, Password: body.Password, Role: auth.ParseRole(body.Role),
+	}); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -142,21 +150,36 @@ func (h *HighlandAPI) CreateUser(w http.ResponseWriter, r *http.Request) {
 			Action: "user_create", Target: body.Username, Method: r.Method, Path: r.URL.Path, Result: "ok", SourceIP: r.RemoteAddr,
 		})
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"username": body.Username, "role": auth.ParseRole(body.Role)})
+	writeJSON(w, http.StatusCreated, map[string]any{"username": body.Username, "email": body.Email, "role": auth.ParseRole(body.Role)})
 }
 
 // UpdateUser PUT /api/v1/users/{username}
 func (h *HighlandAPI) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
+	principal, _ := middleware.UserFromContext(r.Context())
+	if principal.Username == username {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "manage your own email, password, and MFA from My account; another administrator must change your role or account status"})
+		return
+	}
 	var body struct {
-		Password string `json:"password"`
-		Role     string `json:"role"`
+		Email    *string `json:"email"`
+		Password string  `json:"password"`
+		Role     *string `json:"role"`
+		Disabled *bool   `json:"disabled"`
+		ResetMFA bool    `json:"resetMfa"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if err := h.Users.Update(username, body.Password, auth.ParseRole(body.Role)); err != nil {
+	var role *auth.Role
+	if body.Role != nil {
+		parsed := auth.ParseRole(*body.Role)
+		role = &parsed
+	}
+	if err := h.Users.UpdateAdmin(r.Context(), username, auth.AdminUserUpdate{
+		Email: body.Email, Password: body.Password, Role: role, Disabled: body.Disabled, ResetMFA: body.ResetMFA,
+	}); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -166,7 +189,12 @@ func (h *HighlandAPI) UpdateUser(w http.ResponseWriter, r *http.Request) {
 // DeleteUser DELETE /api/v1/users/{username}
 func (h *HighlandAPI) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	username := chi.URLParam(r, "username")
-	if err := h.Users.Delete(username); err != nil {
+	principal, _ := middleware.UserFromContext(r.Context())
+	if principal.Username == username {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "you cannot delete your own signed-in account"})
+		return
+	}
+	if err := h.Users.Delete(r.Context(), username); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -466,7 +494,7 @@ func (a *API) OIDCMockLogin(w http.ResponseWriter, r *http.Request) {
 	if body.Role == "" {
 		role = auth.RoleOperator
 	}
-	user := auth.User{Username: body.Email, Role: role}
+	user := auth.User{Username: body.Email, Email: body.Email, Role: role, AuthSource: "oidc"}
 	id, err := a.Store.Create(user)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "session failed"})

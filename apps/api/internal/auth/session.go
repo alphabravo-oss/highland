@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"time"
@@ -17,8 +18,13 @@ const (
 
 // User is the authenticated principal returned by /auth/me.
 type User struct {
-	Username string `json:"username"`
-	Role     Role   `json:"role"`
+	Username         string `json:"username"`
+	Email            string `json:"email,omitempty"`
+	Role             Role   `json:"role"`
+	AuthSource       string `json:"authSource,omitempty"`
+	MFAEnabled       bool   `json:"mfaEnabled,omitempty"`
+	MFASetupRequired bool   `json:"mfaSetupRequired,omitempty"`
+	SessionVersion   int    `json:"-"`
 }
 
 // Session holds a server-side session.
@@ -40,16 +46,20 @@ func NewAuthenticator(users *UserStore, store *Store) *Authenticator {
 }
 
 // Login checks credentials and returns a session ID on success.
-func (a *Authenticator) Login(username, password string) (string, *User, error) {
-	user, ok := a.users.Authenticate(username, password)
-	if !ok {
-		return "", nil, ErrInvalidCredentials
+func (a *Authenticator) Login(ctx context.Context, username, password string) (string, *User, error) {
+	user, err := a.users.Authenticate(ctx, username, password)
+	if err != nil {
+		return "", nil, err
 	}
 	id, err := a.store.Create(*user)
 	if err != nil {
 		return "", nil, err
 	}
 	return id, user, nil
+}
+
+func (a *Authenticator) Authenticate(ctx context.Context, username, password string) (*User, error) {
+	return a.users.Authenticate(ctx, username, password)
 }
 
 // IssueSession creates a session for an already-authenticated user (OIDC).
@@ -66,13 +76,6 @@ func (a *Authenticator) Store() *Store {
 func (a *Authenticator) Users() *UserStore {
 	return a.users
 }
-
-// ErrInvalidCredentials is returned on failed login.
-var ErrInvalidCredentials = errInvalidCredentials{}
-
-type errInvalidCredentials struct{}
-
-func (errInvalidCredentials) Error() string { return "invalid credentials" }
 
 func randomID(nBytes int) (string, error) {
 	b := make([]byte, nBytes)

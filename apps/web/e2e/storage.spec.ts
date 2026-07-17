@@ -11,6 +11,7 @@ const healthyProvider = {
   version: '1.20.2',
   namespace: 'rook-ceph',
   capabilities: ['inventory.claims.read', 'provider.health.read'],
+  resourceKinds: ['clusters', 'pools', 'filesystems', 'mirroring', 'osds', 'rbd-images', 'quorum'],
   health: { status: 'ok', conditions: [], observedAt },
   metadata: {
     cephVersion: '20.2.1',
@@ -28,6 +29,7 @@ const openEBSProvider = {
   version: '4.5.1',
   namespace: 'openebs',
   capabilities: ['inventory.claims.read', 'inventory.volumes.read', 'inventory.snapshots.read', 'inventory.capacity.read', 'provider.health.read'],
+  resourceKinds: ['components', 'engines', 'disk-pools', 'lvm-nodes', 'lvm-volumes', 'lvm-snapshots', 'zfs-nodes', 'zfs-volumes', 'zfs-snapshots', 'zfs-backups', 'zfs-restores', 'hostpath-volumes'],
   health: { status: 'ok', conditions: [{ type: 'ComponentsReady', status: 'True', severity: 'ok', reason: 'RolloutsReady', message: '1 OpenEBS component is ready.', observedAt }], observedAt },
   metadata: {
     'engine.hostpath': 'true',

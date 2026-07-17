@@ -1,4 +1,4 @@
-import { ChevronDown, KeyRound, LogOut, User } from 'lucide-react'
+import { ChevronDown, KeyRound, LogOut, User, UserRound } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
@@ -55,9 +55,13 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
             ) : null}
           </div>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => navigate('/account')} data-testid="user-menu-account">
+          <UserRound size={16} strokeWidth={1.75} />
+          My account
+        </DropdownMenuItem>
         {isAdmin ? (
           <>
-            <DropdownMenuSeparator />
             <DropdownMenuItem
               onSelect={() => navigate('/admin/sso')}
               data-testid="user-menu-sso"

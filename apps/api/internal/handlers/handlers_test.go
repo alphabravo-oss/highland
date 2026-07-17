@@ -322,7 +322,7 @@ func TestViewerCannotReadAudit(t *testing.T) {
 func TestAdminUserCRUD(t *testing.T) {
 	h := newTestServer(t, "http://manager.example:9500")
 	c := loginCookie(t, h, "admin", "highland")
-	create := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(`{"username":"alice","password":"alice-pass","role":"operator"}`))
+	create := httptest.NewRequest(http.MethodPost, "/api/v1/users", strings.NewReader(`{"username":"alice","password":"several quiet copper forests","role":"operator"}`))
 	create.Header.Set("Content-Type", "application/json")
 	create.AddCookie(c)
 	crr := httptest.NewRecorder()
@@ -331,7 +331,7 @@ func TestAdminUserCRUD(t *testing.T) {
 		t.Fatalf("create %d %s", crr.Code, crr.Body.String())
 	}
 	// new user can login
-	c2 := loginCookie(t, h, "alice", "alice-pass")
+	c2 := loginCookie(t, h, "alice", "several quiet copper forests")
 	if c2.Value == "" {
 		t.Fatal("alice login")
 	}

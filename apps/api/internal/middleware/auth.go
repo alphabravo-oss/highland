@@ -13,7 +13,7 @@ type ctxKey int
 const userCtxKey ctxKey = 1
 
 // SessionAuth enforces a valid session cookie and injects the user into context.
-func SessionAuth(store *auth.Store, cookieName string, m *observability.Metrics) func(http.Handler) http.Handler {
+func SessionAuth(store *auth.Store, cookieName string, m *observability.Metrics, validators ...func(auth.User) bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			c, err := r.Cookie(cookieName)
@@ -27,6 +27,14 @@ func SessionAuth(store *auth.Store, cookieName string, m *observability.Metrics)
 				m.IncSessionAuthFailure("invalid_session")
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return
+			}
+			for _, validate := range validators {
+				if validate != nil && !validate(sess.User) {
+					store.Delete(c.Value)
+					m.IncSessionAuthFailure("revoked_session")
+					http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+					return
+				}
 			}
 			ctx := context.WithValue(r.Context(), userCtxKey, sess.User)
 			next.ServeHTTP(w, r.WithContext(ctx))

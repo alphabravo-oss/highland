@@ -20,6 +20,28 @@ func (p testProvider) Capabilities(context.Context) []Capability {
 	return []Capability{CapabilityClaimsRead, CapabilityClaimsRead}
 }
 
+type resourceTestProvider struct{ testProvider }
+
+func (resourceTestProvider) ResourceKinds(context.Context) []string { return []string{"zeta", "alpha"} }
+func (resourceTestProvider) ListProviderResources(context.Context, string, PageRequest) (any, PageMeta, error) {
+	return []any{}, PageMeta{}, nil
+}
+func (resourceTestProvider) GetProviderResource(context.Context, string, string) (any, error) {
+	return nil, ErrNotFound
+}
+
+func TestRegistryPublishesProviderResourceContract(t *testing.T) {
+	r := NewRegistry()
+	provider := resourceTestProvider{testProvider{ProviderDescriptor{ID: "resources", Drivers: []string{"resources.example"}}}}
+	if err := r.Register(context.Background(), provider); err != nil {
+		t.Fatal(err)
+	}
+	descriptors := r.Descriptors(context.Background(), []string{"resources.example"})
+	if len(descriptors) != 1 || len(descriptors[0].ResourceKinds) != 2 || descriptors[0].ResourceKinds[0] != "alpha" {
+		t.Fatalf("resource contract not published in stable order: %#v", descriptors)
+	}
+}
+
 func TestRegistryRejectsAmbiguousDriverOwnership(t *testing.T) {
 	r := NewRegistry()
 	ctx := context.Background()

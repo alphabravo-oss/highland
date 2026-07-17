@@ -51,8 +51,11 @@ those facts into one hardened operator experience while keeping Kubernetes autho
   placement, protection, diagnostics, and exact CSI correlation.
 - **Guarded workflows** — typed plans, role and namespace policy, expiring confirmation, durable
   Kubernetes operations, fresh preflight, audit, and read-only defaults.
-- **Kubernetes-native** — Helm chart, stateless signed-cookie sessions (no Redis), Kubernetes Secrets
-  for credentials, and ConfigMap-persisted benchmark history. Nothing to babysit.
+- **Kubernetes-native** — Helm chart, replica-safe signed-cookie sessions with optional Redis,
+  Kubernetes Secret-backed durable local identities, and ConfigMap-persisted benchmark history.
+- **Enterprise identity controls** — local user lifecycle management, roles, account disable and
+  session revocation, email and password self-service, Argon2id password history and blocklist
+  policy, optional or enforced TOTP with recovery codes, audited administration, and OIDC SSO.
 
 ## What Highland 0.2.0 supports
 
@@ -238,7 +241,7 @@ highland/
 | **Local admin** | `auth.local.createSecret=true` + `auth.local.password`, or point at an existing Secret with `auth.local.existingSecret`. |
 | **SSO / OIDC** | Configure `auth.oidc.*`; users map to admin/viewer roles. |
 | **Backups** | Use the in-app **backup setup wizard** (S3 / NFS / Azure) — it provisions the credential Secret and backup target for you. |
-| **Sessions** | Stateless HMAC-signed cookies — no Redis, no external session store. |
+| **Identity and sessions** | Durable local identities in a least-privilege Kubernetes Secret; replica-safe signed cookies by default, or optional Redis for centralized session storage. Password and MFA policy is managed under **Administration → Authentication security**. |
 | **Universal storage** | `storage.enabled=true`; choose cluster or namespace-allowlist scope. |
 | **Storage writes** | `storage.writes.enabled=false` by default; approved workflows use durable `StorageOperation` records. |
 | **Longhorn provider** | `longhorn.enabled=true` for the legacy bolt-on switch, or `providers.longhorn.enabled`; namespace defaults to `longhorn-system`. |

@@ -226,6 +226,10 @@ func (r *Registry) computeDescriptors(ctx context.Context, discoveredDrivers []s
 			if d.Health.ObservedAt.IsZero() {
 				d.Health = p.Health(ctx)
 			}
+			if reader, ok := p.(ProviderResourceReader); ok {
+				d.ResourceKinds = append([]string(nil), reader.ResourceKinds(ctx)...)
+				sort.Strings(d.ResourceKinds)
+			}
 			results <- result{descriptor: d, ok: true}
 		}(provider)
 	}
@@ -253,6 +257,7 @@ func cloneDescriptors(source []ProviderDescriptor, stale bool) []ProviderDescrip
 		result[i] = source[i]
 		result[i].Drivers = append([]string(nil), source[i].Drivers...)
 		result[i].Capabilities = append([]Capability(nil), source[i].Capabilities...)
+		result[i].ResourceKinds = append([]string(nil), source[i].ResourceKinds...)
 		result[i].Health.Conditions = append([]Condition(nil), source[i].Health.Conditions...)
 		result[i].Health.Stale = source[i].Health.Stale || stale
 		if source[i].Metadata != nil {

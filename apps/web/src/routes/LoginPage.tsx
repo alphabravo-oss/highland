@@ -1,4 +1,4 @@
-import { Check, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Check, ShieldCheck } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
@@ -22,13 +22,15 @@ type Providers = {
 
 export function LoginPage() {
   const { t } = useAppTranslation()
-  const { user, loading, login, loginOidcMock } = useAuth()
+  const { user, loading, login, verifyMfa, loginOidcMock } = useAuth()
   const navigate = useNavigate()
   const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [providers, setProviders] = useState<Providers | null>(null)
+  const [challengeToken, setChallengeToken] = useState<string | null>(null)
+  const [verificationCode, setVerificationCode] = useState('')
 
   useEffect(() => {
     void fetch('/auth/providers')
@@ -54,10 +56,30 @@ export function LoginPage() {
     setError(null)
     setSubmitting(true)
     try {
-      await login(username, password)
+      const result = await login(username, password)
+      if (result.mfaRequired) {
+        setChallengeToken(result.challengeToken)
+        setPassword('')
+        return
+      }
       navigate('/dashboard', { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : t('auth.loginFailed'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function onVerifyMfa(e: FormEvent) {
+    e.preventDefault()
+    if (!challengeToken) return
+    setError(null)
+    setSubmitting(true)
+    try {
+      await verifyMfa(challengeToken, verificationCode)
+      navigate('/dashboard', { replace: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Verification failed')
     } finally {
       setSubmitting(false)
     }
@@ -132,7 +154,46 @@ export function LoginPage() {
                 {t('auth.loginTitle')}
               </div>
 
-              {localOn ? (
+              {challengeToken ? (
+                <form className="space-y-4" onSubmit={onVerifyMfa} data-testid="mfa-login-form">
+                  <div>
+                    <h2 className="font-semibold">Two-factor verification</h2>
+                    <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+                      Enter the 6-digit code from your authenticator app, or a recovery code.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="verification-code">Verification code</Label>
+                    <Input
+                      id="verification-code"
+                      name="verification-code"
+                      autoComplete="one-time-code"
+                      inputMode="numeric"
+                      value={verificationCode}
+                      onChange={(event) => setVerificationCode(event.target.value)}
+                      autoFocus
+                      required
+                      className="h-10 font-mono tracking-widest"
+                    />
+                  </div>
+                  {error ? <Alert tone="danger" role="alert">{error}</Alert> : null}
+                  <Button type="submit" className="h-10 w-full" disabled={submitting}>
+                    {submitting ? 'Verifying…' : 'Verify and sign in'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full"
+                    onClick={() => {
+                      setChallengeToken(null)
+                      setVerificationCode('')
+                      setError(null)
+                    }}
+                  >
+                    <ArrowLeft size={14} /> Back to sign in
+                  </Button>
+                </form>
+              ) : localOn ? (
                 <form className="space-y-4" onSubmit={onSubmit} data-testid="local-login-form">
                   <div className="space-y-1.5">
                     <Label htmlFor="username">{t('auth.username')}</Label>

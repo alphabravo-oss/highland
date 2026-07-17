@@ -83,6 +83,12 @@ const SSOConfigPage = lazy(() =>
 const StoragePolicyPage = lazy(() =>
   import('@/features/admin/StoragePolicyPage').then((m) => ({ default: m.StoragePolicyPage })),
 )
+const SecuritySettingsPage = lazy(() =>
+  import('@/features/admin/SecuritySettingsPage').then((m) => ({ default: m.SecuritySettingsPage })),
+)
+const AccountPage = lazy(() =>
+  import('@/features/account/AccountPage').then((m) => ({ default: m.AccountPage })),
+)
 const StatusPage = lazy(() =>
   import('@/features/status/StatusPage').then((m) => ({ default: m.StatusPage })),
 )
@@ -166,6 +172,8 @@ export default function App() {
                     <Route path="admin/sso" element={<SSOConfigPage />} />
                     <Route path="admin/audit" element={<AuditPage />} />
                     <Route path="admin/storage-policy" element={<StoragePolicyPage />} />
+                    <Route path="admin/security" element={<SecuritySettingsPage />} />
+                    <Route path="account" element={<AccountPage />} />
                     <Route path="preflight" element={<PreflightPage />} />
                     <Route path="status" element={<StatusPage />} />
                     <Route path="storage/providers" element={<StorageProvidersPage />} />

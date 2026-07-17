@@ -50,7 +50,7 @@ export function Sidebar({ className }: SidebarProps) {
       <div
         className={cn(
           'flex h-14 items-center border-b border-[var(--color-border)] px-3',
-          collapsed ? 'justify-center' : 'justify-between gap-2',
+          'justify-center',
         )}
       >
         {!collapsed && (
@@ -63,54 +63,57 @@ export function Sidebar({ className }: SidebarProps) {
           </div>
         )}
         {collapsed && <HighlandLogo size={24} className="text-[var(--color-primary)]" />}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(collapsed && 'hidden md:inline-flex')}
-          onClick={() => {
-            toggleSidebar()
-            setMobileSidebarOpen(false)
-          }}
-          aria-label={collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')}
-          data-testid="sidebar-collapse"
-        >
-          {collapsed ? (
-            <PanelLeft size={18} strokeWidth={1.75} />
-          ) : (
-            <PanelLeftClose size={18} strokeWidth={1.75} />
-          )}
-        </Button>
       </div>
 
       <div className={cn('border-b border-[var(--color-border)]', collapsed ? 'p-2' : 'p-3')}>
         {collapsed ? (
-          <button
-            type="button"
-            className="flex h-10 w-full items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-primary)] hover:bg-[var(--color-accent)]"
-            title={workspace?.displayName ?? t('nav.allStorage', { defaultValue: 'All storage' })}
-            aria-label={`${t('nav.workspace', { defaultValue: 'Workspace' })}: ${workspace?.displayName ?? t('nav.allStorage', { defaultValue: 'All storage' })}`}
-            onClick={() => navigate(workspaceLanding(workspace))}
-          >
-            <Database size={18} strokeWidth={1.75} />
-          </button>
+          <div className="space-y-1">
+            <button
+              type="button"
+              className="flex h-10 w-full items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-primary)] hover:bg-[var(--color-accent)]"
+              title={workspace?.displayName ?? t('nav.allStorage', { defaultValue: 'All storage' })}
+              aria-label={`${t('nav.workspace', { defaultValue: 'Workspace' })}: ${workspace?.displayName ?? t('nav.allStorage', { defaultValue: 'All storage' })}`}
+              onClick={() => navigate(workspaceLanding(workspace))}
+            >
+              <Database size={18} strokeWidth={1.75} />
+            </button>
+            <Button type="button" variant="ghost" size="icon" className="hidden w-full md:inline-flex" onClick={toggleSidebar} aria-label={t('nav.expandSidebar')} data-testid="sidebar-collapse">
+              <PanelLeft size={18} strokeWidth={1.75} />
+            </Button>
+          </div>
         ) : (
           <div className="space-y-1.5">
             <label htmlFor="storage-workspace" className="block px-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
               {t('nav.workspace', { defaultValue: 'Workspace' })}
             </label>
-            <Select
-              id="storage-workspace"
-              aria-label={t('nav.storageWorkspace', { defaultValue: 'Storage workspace' })}
-              value={workspace?.id ?? '__all__'}
-              onChange={(event) => changeWorkspace(event.target.value)}
-              className="h-10 bg-[var(--color-sidebar)]"
-            >
-              <option value="__all__">{t('nav.allStorage', { defaultValue: 'All storage' })}</option>
-              {workspaceOptions.map((provider) => (
-                <option key={provider.id} value={provider.id}>{provider.displayName}</option>
-              ))}
-            </Select>
+            <div className="flex items-center gap-1">
+              <Select
+                id="storage-workspace"
+                aria-label={t('nav.storageWorkspace', { defaultValue: 'Storage workspace' })}
+                value={workspace?.id ?? '__all__'}
+                onChange={(event) => changeWorkspace(event.target.value)}
+                className="h-10 min-w-0 flex-1 bg-[var(--color-sidebar)]"
+              >
+                <option value="__all__">{t('nav.allStorage', { defaultValue: 'All storage' })}</option>
+                {workspaceOptions.map((provider) => (
+                  <option key={provider.id} value={provider.id}>{provider.displayName}</option>
+                ))}
+              </Select>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="shrink-0"
+                onClick={() => {
+                  toggleSidebar()
+                  setMobileSidebarOpen(false)
+                }}
+                aria-label={t('nav.collapseSidebar')}
+                data-testid="sidebar-collapse"
+              >
+                <PanelLeftClose size={18} strokeWidth={1.75} />
+              </Button>
+            </div>
             <div className="flex items-center justify-between px-0.5 text-[10px] text-[var(--color-muted-foreground)]">
               <span>{workspace ? workspace.kind : t('nav.crossProvider', { defaultValue: 'Cross-provider' })}</span>
               {workspace ? <span>{workspace.supportLevel}</span> : null}

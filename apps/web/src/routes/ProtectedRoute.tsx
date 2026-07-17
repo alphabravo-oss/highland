@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
 import { AppShell } from '@/components/layout/AppShell'
 import { useAppTranslation } from '@/i18n/useAppTranslation'
@@ -6,6 +6,7 @@ import { useAppTranslation } from '@/i18n/useAppTranslation'
 export function AuthenticatedLayout() {
   const { t } = useAppTranslation()
   const { user, loading, logout } = useAuth()
+  const location = useLocation()
 
   if (loading) {
     return (
@@ -17,6 +18,10 @@ export function AuthenticatedLayout() {
 
   if (!user) {
     return <Navigate to="/login" replace />
+  }
+
+  if (user.mfaSetupRequired && location.pathname !== '/account') {
+    return <Navigate to="/account?setup=mfa" replace />
   }
 
   return (

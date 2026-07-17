@@ -739,6 +739,10 @@ components:
         version: { type: string }
         namespace: { type: string }
         capabilities: { type: array, items: { type: string } }
+        resourceKinds:
+          type: array
+          description: Provider-specific resource collections supported by the typed resource API.
+          items: { type: string }
         health: { $ref: "#/components/schemas/ProviderHealth" }
         metadata: { type: object, additionalProperties: { type: string }, maxProperties: 64 }
     ProviderList:

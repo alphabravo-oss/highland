@@ -47,9 +47,8 @@ func main() {
 	// them based on running outside Kubernetes.
 	users := auth.NewUserStoreFromEnv(cfg.BootstrapUsername, cfg.BootstrapPassword)
 
-	// Sessions are stateless HMAC-signed cookies (no server store) — they survive
-	// restarts and work across replicas. A stable secret keeps tokens valid across
-	// restarts; without one we generate an ephemeral secret (logins drop on restart).
+	// Signed cookies are the default replica-safe session backend. Redis is used
+	// when configured for centrally revocable sessions.
 	secret := []byte(cfg.SessionSecret)
 	if len(secret) == 0 {
 		gen, err := auth.RandomSecret(32)
@@ -58,11 +57,21 @@ func main() {
 			os.Exit(1)
 		}
 		secret = gen
-		slog.Warn("session backend", "type", "stateless", "secret", "ephemeral (set HIGHLAND_SESSION_SECRET to persist logins across restarts)")
-	} else {
-		slog.Info("session backend", "type", "stateless")
+		slog.Warn("session signing key", "persistence", "ephemeral", "impact", "logins are invalidated on restart")
 	}
-	store := auth.NewStoreFromBackend(auth.NewTokenBackend(secret), cfg.SessionTTL)
+	var sessionBackend auth.SessionBackend = auth.NewTokenBackend(secret)
+	sessionBackendName := "signed-cookie"
+	if cfg.RedisAddr != "" {
+		redisBackend, redisErr := auth.NewRedisBackend(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+		if redisErr != nil {
+			slog.Error("Redis session backend unavailable", "err", redisErr)
+			os.Exit(1)
+		}
+		sessionBackend = redisBackend
+		sessionBackendName = "redis"
+	}
+	slog.Info("session backend", "type", sessionBackendName)
+	store := auth.NewStoreFromBackend(sessionBackend, cfg.SessionTTL)
 	authenticator := auth.NewAuthenticator(users, store)
 
 	oidcPath := os.Getenv("HIGHLAND_OIDC_CONFIG_FILE")
@@ -129,6 +138,22 @@ func main() {
 	defer cancelWatch()
 	if kubeClients != nil {
 		k8sClient = kubeClients.Core
+		if identitySecret := os.Getenv("HIGHLAND_IDENTITY_SECRET"); identitySecret != "" {
+			identityPersistence, identityErr := auth.NewKubernetesIdentityPersistence(k8sClient, runtimeNamespace, identitySecret, secret)
+			if identityErr != nil {
+				slog.Error("identity persistence configuration failed", "err", identityErr)
+				os.Exit(1)
+			}
+			identityCtx, cancelIdentity := context.WithTimeout(context.Background(), 10*time.Second)
+			identityErr = users.ConfigurePersistence(identityCtx, identityPersistence)
+			cancelIdentity()
+			if identityErr != nil {
+				slog.Error("identity persistence initialization failed", "err", identityErr)
+				os.Exit(1)
+			}
+			users.StartSync(watchCtx, 2*time.Second)
+			slog.Info("identity persistence", "type", "kubernetes-secret", "secret", identitySecret)
+		}
 		if cfg.LonghornEnabled {
 			hub = watch.NewHub(kubeClients.Dynamic, cfg.LonghornNamespace)
 		} else {
@@ -138,6 +163,9 @@ func main() {
 		obsMetrics.RegisterSSEClientSource(hub.ClientCount)
 		hub.Start(watchCtx)
 		benchStore.SetPublisher(hub)
+	} else if os.Getenv("HIGHLAND_IDENTITY_SECRET") != "" {
+		slog.Error("identity persistence requested but Kubernetes client is unavailable")
+		os.Exit(1)
 	}
 	storageRegistry := storage.NewRegistry()
 	staticPolicy := policy.StoragePolicy{
@@ -460,7 +488,7 @@ func main() {
 		StorageOperations: storageOperationsAPI,
 		StoragePolicy:     storagePolicyAPI,
 		PolicySnapshot:    policyManager,
-		SessionBackend:    "stateless",
+		SessionBackend:    sessionBackendName,
 		BenchmarkMode:     benchmarkMode,
 		// Share the exact session-signing key so CSRF tokens verify against it.
 		SessionSecret: secret,

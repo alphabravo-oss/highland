@@ -544,7 +544,7 @@ export function useAuditLog() {
 export function useHighlandUsers() {
   return useQuery({
     queryKey: ['users'],
-    queryFn: ({ signal }) => highlandGet<{ data: Array<{ username: string; role: string }> }>('/users', { signal }),
+    queryFn: ({ signal }) => highlandGet<{ data: Array<{ username: string; email?: string; role: string; disabled: boolean; mfaEnabled: boolean; mfaRequired: boolean; lastAuthenticatedAt?: string }> }>('/users', { signal }),
   })
 }
 

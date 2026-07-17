@@ -12,6 +12,8 @@ import {
   logout as apiLogout,
   me,
   oidcMockLogin,
+  verifyMfa as apiVerifyMfa,
+  type LoginResult,
   type HighlandUser,
 } from '@/api/client'
 import { canMutate, isAdmin } from '@/auth/rbac'
@@ -19,7 +21,8 @@ import { canMutate, isAdmin } from '@/auth/rbac'
 type AuthContextValue = {
   user: HighlandUser | null
   loading: boolean
-  login: (username: string, password: string) => Promise<void>
+  login: (username: string, password: string) => Promise<LoginResult>
+  verifyMfa: (challengeToken: string, code: string) => Promise<void>
   loginOidcMock: (email: string, role: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
@@ -49,7 +52,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh])
 
   const login = useCallback(async (username: string, password: string) => {
-    const u = await apiLogin(username, password)
+    const result = await apiLogin(username, password)
+    if ('user' in result) setUser(result.user)
+    return result
+  }, [])
+
+  const verifyMfa = useCallback(async (challengeToken: string, code: string) => {
+    const u = await apiVerifyMfa(challengeToken, code)
     setUser(u)
   }, [])
 
@@ -68,13 +77,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       login,
+      verifyMfa,
       loginOidcMock,
       logout,
       refresh,
       canMutate: canMutate(user),
       isAdmin: isAdmin(user),
     }),
-    [user, loading, login, loginOidcMock, logout, refresh],
+    [user, loading, login, verifyMfa, loginOidcMock, logout, refresh],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

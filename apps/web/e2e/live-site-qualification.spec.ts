@@ -58,7 +58,7 @@ test.describe('live site qualification', () => {
     requestFailures.length = 0
     apiErrors.length = 0
 
-    const routes = new Set<string>()
+    const routes = new Set<string>(['/account', '/admin', '/admin/users', '/admin/security', '/admin/sso', '/admin/audit', '/admin/storage-policy'])
     for (const root of workspaceRoots) {
       await page.goto(root, { waitUntil: 'domcontentloaded' })
       await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toBeVisible()

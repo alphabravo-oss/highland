@@ -163,7 +163,7 @@ func (o *OIDCProvider) HandleCallback(ctx context.Context, state, code string) (
 	} else if groups, ok := claims["groups"].([]any); ok {
 		role = roleFromGroups(groups)
 	}
-	u := User{Username: username, Role: role}
+	u := User{Username: username, Email: username, Role: role, AuthSource: "oidc"}
 	sid, err := o.auth.IssueSession(u)
 	if err != nil {
 		return "", nil, err

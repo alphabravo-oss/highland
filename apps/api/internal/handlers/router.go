@@ -76,6 +76,8 @@ func NewRouter(d Deps) http.Handler {
 		Auth:        d.Auth,
 		Store:       d.Auth.Store(),
 		Users:       d.Auth.Users(),
+		Challenge:   auth.NewMFAChallengeSigner(d.SessionSecret),
+		Audit:       d.Audit,
 		OIDC:        oidcProv,
 		OIDCRuntime: d.OIDCRuntime,
 		Limiter:     limiter,
@@ -122,18 +124,19 @@ func NewRouter(d Deps) http.Handler {
 	r.Route("/auth", func(r chi.Router) {
 		r.Get("/providers", api.Providers)
 		r.Post("/login", api.Login)
+		r.Post("/mfa/verify", api.VerifyMFA)
 		r.Post("/logout", api.Logout)
 		r.Get("/oidc/start", api.OIDCStart)
 		r.Get("/oidc/callback", api.OIDCCallback)
 		r.Post("/oidc/mock", api.OIDCMockLogin)
 		r.Group(func(r chi.Router) {
-			r.Use(mw.SessionAuth(api.Store, d.Cfg.CookieName, d.Obs))
+			r.Use(mw.SessionAuth(api.Store, d.Cfg.CookieName, d.Obs, api.Users.ValidateSession))
 			r.Get("/me", api.Me)
 		})
 	})
 
 	r.Group(func(r chi.Router) {
-		r.Use(mw.SessionAuth(api.Store, d.Cfg.CookieName, d.Obs))
+		r.Use(mw.SessionAuth(api.Store, d.Cfg.CookieName, d.Obs, api.Users.ValidateSession))
 		if d.Cfg.CSRFEnabled {
 			r.Use(mw.CSRF(d.SessionSecret, d.Cfg.CSRFCookieName, d.Cfg.CookieSecure, d.Cfg.SessionTTL, d.Obs))
 		}
@@ -183,6 +186,14 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/api/v1/users", hapi.CreateUser)
 		r.Put("/api/v1/users/{username}", hapi.UpdateUser)
 		r.Delete("/api/v1/users/{username}", hapi.DeleteUser)
+		r.Get("/api/v1/account", api.GetAccount)
+		r.Put("/api/v1/account/password", api.ChangePassword)
+		r.Put("/api/v1/account/email", api.ChangeEmail)
+		r.Post("/api/v1/account/mfa/enroll", api.BeginMFAEnrollment)
+		r.Post("/api/v1/account/mfa/confirm", api.ConfirmMFAEnrollment)
+		r.Delete("/api/v1/account/mfa", api.DisableMFA)
+		r.Get("/api/v1/auth/security-policy", api.GetSecurityPolicy)
+		r.Put("/api/v1/auth/security-policy", api.PutSecurityPolicy)
 		r.Get("/api/v1/auth/oidc-config", api.GetOIDCConfig)
 		r.Put("/api/v1/auth/oidc-config", api.PutOIDCConfig)
 		r.Get("/api/v1/compatibility", hapi.Compatibility)

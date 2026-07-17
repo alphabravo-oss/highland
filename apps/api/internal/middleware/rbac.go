@@ -22,12 +22,19 @@ func RequireRole(auditStore *audit.Store, m *observability.Metrics) func(http.Ha
 			}
 
 			path := r.URL.Path
+			selfService := strings.HasPrefix(path, "/api/v1/account")
+			if user.MFASetupRequired && !selfService {
+				m.IncAuthzDenial("mfa_enrollment_required")
+				http.Error(w, `{"error":"mfa enrollment required"}`, http.StatusForbidden)
+				return
+			}
 			policyRead := r.Method == http.MethodGet && path == "/api/v1/admin/storage-policy"
 			// Admin-only Highland surfaces
 			if strings.HasPrefix(path, "/api/v1/audit") ||
 				(strings.HasPrefix(path, "/api/v1/admin") && !policyRead) ||
 				strings.HasPrefix(path, "/api/v1/users") ||
-				strings.HasPrefix(path, "/api/v1/auth/oidc-config") {
+				strings.HasPrefix(path, "/api/v1/auth/oidc-config") ||
+				strings.HasPrefix(path, "/api/v1/auth/security-policy") {
 				if !auth.AdminOnly(user.Role) {
 					if auditStore != nil {
 						auditStore.Append(audit.Event{
@@ -67,7 +74,7 @@ func RequireRole(auditStore *audit.Store, m *observability.Metrics) func(http.Ha
 				}
 			}
 
-			if !auth.MethodAllowed(user.Role, r.Method) {
+			if !selfService && !auth.MethodAllowed(user.Role, r.Method) {
 				if auditStore != nil {
 					auditStore.Append(audit.Event{
 						Username: user.Username,

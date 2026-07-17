@@ -1,7 +1,15 @@
 export type HighlandUser = {
   username: string
   role: string
+  email?: string
+  authSource?: 'local' | 'oidc'
+  mfaEnabled?: boolean
+  mfaSetupRequired?: boolean
 }
+
+export type LoginResult =
+  | { user: HighlandUser; mfaRequired?: false }
+  | { mfaRequired: true; challengeToken: string }
 
 type MeResponse = {
   user: HighlandUser
@@ -67,7 +75,7 @@ async function parseError(res: Response): Promise<string> {
 }
 
 /** Typed client for Highland API only — never calls Longhorn manager directly. */
-export async function login(username: string, password: string): Promise<HighlandUser> {
+export async function login(username: string, password: string): Promise<LoginResult> {
   const res = await fetch('/auth/login', {
     method: 'POST',
     credentials: 'include',
@@ -77,6 +85,17 @@ export async function login(username: string, password: string): Promise<Highlan
   if (!res.ok) {
     throw new Error(await parseError(res))
   }
+  return (await res.json()) as LoginResult
+}
+
+export async function verifyMfa(challengeToken: string, code: string): Promise<HighlandUser> {
+  const res = await fetch('/auth/mfa/verify', {
+    method: 'POST',
+    credentials: 'include',
+    headers: jsonHeaders,
+    body: JSON.stringify({ challengeToken, code }),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
   const body = (await res.json()) as { user: HighlandUser }
   return body.user
 }

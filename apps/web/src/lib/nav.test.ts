@@ -16,6 +16,7 @@ const longhorn: WorkspaceProvider = {
 const rook: WorkspaceProvider = {
   id: 'rook-ceph', kind: 'rook-ceph', displayName: 'Rook / Ceph', supportLevel: 'managed',
   capabilities: ['inventory.claims.read', 'inventory.volumes.read', 'inventory.snapshots.read', 'inventory.attachments.read', 'inventory.capacity.read', 'inventory.events.read'],
+  resourceKinds: ['clusters', 'pools', 'filesystems', 'mirroring', 'osds', 'rbd-images', 'quorum'],
   health: { status: 'ok', conditions: [], observedAt: '2026-07-16T00:00:00Z' },
   metadata: { dashboard: 'configured' },
 }

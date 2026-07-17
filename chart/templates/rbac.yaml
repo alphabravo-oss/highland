@@ -5,6 +5,35 @@
 {{- $cephWriter := or (and .Values.storage.writes.enabled .Values.providers.rookCeph.writes.enabled) (and .Values.adminPolicyControl.enabled .Values.adminPolicyControl.installStorageWriterPermissions .Values.adminPolicyControl.ceiling.rookCephWrites) -}}
 {{- $cephSCDelete := or .Values.providers.rookCeph.writes.allowStorageClassDelete .Values.adminPolicyControl.ceiling.allowCephStorageClassDelete -}}
 {{- $cephPoolDelete := or .Values.providers.rookCeph.writes.allowPoolDelete .Values.adminPolicyControl.ceiling.allowCephPoolDelete -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "highland.fullname" . }}-identity
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: [{{ printf "%s-identity" (include "highland.fullname" .) | quote }}]
+    verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-identity
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "highland.fullname" . }}-identity
+---
 {{- if .Values.storage.enabled }}
 {{- if eq .Values.storage.scope.mode "cluster" }}
 apiVersion: rbac.authorization.k8s.io/v1

@@ -70,6 +70,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "highland.fullname" . }}-session
                   key: sessionSecret
+            - name: HIGHLAND_IDENTITY_SECRET
+              value: {{ printf "%s-identity" (include "highland.fullname" .) | quote }}
             {{- if or .Values.auth.oidc.existingSecret .Values.auth.oidc.createSecret }}
             - name: HIGHLAND_OIDC_CLIENT_SECRET
               valueFrom:

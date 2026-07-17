@@ -94,16 +94,17 @@ type ProviderHealth struct {
 }
 
 type ProviderDescriptor struct {
-	ID           string            `json:"id"`
-	Kind         string            `json:"kind"`
-	DisplayName  string            `json:"displayName"`
-	SupportLevel SupportLevel      `json:"supportLevel"`
-	Drivers      []string          `json:"drivers"`
-	Version      string            `json:"version,omitempty"`
-	Namespace    string            `json:"namespace,omitempty"`
-	Capabilities []Capability      `json:"capabilities"`
-	Health       ProviderHealth    `json:"health"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
+	ID            string            `json:"id"`
+	Kind          string            `json:"kind"`
+	DisplayName   string            `json:"displayName"`
+	SupportLevel  SupportLevel      `json:"supportLevel"`
+	Drivers       []string          `json:"drivers"`
+	Version       string            `json:"version,omitempty"`
+	Namespace     string            `json:"namespace,omitempty"`
+	Capabilities  []Capability      `json:"capabilities"`
+	ResourceKinds []string          `json:"resourceKinds,omitempty"`
+	Health        ProviderHealth    `json:"health"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
 }
 
 type DriverSummary struct {
