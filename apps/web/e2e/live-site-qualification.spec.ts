@@ -61,7 +61,7 @@ test.describe('live site qualification', () => {
     const routes = new Set<string>(['/account', '/admin', '/admin/users', '/admin/security', '/admin/sso', '/admin/audit', '/admin/storage-policy'])
     for (const root of workspaceRoots) {
       await page.goto(root, { waitUntil: 'domcontentloaded' })
-      await expect(page.getByRole('main').getByRole('heading', { level: 1 }), `${route} page heading`).toBeVisible()
+      await expect(page.getByRole('main').getByRole('heading', { level: 1 }), `${root} page heading`).toBeVisible()
       const statusSummary = page.getByRole('main').getByRole('heading', { level: 2 }).first()
       await expect(statusSummary).toBeVisible()
       const sectionPositions: number[] = []
@@ -84,7 +84,7 @@ test.describe('live site qualification', () => {
       const response = await page.goto(route, { waitUntil: 'domcontentloaded' })
       expect(response?.status(), route).toBeLessThan(400)
       await expect(page.getByTestId('app-shell')).toBeVisible()
-      await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toBeVisible()
+      await expect(page.getByRole('main').getByRole('heading', { level: 1 }), `${route} page heading`).toBeVisible()
       await expect(page.getByText('Something went wrong')).toHaveCount(0)
       await expect(page.locator('.placeholder-page')).toHaveCount(0)
       const overflow = await page.evaluate(

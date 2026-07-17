@@ -14,6 +14,19 @@ import (
 
 type fixtureInventory struct{ snapshot bool }
 
+type compositeIDProvider struct{ testProvider }
+
+func (compositeIDProvider) ResourceKinds(context.Context) []string { return []string{"clusters"} }
+func (compositeIDProvider) ListProviderResources(context.Context, string, PageRequest) (any, PageMeta, error) {
+	return []any{map[string]any{"id": "rook-ceph/rook-ceph"}}, PageMeta{Total: 1}, nil
+}
+func (compositeIDProvider) GetProviderResource(_ context.Context, _, id string) (any, error) {
+	if id == "rook-ceph/rook-ceph" {
+		return map[string]any{"id": id}, nil
+	}
+	return nil, ErrNotFound
+}
+
 func (f fixtureInventory) Ready() bool             { return true }
 func (f fixtureInventory) LastSync() time.Time     { return time.Unix(100, 0).UTC() }
 func (f fixtureInventory) SnapshotAvailable() bool { return f.snapshot }
@@ -75,6 +88,21 @@ func TestCommonReadEndpointsAndTypedErrors(t *testing.T) {
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/storage/claims/a/missing", nil))
 	if recorder.Code != http.StatusNotFound || !strings.Contains(recorder.Body.String(), `"code":"CLAIM_NOT_FOUND"`) {
 		t.Fatalf("not found response=%d %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestProviderResourceDetailRoundTripsCompositeID(t *testing.T) {
+	registry := NewRegistry()
+	provider := compositeIDProvider{testProvider{ProviderDescriptor{ID: "rook-ceph", Drivers: []string{"rook.example"}}}}
+	if err := registry.Register(context.Background(), provider); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	NewHTTPAPI(fixtureInventory{}, registry).Mount(router)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/providers/rook-ceph/resources/clusters/rook-ceph%2Frook-ceph", nil))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"id":"rook-ceph/rook-ceph"`) {
+		t.Fatalf("composite resource ID response=%d %s", recorder.Code, recorder.Body.String())
 	}
 }
 

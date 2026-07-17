@@ -11,6 +11,15 @@ type Provider = {
   resourceKinds?: string[]
 }
 
+const inventoryCapabilityPaths: Record<string, string> = {
+  'inventory.claims.read': '/api/v1/storage/claims',
+  'inventory.volumes.read': '/api/v1/storage/volumes',
+  'inventory.attachments.read': '/api/v1/storage/attachments',
+  'inventory.snapshots.read': '/api/v1/storage/snapshots',
+  'inventory.capacity.read': '/api/v1/storage/capacity',
+  'inventory.events.read': '/api/v1/storage/events',
+}
+
 async function login(page: Page) {
   await page.goto('/login')
   await page.locator('#username').fill(username)
@@ -38,7 +47,15 @@ test.describe('live provider integration contract', () => {
       await test.step(provider.id, async () => {
         const descriptor = await expectOK(page.request, `/api/v1/storage/providers/${encodeURIComponent(provider.id)}`) as Provider
         expect(descriptor.capabilities.length, `${provider.id} has no capabilities`).toBeGreaterThan(0)
-        await expectOK(page.request, `/api/v1/providers/${encodeURIComponent(provider.id)}/health`)
+        for (const capability of descriptor.capabilities) {
+          const inventoryPath = inventoryCapabilityPaths[capability]
+          if (inventoryPath) {
+            await expectOK(page.request, `${inventoryPath}?provider=${encodeURIComponent(provider.id)}&limit=2`)
+          }
+        }
+        if (descriptor.capabilities.includes('provider.health.read')) {
+          await expectOK(page.request, `/api/v1/providers/${encodeURIComponent(provider.id)}/health`)
+        }
 
         if (provider.supportLevel === 'managed') {
           await expectOK(page.request, `/api/v1/providers/${encodeURIComponent(provider.id)}/summary`)
@@ -47,7 +64,7 @@ test.describe('live provider integration contract', () => {
             await expectOK(page.request, `/api/v1/providers/${encodeURIComponent(provider.id)}/relationships?kind=${encodeURIComponent(relationshipKind)}`)
           }
           await expectOK(page.request, `/api/v1/providers/${encodeURIComponent(provider.id)}/drift`)
-          await expectOK(page.request, `/api/v1/providers/${encodeURIComponent(provider.id)}/capacity/forecast`)
+          await expectOK(page.request, `/api/v1/providers/${encodeURIComponent(provider.id)}/capacity/forecast?measure=pvc-requested&horizon=720h`)
         }
 
         for (const kind of descriptor.resourceKinds ?? []) {

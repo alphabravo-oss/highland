@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -147,6 +148,10 @@ func (a *HTTPAPI) Mount(r chi.Router) {
 	r.Get("/api/v1/providers/{providerId}/capacity/forecast", a.GetCapacityForecast)
 	r.Get("/api/v1/providers/{providerId}/resources/{kind}", a.ListProviderResources)
 	r.Get("/api/v1/providers/{providerId}/resources/{kind}/{id}", a.GetProviderResource)
+	// Provider identifiers are opaque and may contain a slash (for example a
+	// Kubernetes namespace/name pair). Keep the single-segment route for the
+	// published contract, and let the wildcard round-trip those composite IDs.
+	r.Get("/api/v1/providers/{providerId}/resources/{kind}/*", a.GetProviderResource)
 }
 
 func (a *HTTPAPI) ListProviders(w http.ResponseWriter, r *http.Request) {
@@ -362,6 +367,12 @@ func (a *HTTPAPI) ListProviderResources(w http.ResponseWriter, r *http.Request) 
 
 func (a *HTTPAPI) GetProviderResource(w http.ResponseWriter, r *http.Request) {
 	providerID, kind, id := chi.URLParam(r, "providerId"), chi.URLParam(r, "kind"), chi.URLParam(r, "id")
+	if id == "" {
+		id = chi.URLParam(r, "*")
+	}
+	if decoded, err := url.PathUnescape(id); err == nil {
+		id = decoded
+	}
 	provider, ok := a.registry.Provider(providerID)
 	if !ok {
 		writeAPIError(w, r, http.StatusNotFound, "PROVIDER_NOT_FOUND", "storage provider not found", false, nil)
