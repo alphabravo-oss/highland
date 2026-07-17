@@ -19,7 +19,7 @@ export function CompatibilityBadge({
   const compat = useCompatibility()
   const hVer =
     highlandVersion ??
-    (typeof compat.data?.highlandVersion === 'string' ? compat.data.highlandVersion : '0.1.0')
+    (typeof compat.data?.highlandVersion === 'string' ? compat.data.highlandVersion : '0.2.0')
   const lh =
     longhornVersion ??
     (Array.isArray(compat.data?.longhornSupport)

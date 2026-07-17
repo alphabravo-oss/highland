@@ -50,10 +50,10 @@ Skip this section when installing a released chart that uses the published GHCR 
 
 ```bash
 # From the Highland repository.
-docker build -t your-registry/highland-api:0.1.0 apps/api
-docker build -t your-registry/highland-web:0.1.0 apps/web
-docker push your-registry/highland-api:0.1.0
-docker push your-registry/highland-web:0.1.0
+docker build -t your-registry/highland-api:0.2.0 apps/api
+docker build -t your-registry/highland-web:0.2.0 apps/web
+docker push your-registry/highland-api:0.2.0
+docker push your-registry/highland-web:0.2.0
 ```
 
 ## 2. Bolt-on install (default)
@@ -69,9 +69,9 @@ helm upgrade --install highland ./chart \
   --namespace highland-system \
   --create-namespace \
   --set image.api.repository=your-registry/highland-api \
-  --set image.api.tag=0.1.0 \
+  --set image.api.tag=0.2.0 \
   --set image.web.repository=your-registry/highland-web \
-  --set image.web.tag=0.1.0 \
+  --set image.web.tag=0.2.0 \
   --set auth.local.createSecret=true \
   --set auth.local.username=admin \
   --set auth.local.password='change-me-strong' \
@@ -90,10 +90,10 @@ Or use a values file (GitOps-friendly):
 image:
   api:
     repository: your-registry/highland-api
-    tag: "0.1.0"
+    tag: "0.2.0"
   web:
     repository: your-registry/highland-web
-    tag: "0.1.0"
+    tag: "0.2.0"
 auth:
   local:
     createSecret: true

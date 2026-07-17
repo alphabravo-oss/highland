@@ -1,14 +1,15 @@
 apiVersion: v2
 name: highland
-description: Secure Kubernetes storage control plane for CSI, Longhorn, and Rook/Ceph
+description: Secure Kubernetes storage control plane for CSI, Longhorn, Rook/Ceph, and OpenEBS
 type: application
 version: 0.2.0
-appVersion: "0.1.0"
+appVersion: "0.2.0"
 keywords:
   - longhorn
   - csi
   - ceph
   - rook
+  - openebs
   - storage
   - highland
 maintainers:

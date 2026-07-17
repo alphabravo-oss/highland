@@ -4,10 +4,11 @@
 
 # Highland
 
-### A secure Kubernetes storage control plane for CSI, Longhorn, and Rook/Ceph
+### A secure Kubernetes storage control plane for CSI, Longhorn, Rook/Ceph, and OpenEBS
 
-Highland is a modern, secure console for Kubernetes storage: provider-neutral CSI inventory, durable
-guarded workflows, and managed Longhorn and Rook/Ceph views — **without replacing the data plane**.
+Highland is a modern, secure console for Kubernetes storage: provider-neutral CSI inventory,
+provider-specific workspaces, durable guarded workflows, and operational insight across Longhorn,
+Rook/Ceph, and OpenEBS — **without replacing the data plane**.
 
 [![CI](https://github.com/alphabravo-oss/highland/actions/workflows/ci.yaml/badge.svg)](https://github.com/alphabravo-oss/highland/actions/workflows/ci.yaml)
 [![Publish images](https://github.com/alphabravo-oss/highland/actions/workflows/release.yaml/badge.svg)](https://github.com/alphabravo-oss/highland/actions/workflows/release.yaml)
@@ -44,13 +45,55 @@ those facts into one hardened operator experience while keeping Kubernetes autho
   full snapshot, backup, restore, DR-standby, and recurring-job management.
 - **Universal CSI inventory** — drivers, classes, claims/PVs, workloads, snapshots, attachments,
   capacity, topology, and events, including unknown CSI drivers without custom code.
-- **Managed providers** — Longhorn volumes, nodes & disks, backing images, engine images,
-  instance managers, orphans, system backups, support bundles, and every manager setting (grouped, with
-  a danger zone and inline docs), plus opt-in read-only Rook/Ceph health, pools, OSDs, RBD, and CephFS.
+- **Managed providers** — a full Longhorn operations workspace; Rook/Ceph health, pools, OSDs, RBD,
+  CephFS, quorum, mirroring, and safe native Ceph workflows; and OpenEBS engine-aware inventory for
+  LocalPV HostPath/LVM/ZFS, Mayastor, and RawFile.
 - **Guarded workflows** — typed plans, role and namespace policy, expiring confirmation, durable
   Kubernetes operations, fresh preflight, audit, and read-only defaults.
 - **Kubernetes-native** — Helm chart, stateless signed-cookie sessions (no Redis), Kubernetes Secrets
   for credentials, and ConfigMap-persisted benchmark history. Nothing to babysit.
+
+## What Highland 0.2.0 supports
+
+Highland discovers every CSI driver through Kubernetes and adds deeper, explicitly bounded support
+for managed providers. Capabilities are calculated from installed APIs, provider versions, cluster
+health, the signed-in role, and the runtime storage policy; unavailable actions remain visibly
+disabled instead of failing optimistically.
+
+### Provider coverage
+
+| Provider | Inventory and insight | Highland-managed changes |
+|---|---|---|
+| **Any detected CSI driver** | Drivers, StorageClasses, PVC/PV, workloads, snapshots, attachments, topology, capacity, events, relationships, capacity forecasting, timelines, and remediation guidance | Portable PVC and snapshot lifecycle workflows when the driver, Kubernetes APIs, class policy, RBAC ceiling, and runtime policy permit them |
+| **Longhorn** | Dashboard, volumes, replicas, nodes/disks, live I/O, backups, snapshots, recurring jobs, backup targets, backing/engine images, instance managers, orphans, system backups, support bundles, preflight, and settings | Existing Longhorn-native volume, backup, snapshot, recurring-job, salvage, engine, node/disk, and backup-target actions, plus portable Kubernetes workflows |
+| **Rook/Ceph** | Cluster health, MON quorum, OSDs, block pools, RBD images, CephFS, mirroring, Ceph CSI inventory, Prometheus observations, and an authenticated same-origin handoff to the native Ceph Dashboard | Guarded creation of replicated pools and RBD/CephFS StorageClasses; separately gated deletion after fresh dependency and runtime checks; portable PVC/snapshot workflows |
+| **OpenEBS** | Components and engine-aware inventory for Dynamic LocalPV HostPath, LocalPV LVM, LocalPV ZFS, Replicated PV Mayastor, and RawFile LocalPV | Portable Kubernetes workflows only; OpenEBS-native mutations remain intentionally read-only in 0.2.0 |
+
+### Platform capabilities
+
+- Provider selector with distinct navigation and dashboards for each storage backend.
+- Cross-provider inventory, relationship graph, event timeline, capacity forecast, risk findings,
+  remediation guidance, and provider-attributed `fio` benchmark history.
+- Server-Sent Events invalidation with bounded polling fallback, conditional requests, route
+  prefetching, query caching, lazy-loaded workspaces, and production bundle budgets.
+- Durable `StorageOperation` records with plan/confirm/execute semantics, fresh preflight checks,
+  stale-resource protection, recovery, audit records, and terminal operation history.
+- Admin-controlled runtime write policy, constrained by Helm-installed RBAC ceilings. Portable
+  workflows, Longhorn-native workflows, Rook/Ceph-native workflows, and destructive Ceph gates are
+  independent and default to disabled.
+- Local break-glass administration, OIDC/SSO, admin/operator/viewer roles, namespace scoping,
+  signed sessions, rate limiting, NetworkPolicy, Prometheus metrics, alerts, and Grafana dashboard.
+- Responsive light/dark/system themes, English and Spanish localization, keyboard navigation,
+  accessible dialogs/tables, CSV export, and mobile layouts.
+
+### Deliberate boundaries
+
+Highland does not call raw CSI sockets, expose Kubernetes or provider credentials to the browser,
+relay arbitrary Ceph APIs or commands, or replace a provider's data plane. OpenEBS-native writes,
+Ceph OSD/MON/MGR repair and topology changes, backend upgrades, erasure-code management, and
+cross-provider data migration are not part of 0.2.0. See the
+[capability matrix](docs/storage-capability-matrix.md) for the exact fail-closed contract and the
+[compatibility matrix](docs/compatibility.yaml) for tested versions.
 
 ---
 
@@ -117,7 +160,7 @@ Prebuilt images are published to GHCR on every release:
 | API (BFF) | `ghcr.io/alphabravo-oss/highland-api` |
 | Web (console) | `ghcr.io/alphabravo-oss/highland-web` |
 
-Tags: `latest`, `edge` (main), `<version>` (e.g. `0.1.0`), and `sha-<commit>`.
+Tags: `latest`, `edge` (main), `<version>` (e.g. `0.2.0`), and `sha-<commit>`.
 
 ### Try it locally (Docker Compose)
 
@@ -135,7 +178,8 @@ docker compose -f deploy/docker-compose.yaml up --build
 ```text
 Browser ──▶ highland-web ──▶ highland-api ──▶ Kubernetes APIs (CSI inventory + operations)
             static console    auth/RBAC/audit ├──▶ Longhorn manager (managed adapter + legacy API)
-                              signed sessions └──▶ Rook CRDs · Ceph Dashboard GET · Prometheus
+                              signed sessions ├──▶ Rook CRDs · Ceph Dashboard GET · Prometheus
+                                              └──▶ OpenEBS CRDs and controller status
 ```
 
 The browser never receives Kubernetes/provider credentials or direct provider access. The **BFF**
@@ -165,6 +209,9 @@ highland/
 | **Storage writes** | `storage.writes.enabled=false` by default; approved workflows use durable `StorageOperation` records. |
 | **Longhorn provider** | `longhorn.enabled=true` for the legacy bolt-on switch, or `providers.longhorn.enabled`; namespace defaults to `longhorn-system`. |
 | **Rook/Ceph provider** | Opt in with `providers.rookCeph.enabled=true` and a dedicated read-only Dashboard Secret. |
+| **OpenEBS provider** | Opt in with `providers.openebs.enabled=true`; Highland adds bounded read-only engine discovery and no OpenEBS write RBAC. |
+| **Runtime policy** | `adminPolicyControl.enabled=true` exposes the admin policy UI; it can only enable capabilities installed in `adminPolicyControl.ceiling.*`. |
+| **Ceph Dashboard gateway** | Configure `providers.rookCeph.dashboard.url`; Highland serves the native Dashboard through its authenticated `/ceph-dashboard/` path, so `publicUrl` is not required. |
 | **Embedded Longhorn** | `embeddedLonghorn.enabled=true` installs pinned Longhorn 1.12.0 in the release namespace; default is `false`. |
 | **Embedded tuning** | Pass Longhorn chart values under `embeddedLonghorn.*`; the stock UI remains off by default. |
 

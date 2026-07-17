@@ -40,20 +40,18 @@ providers:
       url: http://prometheus-operated.monitoring.svc:9090
 ```
 
-`publicUrl` is optional and is the only Dashboard URL sent to the browser. It is a trusted,
-operator-configured navigation link; the private `url`, credentials, CA, and JWT remain server-side.
-It must be an absolute HTTPS URL without userinfo, query parameters, or a fragment. Highland never
-fetches it server-side. Expose the Dashboard with an operator-managed Ingress, Gateway,
-LoadBalancer, or NodePort using valid TLS and a stable operator-facing hostname. Plain HTTP is
-rejected unless `allowHttp: true` is explicitly set for a disposable lab; the UI then displays a
-credential-safety warning.
+When the private `url` is configured, Highland exposes the native Dashboard at the authenticated,
+same-origin `/ceph-dashboard/` path. The Dashboard Service can remain `ClusterIP`; Highland's web
+proxy checks the existing Highland session before forwarding traffic, validates the configured TLS
+endpoint, scopes Ceph's login cookie to that path, and does not inject the private reader credential.
+Configure Ceph's `mgr/dashboard/url_prefix` as `/ceph-dashboard` so SPA assets, API calls, and
+redirects stay under the gateway. Users still authenticate to Ceph with a separate human identity.
 
-Highland opens the native Dashboard as a separate application with `noopener` and `noreferrer`.
-Verified Ceph 19.2 and 20.2 resource areas may receive a versioned, identifier-free deep link;
-unknown versions and unstable routes always open the configured root. Highland does not embed the
-Dashboard, broker sessions, mint tokens, or place resource names and namespaces in the destination.
-Ceph Dashboard SSO may be configured independently by the operator. Human Dashboard identities
-must remain separate from Highland's private read-only reader.
+`publicUrl` remains an optional fallback for deployments that deliberately expose the Dashboard as
+a separate application. It must be an absolute HTTPS URL without userinfo, query parameters, or a
+fragment. Plain HTTP is rejected unless `allowHttp: true` is explicitly set for a disposable lab;
+the UI then displays a credential-safety warning. Verified Ceph resource areas may receive a
+versioned, identifier-free deep link; unknown versions and unstable routes open the root.
 
 Create the credential Secret yourself; do not copy the generated Dashboard admin password:
 
