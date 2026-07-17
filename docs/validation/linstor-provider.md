@@ -2,8 +2,9 @@
 
 Validation date: **2026-07-17**
 
-Highland target: **0.3.0 preview**
-Lab: single-node K3s with independently installed Piraeus Operator and LINSTOR
+Highland target: **0.3.0**
+Labs: single-node K3s integration cluster plus a disposable three-node K3s/DRBD qualification
+cluster, both with independently installed Piraeus Operator and LINSTOR
 
 ## Tested versions
 
@@ -26,6 +27,10 @@ Piraeus, LINSTOR, CSI, or DRBD resource and has no owner reference on those obje
   exact CSI correlation, stable IDs, and degraded node/replica health.
 - Web typecheck, lint, 87 unit tests, production build, and bundle budgets pass. The lazy LINSTOR
   chunk is 4.9 KiB gzip and does not increase the initial bundle.
+- The permanent live qualification test covers every LINSTOR route as separate admin and viewer
+  users in light and dark themes at 1440×1000 and 390×844. It fails on API errors, request
+  failures, console errors, horizontal overflow, role leakage, or serious/critical accessibility
+  findings.
 - `helm lint`, `hack/test-chart.sh`, and parity checks pass. Enabled rendering proves cluster-scoped
   read-only Piraeus CRD RBAC, namespaced workload RBAC, named token/CA Secret references, fixed
   NetworkPolicy egress, no wildcard access, and no LINSTOR mutation verbs.
@@ -51,29 +56,76 @@ Piraeus, LINSTOR, CSI, or DRBD resource and has no owner reference on those obje
 - Scaling Highland API and web to zero did not stop the CSI workload. A new value was written and
   read from the mounted LINSTOR PVC while Highland was absent, then inventory recovered after both
   deployments returned.
+- After all snapshot, security, and failover tests were cleaned up, the original PVC remained
+  bound, its LINSTOR replica was `UpToDate`, and a fresh reader pod recovered the original proof
+  plus both writes made while Highland workflows or deployments were disabled.
+
+## Snapshot and restore evidence
+
+- Kubernetes external-snapshotter CRDs and the v8.6.0 release manifest were installed as an
+  independent cluster prerequisite; its published controller manifest used image v8.5.0.
+  Highland does not own either resource.
+- The initial `FILE_THIN` qualification pool advertised snapshot capability in inventory but
+  rejected an actual snapshot. This is retained as an important runtime-validation finding: UI
+  capability hints do not replace a real backend exercise.
+- A disposable loop-backed `LVM_THIN` storage pool then provisioned a source PVC. A CSI
+  `VolumeSnapshot` reached `readyToUse: true`, LINSTOR reported the snapshot successful, and a new
+  PVC restored from it with the exact source checksum and accepted a subsequent write.
+- The qualification PVCs, snapshot, StorageClasses, VolumeSnapshotClass, LINSTOR pool, LVM
+  objects, loop device, and backing image were removed. The integration cluster retained only its
+  original validation volume and intended `highland-file-thin` pool.
+
+## HTTPS and bearer-token evidence
+
+- A controlled TLS reverse proxy presented a private-CA certificate with the LINSTOR service DNS
+  name and required a fixed bearer token while proxying the real controller.
+- A trusted client with the correct token received `200`; an incorrect token received `401`; a
+  client without the CA rejected the connection.
+- Highland connected with `insecureSkipVerify=false` using named CA and token Secrets. An invalid
+  token changed only LINSTOR health to warning with a bounded `401` condition and did not expose
+  the credential in API responses. Rotating both proxy and Secret to a new token restored health
+  to `ok`.
+- The temporary proxy, certificates, and Secrets were removed, and the shared integration lab was
+  returned to its explicitly allowed in-cluster HTTP controller endpoint.
+
+## Three-node DRBD evidence
+
+- Three disposable Ubuntu/K3s nodes each supplied an independent LVM-thin data disk and a Piraeus
+  satellite. A StorageClass with `placementCount: "3"` created three `UpToDate` DRBD replicas.
+- Destroying one replica node left the other two `UpToDate` and connected while the mounted writer
+  advanced. Restarting the node resynchronized it to `UpToDate`.
+- The workload was moved from its original node to another replica node; pre-failover data was
+  present and new writes continued with all three replicas healthy.
+- With two of three nodes stopped, the remaining primary explicitly reported
+  `suspended:quorum`, `quorum:no`, and `blocked:upper`; its writer stopped advancing. Restoring one
+  peer re-established 2/3 quorum and writes resumed at the next sequence without a gap. Restoring
+  the final peer returned all replicas to `UpToDate`.
+- The workload, LINSTOR cluster, DHCP reservations, VM disks, and three qualification VMs were
+  removed. Unrelated host VMs were untouched.
 
 ## Browser evidence
 
-Authenticated Chromium visited the dashboard, all fourteen resource pages, context, operations,
-provider-filtered PVs, and provider-filtered claims in dark mode at 1440×900. The dashboard was also
-checked at 390×844. There were no console/page errors, failed HTTP responses, or horizontal overflow.
-Every page rendered a focused heading and provider-specific navigation; empty optional resources
-rendered useful empty states.
+Authenticated Chromium exercised 24 LINSTOR and common-storage routes for both admin and viewer
+roles, both light and dark themes, and desktop/mobile viewports: 192 route states total. There were
+no console errors, failed requests, API responses at or above 400, serious/critical accessibility
+findings, or horizontal overflow. Viewer navigation exposed no Administration link. Every page
+rendered a focused heading and provider-specific navigation; empty optional resources rendered
+useful empty states. Qualification found and fixed missing accessible names on icon-only mobile
+pagination controls and keyboard access to the shared scrollable main region.
 
-## Explicit lab limits and deferred production gates
+## Qualification conclusions and operating constraints
 
-- The cluster does not install the Kubernetes VolumeSnapshot CRDs, so a Kubernetes
-  VolumeSnapshot/restore test is unavailable. Highland reports snapshot support as partial; the
-  backend LINSTOR snapshot endpoint was still probed and returned a valid empty list.
-- This single-node file-thin lab cannot safely simulate node loss, DRBD quorum, multi-replica
-  placement, or a satellite degradation without disrupting the shared test cluster. Unit fixtures
-  prove the degraded health contract. A disposable three-node DRBD qualification remains the gate
-  for promoting the provider beyond preview.
-- The live controller used trusted in-cluster HTTP with the explicit lab flag. HTTPS CA, bearer
-  rejection, token redaction, and rotation behavior are covered by client/config/chart tests; a
-  production installation must use verified HTTPS.
-- No separate viewer account exists in this lab. Shared authentication/authorization tests cover
-  viewer read access and admin-only controls; the LINSTOR workspace itself exposes no native writes.
+- Snapshot support depends on the Kubernetes snapshot CRDs/controller and a snapshot-capable
+  LINSTOR storage backend. `FILE_THIN` was not sufficient in this tested deployment; `LVM_THIN`
+  completed the full CSI snapshot/restore path.
+- Keep LVM volume-group and thin-pool names concise. Device-mapper names combine these values with
+  long Kubernetes IDs and snapshot suffixes, so unusually long backend names can exceed the kernel
+  device-name limit.
+- Production controller connections must use verified HTTPS and narrowly scoped, rotated
+  credentials. Plain HTTP remains an explicit lab-only exception.
+- The three-node exercise proves replicated placement, single-node continuity, resynchronization,
+  failover, quorum suspension, and safe quorum recovery. It does not turn Highland into a LINSTOR
+  reconciler: provider-native repair and lifecycle remain Piraeus/LINSTOR responsibilities.
 
-These limits do not weaken the core lifecycle boundary: Highland is observational, and every live
-failure/removal test demonstrated that LINSTOR CSI and volume I/O remain independent.
+Every live failure/removal test preserved the core lifecycle boundary: Highland is observational,
+and LINSTOR CSI and volume I/O remain independent.

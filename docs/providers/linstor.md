@@ -44,6 +44,12 @@ The fixed read-only LINSTOR REST client provides version, node, storage-pool, re
 resource/replica, snapshot, remote, schedule, and error-report observations. Kubernetes remains
 authoritative for StorageClasses, PVCs, PVs, attachments, snapshots, and workloads.
 
+Kubernetes snapshot and restore workflows additionally require the external-snapshotter CRDs and
+controller plus a snapshot-capable LINSTOR storage backend. Do not infer support only from a pool's
+reported capability: the qualified `FILE_THIN` lab rejected a real snapshot, while a disposable
+`LVM_THIN` pool completed CSI snapshot creation and PVC restore. Keep LVM volume-group and thin-pool
+names concise because device-mapper names also include long Kubernetes resource IDs.
+
 CSI handles are parsed as `<resource-name>[/<volume-number>]`, matching the upstream LINSTOR CSI
 driver. Highland attaches backend detail only after an exact resource-definition match. Missing or
 ambiguous matches become explicit conditions; names are never guessed.

@@ -44,6 +44,7 @@ export function AppShell({ user, onLogout }: AppShellProps) {
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar pathname={location.pathname} search={location.search} user={user} onLogout={onLogout} />
         <main
+          tabIndex={0}
           className={cn(
             'flex-1 overflow-auto bg-[var(--color-background)] p-4 md:p-8',
           )}

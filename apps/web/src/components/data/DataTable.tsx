@@ -445,6 +445,7 @@ export function DataTable<T>({
               className="h-8 gap-1"
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
+              aria-label={t('table.previous')}
               data-testid="table-prev"
             >
               <ChevronLeft size={14} aria-hidden />
@@ -460,6 +461,7 @@ export function DataTable<T>({
               className="h-8 gap-1"
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
+              aria-label={t('table.next')}
               data-testid="table-next"
             >
               <span className="hidden sm:inline">{t('table.next')}</span>

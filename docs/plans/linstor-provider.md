@@ -1,6 +1,6 @@
 # Piraeus / LINSTOR Managed Provider Implementation Plan
 
-- Status: **Implemented — preview validation complete**
+- Status: **Implemented — production qualification gates complete**
 - Owner: **Highland storage control plane**
 - Last updated: **2026-07-17**
 - Target: **Highland 0.3.0**
@@ -215,9 +215,9 @@ Definition of done:
 - [x] Create a LINSTOR StorageClass, PVC, mounted workload, data write/read, snapshot/restore or
   explicitly record why the lab backend cannot support one capability.
 - [x] Enable Highland’s adapter, then probe every summary/resource/detail/common-context API.
-- [x] Browser-test every LINSTOR route as admin in desktop dark mode and mobile mode; cover viewer
-  authorization, light-theme rendering, routing, accessibility, and responsive behavior in the
-  shared automated suites. Record the unavailable live viewer matrix explicitly.
+- [x] Browser-test every LINSTOR route as separate admin and viewer users in light/dark themes at
+  desktop and mobile viewports, including routing, accessibility, responsive behavior, API
+  failures, console errors, and role-specific navigation.
 - [x] Assert no unexpected console errors, failed requests, serious accessibility findings,
   horizontal overflow, cross-provider data leakage, credentials, or unbounded payloads.
 - [x] Test controller unavailable and provider-disabled recovery live; cover token rejection,
@@ -237,7 +237,7 @@ Definition of done:
 - [x] Existing Longhorn, Rook/Ceph, OpenEBS, generic CSI, auth, policy, and benchmark tests remain
   green.
 
-## 5. Preview acceptance criteria
+## 5. Acceptance criteria
 
 - [x] Every preview-required Phase A–F task and definition-of-done checkbox is checked with
   authoritative evidence.
@@ -249,18 +249,18 @@ Definition of done:
 - [x] Changes are committed and pushed only after the full local CI-equivalent suite is green;
   remote CI is monitored after push.
 
-## 6. Deferred production qualification
+## 6. Production qualification
 
-These do not block the documented `0.3.0` preview. They are required before promoting LINSTOR to a
-production-qualified provider:
+The preview implementation was promoted through the following live qualification gates on
+2026-07-17:
 
-- [ ] Repeat provisioning, failover, replica-state, quorum, and satellite-loss validation on a
+- [x] Repeat provisioning, failover, replica-state, quorum, and satellite-loss validation on a
   disposable three-node DRBD cluster.
-- [ ] Exercise Kubernetes VolumeSnapshot creation and restore in a cluster with snapshot CRDs and a
+- [x] Exercise Kubernetes VolumeSnapshot creation and restore in a cluster with snapshot CRDs and a
   compatible snapshot controller installed.
-- [ ] Exercise a real verified-HTTPS LINSTOR controller with bearer-token rotation and rejection.
-- [ ] Repeat the complete live browser matrix with separate viewer/admin accounts and light/dark
+- [x] Exercise a real verified-HTTPS LINSTOR controller with bearer-token rotation and rejection.
+- [x] Repeat the complete live browser matrix with separate viewer/admin accounts and light/dark
   desktop/mobile themes.
 
 See [the validation record](../validation/linstor-provider.md) for commands, observations, and the
-reason each production gate remains deferred.
+captured evidence for every completed production gate.
