@@ -13,12 +13,15 @@ should be replaced with an explicit list.
 ## Assets and trust boundaries
 
 Highland holds a Kubernetes service-account token, local/OIDC sessions, an operation-signing key,
-and optional Longhorn/Ceph credentials. The browser, Kubernetes API, Longhorn manager, Ceph
-Dashboard, Prometheus, and Rook operator are separate trust boundaries.
+and optional Longhorn/Ceph/LINSTOR credentials. The browser, Kubernetes API, Longhorn manager, Ceph
+Dashboard, Prometheus, Rook operator, Piraeus Operator, and LINSTOR controller are separate trust boundaries.
 
 Provider URLs come only from trusted configuration. The browser never receives upstream URLs,
 authorization headers, JWTs, CA material, passwords, or Secret values. The Ceph adapter exposes no
 generic proxy and performs only allowlisted internal GETs.
+The LINSTOR adapter likewise uses a fixed configured origin, no redirects, and a closed set of GET
+paths. It caps bodies at 4 MiB, bounds decoded data, recursively removes secret-like properties,
+and never accepts an upstream URL or path from an HTTP request.
 
 ## Controls
 

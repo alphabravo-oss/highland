@@ -275,7 +275,7 @@ func (e *ContextEngine) buildFresh(ctx context.Context, providerID string) (*gra
 	osdIDs := []string{}
 	if configured {
 		if reader, ok := provider.(ProviderResourceReader); ok {
-			for _, resourceKind := range []string{"clusters", "pools", "filesystems", "mirroring", "osds", "rbd-images"} {
+			for _, resourceKind := range []string{"clusters", "pools", "filesystems", "mirroring", "osds", "rbd-images", "resource-definitions"} {
 				if !contains(reader.ResourceKinds(ctx), resourceKind) {
 					continue
 				}
@@ -502,6 +502,9 @@ func (e *ContextEngine) buildFresh(ctx context.Context, providerID string) (*gra
 }
 
 func providerGraphKind(kind string) string {
+	if kind == "resource-definitions" {
+		return "linstor-resource"
+	}
 	return normalizeGraphKind(kind)
 }
 
@@ -524,7 +527,7 @@ func providerMaps(raw any) []map[string]any {
 
 func providerNodeAttributes(item map[string]any) map[string]any {
 	out := map[string]any{}
-	for _, key := range []string{"kind", "state", "phase", "health", "status", "runtimeState", "pool_name", "pool", "poolName", "fsName", "filesystem", "up", "in", "host", "deviceClass", "generation", "providerVersion", "cephVersion", "rookApiVersion"} {
+	for _, key := range []string{"kind", "state", "phase", "health", "status", "runtimeState", "pool_name", "pool", "poolName", "fsName", "filesystem", "up", "in", "host", "deviceClass", "generation", "providerVersion", "cephVersion", "rookApiVersion", "resource_group_name", "uuid"} {
 		if value, ok := item[key]; ok {
 			out[key] = value
 		}

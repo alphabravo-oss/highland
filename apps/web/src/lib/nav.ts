@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   Activity,
+  AlertTriangle,
   Archive,
   Box,
   Boxes,
@@ -291,6 +292,39 @@ function openEBSGroups(provider: WorkspaceProvider): NavGroup[] {
   return groups
 }
 
+function linstorGroups(provider: WorkspaceProvider): NavGroup[] {
+  const providerPath = `/storage/providers/${encodeURIComponent(provider.id)}`
+  const resource = (kind: string) => `${providerPath}/linstor/${kind}`
+  return [
+    { id: `${provider.id}-overview`, labelKey: 'nav.linstor', label: 'Piraeus / LINSTOR', items: [
+      { id: `${provider.id}-dashboard`, labelKey: 'nav.dashboard', label: 'Dashboard', path: providerPath, icon: LayoutDashboard, end: true },
+      { id: `${provider.id}-components`, labelKey: 'nav.components', label: 'Components', path: resource('components'), icon: Boxes },
+      { id: `${provider.id}-context`, labelKey: 'nav.storageInsights', label: 'Context & insights', path: `${providerPath}/context`, icon: GitBranch, end: true },
+      { id: `${provider.id}-operations`, labelKey: 'nav.storageOperations', label: 'Operations', path: providerFilter('/storage/operations', provider.id), icon: Workflow },
+    ]},
+    { id: `${provider.id}-capacity`, labelKey: 'nav.capacityPlacement', label: 'Capacity & Placement', items: [
+      { id: `${provider.id}-nodes`, labelKey: 'nav.nodes', label: 'Nodes', path: resource('nodes'), icon: Server },
+      { id: `${provider.id}-storage-pools`, labelKey: 'nav.storagePools', label: 'Storage Pools', path: resource('storage-pools'), icon: Database },
+      { id: `${provider.id}-resource-groups`, labelKey: 'nav.resourceGroups', label: 'Resource Groups', path: resource('resource-groups'), icon: Layers3 },
+      { id: `${provider.id}-resource-definitions`, labelKey: 'nav.resources', label: 'Resources', path: resource('resource-definitions'), icon: HardDrive },
+      { id: `${provider.id}-replicas`, labelKey: 'nav.replicas', label: 'Replica Placement', path: resource('resources'), icon: Network },
+    ]},
+    { id: `${provider.id}-protection`, labelKey: 'nav.protectionDiagnostics', label: 'Protection & Diagnostics', items: [
+      { id: `${provider.id}-backend-snapshots`, labelKey: 'nav.snapshots', label: 'Backend Snapshots', path: resource('snapshots'), icon: Camera },
+      { id: `${provider.id}-remotes`, labelKey: 'nav.remotes', label: 'Backup Remotes', path: resource('remotes'), icon: CloudUpload },
+      { id: `${provider.id}-schedules`, labelKey: 'nav.schedules', label: 'Backup Schedules', path: resource('schedules'), icon: CalendarClock },
+      { id: `${provider.id}-errors`, labelKey: 'nav.errorReports', label: 'Error Reports', path: resource('error-reports'), icon: AlertTriangle },
+    ]},
+    { id: `${provider.id}-operator`, labelKey: 'nav.piraeusLifecycle', label: 'Piraeus Lifecycle', items: [
+      { id: `${provider.id}-clusters`, labelKey: 'nav.clusters', label: 'Clusters', path: resource('clusters'), icon: Boxes },
+      { id: `${provider.id}-satellites`, labelKey: 'nav.satellites', label: 'Satellites', path: resource('satellites'), icon: Server },
+      { id: `${provider.id}-satellite-config`, labelKey: 'nav.satelliteConfiguration', label: 'Satellite Configuration', path: resource('satellite-configurations'), icon: Settings },
+      { id: `${provider.id}-node-connections`, labelKey: 'nav.nodeConnections', label: 'Node Connections', path: resource('node-connections'), icon: Cable },
+    ]},
+    { id: `${provider.id}-inventory`, labelKey: 'nav.kubernetesInventory', label: 'Kubernetes Inventory', items: commonInventoryItems(provider) },
+  ]
+}
+
 function genericProviderGroups(provider: WorkspaceProvider): NavGroup[] {
   const providerPath = `/storage/providers/${encodeURIComponent(provider.id)}`
   return [
@@ -325,6 +359,7 @@ export function navigationForWorkspace(provider: WorkspaceProvider | undefined, 
   else if (provider.kind === 'longhorn' || provider.id === 'longhorn') workspaceGroups = longhornGroups
   else if (provider.kind === 'rook-ceph') workspaceGroups = rookCephGroups(provider)
   else if (provider.kind === 'openebs') workspaceGroups = openEBSGroups(provider)
+  else if (provider.kind === 'linstor') workspaceGroups = linstorGroups(provider)
   else workspaceGroups = genericProviderGroups(provider)
   return filterNavForRole([...workspaceGroups, ...systemGroups], role)
 }
@@ -357,6 +392,7 @@ function placeholderProvider(id: string): WorkspaceProvider {
     longhorn: { kind: 'longhorn', displayName: 'Longhorn', supportLevel: 'managed' },
     'rook-ceph': { kind: 'rook-ceph', displayName: 'Rook / Ceph', supportLevel: 'managed' },
     openebs: { kind: 'openebs', displayName: 'OpenEBS', supportLevel: 'managed' },
+    linstor: { kind: 'linstor', displayName: 'Piraeus / LINSTOR', supportLevel: 'managed' },
   }
   const known = knownKinds[id]
   return {

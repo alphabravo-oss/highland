@@ -101,6 +101,13 @@ spec:
                   fieldPath: metadata.namespace
             - name: HIGHLAND_LONGHORN_NAMESPACE
               value: {{ include "highland.longhornNamespace" . | quote }}
+            {{- if and .Values.providers.linstor.enabled .Values.providers.linstor.controller.existingSecret }}
+            - name: HIGHLAND_LINSTOR_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.providers.linstor.controller.existingSecret | quote }}
+                  key: token
+            {{- end }}
             {{- if and .Values.providers.rookCeph.enabled .Values.providers.rookCeph.dashboard.existingSecret }}
             - name: HIGHLAND_ROOK_CEPH_DASHBOARD_USERNAME
               valueFrom:
@@ -141,6 +148,11 @@ spec:
               mountPath: /etc/highland/ceph-ca
               readOnly: true
             {{- end }}
+            {{- if and .Values.providers.linstor.enabled .Values.providers.linstor.controller.caSecret }}
+            - name: linstor-ca
+              mountPath: /etc/highland/linstor-ca
+              readOnly: true
+            {{- end }}
             {{- if .Values.persistence.audit.enabled }}
             - name: audit
               mountPath: /var/log/highland
@@ -170,6 +182,14 @@ spec:
         - name: ceph-dashboard-ca
           secret:
             secretName: {{ .Values.providers.rookCeph.dashboard.caSecret | quote }}
+            items:
+              - key: ca.crt
+                path: ca.crt
+        {{- end }}
+        {{- if and .Values.providers.linstor.enabled .Values.providers.linstor.controller.caSecret }}
+        - name: linstor-ca
+          secret:
+            secretName: {{ .Values.providers.linstor.controller.caSecret | quote }}
             items:
               - key: ca.crt
                 path: ca.crt

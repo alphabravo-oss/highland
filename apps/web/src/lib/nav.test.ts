@@ -102,6 +102,18 @@ describe('workspace navigation', () => {
     expect(groups.find((group) => group.id === 'openebs-zfs')?.label).toBe('LocalPV ZFS')
   })
 
+  it('gives LINSTOR a backend-specific lifecycle and placement workspace', () => {
+    const provider = { ...openebs, id: 'linstor', kind: 'linstor', displayName: 'Piraeus / LINSTOR' }
+    const ids = navigationForWorkspace(provider, 'viewer').flatMap((group) => group.items.map((item) => item.id))
+    expect(ids).toEqual(expect.arrayContaining([
+      'linstor-dashboard', 'linstor-components', 'linstor-nodes', 'linstor-storage-pools',
+      'linstor-resource-groups', 'linstor-replicas', 'linstor-snapshots', 'linstor-remotes',
+      'linstor-clusters', 'linstor-satellites', 'linstor-claims',
+    ]))
+    expect(ids).not.toContain('openebs-disk-pools')
+    expect(ids).not.toContain('rook-ceph-osds')
+  })
+
   it('resolves workspace context from provider routes, filters, and legacy Longhorn routes', () => {
     const providers = [longhorn, rook, generic]
     expect(providerWorkspaceFromLocation('/storage/providers/rook-ceph/ceph/pools', '', providers)?.id).toBe('rook-ceph')

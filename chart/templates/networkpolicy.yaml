@@ -40,6 +40,15 @@ spec:
         - protocol: TCP
           port: {{ .Values.providers.rookCeph.dashboard.port }}
     {{- end }}
+    {{- if and .Values.providers.linstor.enabled .Values.providers.linstor.controller.url }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.providers.linstor.namespace | quote }}
+      ports:
+        - protocol: TCP
+          port: {{ default 3370 .Values.providers.linstor.controller.port }}
+    {{- end }}
     {{- if and .Values.providers.rookCeph.enabled .Values.providers.rookCeph.prometheus.url }}
     - to:
         - namespaceSelector:

@@ -83,6 +83,17 @@ type Config struct {
 	OpenEBSEnabled   bool
 	OpenEBSNamespace string
 
+	// Optional read-only Piraeus/LINSTOR managed provider. Highland observes
+	// the independently managed CSI deployment and never owns its lifecycle.
+	LinstorEnabled       bool
+	LinstorNamespace     string
+	LinstorControllerURL string
+	LinstorAuthToken     string
+	LinstorCAFile        string
+	LinstorInsecureTLS   bool
+	LinstorAllowHTTP     bool
+	LinstorTimeout       time.Duration
+
 	// Optional read-only Rook/Ceph managed provider. Write gates are evaluated
 	// separately by the operation policy.
 	RookCephEnabled                 bool
@@ -194,6 +205,14 @@ func LoadFromEnv() (*Config, error) {
 		LonghornNamespace:               envOr("HIGHLAND_LONGHORN_NAMESPACE", "longhorn-system"),
 		OpenEBSEnabled:                  envBool("HIGHLAND_OPENEBS_ENABLED", false),
 		OpenEBSNamespace:                envOr("HIGHLAND_OPENEBS_NAMESPACE", "openebs"),
+		LinstorEnabled:                  envBool("HIGHLAND_LINSTOR_ENABLED", false),
+		LinstorNamespace:                envOr("HIGHLAND_LINSTOR_NAMESPACE", "piraeus-datastore"),
+		LinstorControllerURL:            strings.TrimRight(os.Getenv("HIGHLAND_LINSTOR_CONTROLLER_URL"), "/"),
+		LinstorAuthToken:                os.Getenv("HIGHLAND_LINSTOR_AUTH_TOKEN"),
+		LinstorCAFile:                   os.Getenv("HIGHLAND_LINSTOR_CA_FILE"),
+		LinstorInsecureTLS:              envBool("HIGHLAND_LINSTOR_INSECURE_TLS", false),
+		LinstorAllowHTTP:                envBool("HIGHLAND_LINSTOR_ALLOW_HTTP", false),
+		LinstorTimeout:                  envDuration("HIGHLAND_LINSTOR_TIMEOUT", 5*time.Second),
 		RookCephEnabled:                 envBool("HIGHLAND_ROOK_CEPH_ENABLED", false),
 		RookCephNamespace:               envOr("HIGHLAND_ROOK_CEPH_NAMESPACE", "rook-ceph"),
 		RookCephClusterName:             envOr("HIGHLAND_ROOK_CEPH_CLUSTER_NAME", "rook-ceph"),
@@ -260,6 +279,27 @@ func LoadFromEnv() (*Config, error) {
 	}
 	if cfg.RookCephEnabled && cfg.RookCephDashboardURL != "" && (cfg.RookCephDashboardUsername == "" || cfg.RookCephDashboardPassword == "") {
 		return nil, fmt.Errorf("Rook/Ceph Dashboard username and password are required when dashboard URL is configured")
+	}
+	if cfg.LinstorControllerURL != "" {
+		controllerURL, err := url.Parse(cfg.LinstorControllerURL)
+		if err != nil || !controllerURL.IsAbs() || controllerURL.Opaque != "" || controllerURL.Host == "" || controllerURL.User != nil {
+			return nil, fmt.Errorf("HIGHLAND_LINSTOR_CONTROLLER_URL must be an absolute URL without userinfo")
+		}
+		if controllerURL.RawQuery != "" || controllerURL.ForceQuery || controllerURL.Fragment != "" {
+			return nil, fmt.Errorf("HIGHLAND_LINSTOR_CONTROLLER_URL must not contain a query or fragment")
+		}
+		switch strings.ToLower(controllerURL.Scheme) {
+		case "https":
+		case "http":
+			if !cfg.LinstorAllowHTTP {
+				return nil, fmt.Errorf("HIGHLAND_LINSTOR_CONTROLLER_URL requires HTTPS unless HIGHLAND_LINSTOR_ALLOW_HTTP is explicitly enabled")
+			}
+		default:
+			return nil, fmt.Errorf("HIGHLAND_LINSTOR_CONTROLLER_URL must use HTTPS")
+		}
+	}
+	if cfg.LinstorTimeout <= 0 || cfg.LinstorTimeout > 30*time.Second {
+		return nil, fmt.Errorf("HIGHLAND_LINSTOR_TIMEOUT must be greater than zero and no more than 30s")
 	}
 	if cfg.RookCephDashboardPublicURL != "" {
 		publicURL, err := url.Parse(cfg.RookCephDashboardPublicURL)

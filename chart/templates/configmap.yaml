@@ -56,6 +56,15 @@ data:
           "enabled": {{ .Values.providers.openebs.enabled }},
           "namespace": {{ .Values.providers.openebs.namespace | quote }}
         },
+        "linstor": {
+          "enabled": {{ default false .Values.providers.linstor.enabled }},
+          "namespace": {{ default "piraeus-datastore" .Values.providers.linstor.namespace | quote }},
+          "controllerUrl": {{ default "" .Values.providers.linstor.controller.url | quote }},
+          "allowHttp": {{ default false .Values.providers.linstor.controller.allowHttp }},
+          "caFile": {{ ternary "/etc/highland/linstor-ca/ca.crt" "" (not (empty .Values.providers.linstor.controller.caSecret)) | quote }},
+          "insecureSkipVerify": {{ default false .Values.providers.linstor.controller.insecureSkipVerify }},
+          "timeout": {{ default "5s" .Values.providers.linstor.controller.timeout | quote }}
+        },
         "rookCeph": {
           "enabled": {{ .Values.providers.rookCeph.enabled }},
           "namespace": {{ .Values.providers.rookCeph.namespace | quote }},

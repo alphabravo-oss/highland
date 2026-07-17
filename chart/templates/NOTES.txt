@@ -20,6 +20,9 @@ IMPORTANT — Rook/Ceph credentials:
 {{- if .Values.providers.openebs.enabled }}
   - OpenEBS: enabled in {{ .Values.providers.openebs.namespace }} (read-only provider insights)
 {{- end }}
+{{- if .Values.providers.linstor.enabled }}
+  - Piraeus / LINSTOR: enabled in {{ .Values.providers.linstor.namespace }} (externally managed, read-only)
+{{- end }}
 {{- if .Values.embeddedLonghorn.enabled }}
   - Embedded Longhorn: enabled (chart 1.12.0; stock UI replicas: {{ .Values.embeddedLonghorn.longhornUI.replicas }})
 

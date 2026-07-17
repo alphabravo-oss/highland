@@ -184,6 +184,12 @@ func TestRelationshipGraphUsesExactEvidenceAndBoundedQueries(t *testing.T) {
 	}
 }
 
+func TestProviderGraphKindMapsLINSTORDefinitionsToCorrelationKind(t *testing.T) {
+	if got := providerGraphKind("resource-definitions"); got != "linstor-resource" {
+		t.Fatalf("providerGraphKind(resource-definitions)=%q", got)
+	}
+}
+
 func TestImpactTraversesPoolToKubernetesConsumersAndFailsPartialClosed(t *testing.T) {
 	api := newContextFixtureAPI(t, false, false, false)
 	poolID := CanonicalGraphID("ceph-block-pool", "rook-ceph", "rook-ceph", "rook-ceph/pool-a")

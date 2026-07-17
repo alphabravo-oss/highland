@@ -68,6 +68,7 @@ type StorageWritesFileConfig struct {
 type ProvidersFileConfig struct {
 	Longhorn *LonghornFileConfig `json:"longhorn,omitempty" yaml:"longhorn,omitempty"`
 	OpenEBS  *OpenEBSFileConfig  `json:"openebs,omitempty" yaml:"openebs,omitempty"`
+	Linstor  *LinstorFileConfig  `json:"linstor,omitempty" yaml:"linstor,omitempty"`
 	RookCeph *RookCephFileConfig `json:"rookCeph,omitempty" yaml:"rookCeph,omitempty"`
 }
 
@@ -81,6 +82,16 @@ type LonghornFileConfig struct {
 type OpenEBSFileConfig struct {
 	Enabled   *bool  `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 	Namespace string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+}
+
+type LinstorFileConfig struct {
+	Enabled       *bool  `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	Namespace     string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	ControllerURL string `json:"controllerUrl,omitempty" yaml:"controllerUrl,omitempty"`
+	CAFile        string `json:"caFile,omitempty" yaml:"caFile,omitempty"`
+	InsecureTLS   *bool  `json:"insecureSkipVerify,omitempty" yaml:"insecureSkipVerify,omitempty"`
+	AllowHTTP     *bool  `json:"allowHttp,omitempty" yaml:"allowHttp,omitempty"`
+	Timeout       string `json:"timeout,omitempty" yaml:"timeout,omitempty"`
 }
 
 type RookCephFileConfig struct {
@@ -299,6 +310,16 @@ func seedEnvFromFile(f *FileConfig) error {
 			_ = os.Setenv("HIGHLAND_OPENEBS_ENABLED", fmt.Sprintf("%v", *p.Enabled))
 		}
 		set("HIGHLAND_OPENEBS_NAMESPACE", p.Namespace)
+	}
+	if f.Providers != nil && f.Providers.Linstor != nil {
+		p := f.Providers.Linstor
+		setBoolEnv("HIGHLAND_LINSTOR_ENABLED", p.Enabled)
+		set("HIGHLAND_LINSTOR_NAMESPACE", p.Namespace)
+		set("HIGHLAND_LINSTOR_CONTROLLER_URL", p.ControllerURL)
+		set("HIGHLAND_LINSTOR_CA_FILE", p.CAFile)
+		setBoolEnv("HIGHLAND_LINSTOR_INSECURE_TLS", p.InsecureTLS)
+		setBoolEnv("HIGHLAND_LINSTOR_ALLOW_HTTP", p.AllowHTTP)
+		set("HIGHLAND_LINSTOR_TIMEOUT", p.Timeout)
 	}
 	if f.Providers != nil && f.Providers.RookCeph != nil {
 		p := f.Providers.RookCeph

@@ -474,6 +474,12 @@ gate remains separate. Review the [storage concepts](storage-control-plane.md),
 [threat model](security/storage-threat-model.md), and [operation runbook](runbooks/storage-operations.md)
 before enabling any write gate.
 
+Piraeus/LINSTOR is also independently installed and explicitly opt-in. Highland never owns its
+Operator, controller, CSI, DRBD, or data lifecycle. A Kubernetes-only view needs
+`providers.linstor.enabled=true`; add the fixed controller URL and optional token/CA Secrets for
+runtime nodes, pools, placement, protection, and diagnostic detail. See the
+[LINSTOR provider guide](providers/linstor.md) for verified-TLS configuration and removal behavior.
+
 ## 14. Development without Docker
 
 Contributors can still use `go run`, `npm run dev`, or Compose. The production path is Helm plus

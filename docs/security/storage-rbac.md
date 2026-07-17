@@ -17,6 +17,8 @@ mutation verbs.
 | `highland-storage-read-<namespace>` | allowlisted namespace | PVC, Pod, Event, VolumeSnapshot | get/list/watch | namespace mode |
 | `highland-longhorn-read` | Longhorn namespace | allowlisted Longhorn CRDs | get/list/watch | Longhorn provider |
 | `highland-rook-ceph-read` | Rook namespace | CephCluster, CephBlockPool, CephFilesystem, CephRBDMirror; fixed `rook-ceph-operator` Deployment | get/list/watch on Rook CRDs; get only on the named Deployment | Rook/Ceph provider |
+| `highland-linstor-read` | cluster | LinstorCluster, LinstorSatellite, LinstorSatelliteConfiguration, LinstorNodeConnection | get/list/watch | LINSTOR provider |
+| `highland-linstor-workloads-read` | Piraeus namespace | Deployment, StatefulSet, DaemonSet | get/list/watch | LINSTOR provider |
 | `highland-storage-operations-read` | Highland namespace | StorageOperation | get/list/watch | always |
 | `highland-storage-operation-controller` | Highland namespace | StorageOperation status and Lease | get/list/watch/create/update/patch; terminal-object delete for retention | writes or recovery |
 | `highland-namespaced-storage-writer` | configured namespaces | PVC and VolumeSnapshot | bounded create/update/patch/delete | writes or recovery |
@@ -29,6 +31,8 @@ mutation verbs.
 The Deployment receives named Secret keys through `secretKeyRef`; no role grants Secret `list`.
 Dashboard credentials and CA material are never part of universal inventory. Namespace mode omits
 cluster PV/driver metadata by design, producing an explicit partial-inventory condition.
+LINSTOR bearer tokens and CA material are injected only through named Secret key references; the
+RBAC above grants no Secret reads or provider mutations.
 
 Application authorization is additional to Kubernetes RBAC. Viewer has read access, operator may
 use approved namespaced lifecycle actions, and admin is required for destructive or

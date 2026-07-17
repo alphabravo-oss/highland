@@ -30,6 +30,11 @@ not infer “no objects” from an error condition.
     [`runbooks/storage-operations.md`](runbooks/storage-operations.md). Obtain a new plan after stale
     UID/resourceVersion/dependencies; never edit the operation spec or force-remove storage
     finalizers.
+11. **Is Piraeus/LINSTOR degraded?** Check cluster-scoped `piraeus.io/v1` CRD access, then component
+    workloads in `providers.linstor.namespace`. If only runtime pages fail, verify the fixed
+    controller URL, HTTPS CA, optional bearer-token Secret, NetworkPolicy port, and REST media type.
+    HTTP requires the explicit lab flag. Disabling the integration or restarting Highland does not
+    stop LINSTOR CSI; diagnose storage I/O directly through Piraeus/LINSTOR when Highland is down.
 
 For alerts, inspect the optional PrometheusRule and Grafana dashboard rendered by the chart. For a
 permission-level inventory, see [`security/storage-rbac.md`](security/storage-rbac.md).

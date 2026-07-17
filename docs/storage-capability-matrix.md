@@ -4,12 +4,12 @@ Capabilities are derived from installed APIs, driver/Class configuration, provid
 Highland feature policy, the signed-in role, and current resource state. An empty cell means
 Highland does not advertise the capability; it is never an optimistic fallback.
 
-| Capability | Generic detected CSI | Longhorn managed | Rook/Ceph managed |
-|---|---:|---:|---:|
-| Drivers, Classes, PVC/PV, workloads, attachments, events | detected | managed | managed |
-| CSI capacity | when `CSIStorageCapacity` is served | managed | managed |
-| Snapshot inventory | when snapshot v1 APIs are served | managed | managed |
-| Backend health/resources | — | replicas, nodes/disks, backup and engine facts | pools, OSDs, RBD, CephFS, quorum, mirroring |
+| Capability | Generic detected CSI | Longhorn managed | Rook/Ceph managed | OpenEBS managed | Piraeus/LINSTOR managed |
+|---|---:|---:|---:|---:|---:|
+| Drivers, Classes, PVC/PV, workloads, attachments, events | detected | managed | managed | managed | managed |
+| CSI capacity | when `CSIStorageCapacity` is served | managed | managed | managed | managed |
+| Snapshot inventory | when snapshot v1 APIs are served | managed | managed | managed | managed |
+| Backend health/resources | — | replicas, nodes/disks, backup and engine facts | pools, OSDs, RBD, CephFS, quorum, mirroring | engine CRDs and component health | Piraeus convergence; nodes, pools, placement, replicas, protection, diagnostics |
 | Create/expand/delete PVC | preview; installed API/Class policy and write gate required | preview through common workflow; legacy actions retained | preview through common workflow |
 | Snapshot/create/delete, restore, clone | preview; snapshot API/Class and driver match required | preview plus legacy native actions | preview when Ceph CSI advertises prerequisites |
 | Create RBD/CephFS StorageClass | — | — | preview; admin, ready backend, explicit write gate |

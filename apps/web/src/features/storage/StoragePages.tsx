@@ -49,6 +49,7 @@ import { useAuth } from '@/auth/AuthContext'
 import { canonicalGraphId } from '@/api/storage/context'
 import { ResourceContextLink } from './StorageContextPages'
 import { OpenEBSProviderPage } from './OpenEBSStoragePages'
+import { LinstorProviderPage } from './LinstorStoragePages'
 
 const LIMIT = 100
 
@@ -239,6 +240,9 @@ export function StorageProviderPage() {
   }
   if (provider?.kind === 'openebs') {
     return <OpenEBSProviderPage provider={provider} />
+  }
+  if (provider?.kind === 'linstor') {
+    return <LinstorProviderPage provider={provider} />
   }
   return (
     <div>
@@ -930,6 +934,7 @@ function ProviderReferenceLink({ providerId, reference }: { providerId: string; 
   if (!reference) return <span className="text-[var(--color-muted-foreground)]">Backend mapping unavailable</span>
   if (reference.kind === 'longhorn-volume') return <Link className="text-[var(--color-primary)] hover:underline" to={`/volumes/${encodeURIComponent(reference.id)}`}>{reference.kind}/{reference.id}</Link>
   if (reference.kind === 'ceph-rbd-image') return <Link className="text-[var(--color-primary)] hover:underline" to={`/storage/providers/${encodeURIComponent(providerId)}/ceph/rbd-images/${encodeURIComponent(reference.id)}`}>{reference.kind}/{reference.id}</Link>
+  if (reference.kind === 'linstor-resource') return <Link className="text-[var(--color-primary)] hover:underline" to={`/storage/providers/${encodeURIComponent(providerId)}/linstor/resource-definitions/${encodeURIComponent(reference.id)}`}>{reference.kind}/{reference.id}</Link>
   const openEBSKinds: Record<string, string> = {
     'openebs-hostpath-volume': 'hostpath-volumes',
     'openebs-lvm-volume': 'lvm-volumes',

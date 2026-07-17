@@ -349,6 +349,62 @@ roleRef:
   name: {{ include "highland.fullname" . }}-openebs-components-read
 ---
 {{- end }}
+{{- if .Values.providers.linstor.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "highland.fullname" . }}-linstor-read
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["piraeus.io"]
+    resources: ["linstorclusters", "linstorsatellites", "linstorsatelliteconfigurations", "linstornodeconnections"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-linstor-read
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "highland.fullname" . }}-linstor-read
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "highland.fullname" . }}-linstor-workloads-read
+  namespace: {{ .Values.providers.linstor.namespace | quote }}
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "highland.fullname" . }}-linstor-workloads-read
+  namespace: {{ .Values.providers.linstor.namespace | quote }}
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "highland.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "highland.fullname" . }}-linstor-workloads-read
+---
+{{- end }}
 {{- if .Values.providers.rookCeph.enabled }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

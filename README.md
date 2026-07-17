@@ -4,11 +4,11 @@
 
 # Highland
 
-### A secure Kubernetes storage control plane for CSI, Longhorn, Rook/Ceph, and OpenEBS
+### A secure Kubernetes storage control plane for CSI, Longhorn, Rook/Ceph, OpenEBS, and Piraeus/LINSTOR
 
 Highland is a modern, secure console for Kubernetes storage: provider-neutral CSI inventory,
 provider-specific workspaces, durable guarded workflows, and operational insight across Longhorn,
-Rook/Ceph, and OpenEBS — **without replacing the data plane**.
+Rook/Ceph, OpenEBS, and Piraeus/LINSTOR — **without replacing the data plane**.
 
 [![CI](https://github.com/alphabravo-oss/highland/actions/workflows/ci.yaml/badge.svg)](https://github.com/alphabravo-oss/highland/actions/workflows/ci.yaml)
 [![Publish images](https://github.com/alphabravo-oss/highland/actions/workflows/release.yaml/badge.svg)](https://github.com/alphabravo-oss/highland/actions/workflows/release.yaml)
@@ -47,7 +47,8 @@ those facts into one hardened operator experience while keeping Kubernetes autho
   capacity, topology, and events, including unknown CSI drivers without custom code.
 - **Managed providers** — a full Longhorn operations workspace; Rook/Ceph health, pools, OSDs, RBD,
   CephFS, quorum, mirroring, and safe native Ceph workflows; and OpenEBS engine-aware inventory for
-  LocalPV HostPath/LVM/ZFS, Mayastor, and RawFile.
+  LocalPV HostPath/LVM/ZFS, Mayastor, and RawFile; plus Piraeus/LINSTOR lifecycle status, capacity,
+  placement, protection, diagnostics, and exact CSI correlation.
 - **Guarded workflows** — typed plans, role and namespace policy, expiring confirmation, durable
   Kubernetes operations, fresh preflight, audit, and read-only defaults.
 - **Kubernetes-native** — Helm chart, stateless signed-cookie sessions (no Redis), Kubernetes Secrets
@@ -68,6 +69,7 @@ disabled instead of failing optimistically.
 | **Longhorn** | Dashboard, volumes, replicas, nodes/disks, live I/O, backups, snapshots, recurring jobs, backup targets, backing/engine images, instance managers, orphans, system backups, support bundles, preflight, and settings | Existing Longhorn-native volume, backup, snapshot, recurring-job, salvage, engine, node/disk, and backup-target actions, plus portable Kubernetes workflows |
 | **Rook/Ceph** | Cluster health, MON quorum, OSDs, block pools, RBD images, CephFS, mirroring, Ceph CSI inventory, Prometheus observations, and an authenticated same-origin handoff to the native Ceph Dashboard | Guarded creation of replicated pools and RBD/CephFS StorageClasses; separately gated deletion after fresh dependency and runtime checks; portable PVC/snapshot workflows |
 | **OpenEBS** | Components and engine-aware inventory for Dynamic LocalPV HostPath, LocalPV LVM, LocalPV ZFS, Replicated PV Mayastor, and RawFile LocalPV | Portable Kubernetes workflows only; OpenEBS-native mutations remain intentionally read-only in 0.2.0 |
+| **Piraeus / LINSTOR** | Piraeus cluster/satellite convergence, components, LINSTOR nodes, pools, resource groups, resources/replicas, snapshots, remotes, schedules, error reports, and exact CSI-handle correlation | Portable Kubernetes workflows only; LINSTOR remains independently lifecycle-managed and native mutations remain read-only |
 
 ### Platform capabilities
 
@@ -102,7 +104,7 @@ cross-provider data migration are not part of 0.2.0. See the
 ### Install the provider-neutral control plane
 
 > **Prerequisites:** a Kubernetes cluster, Helm, and kubectl. Highland automatically discovers CSI
-> drivers and Kubernetes storage resources; Longhorn, Rook/Ceph, and OpenEBS are optional deeper
+> drivers and Kubernetes storage resources; Longhorn, Rook/Ceph, OpenEBS, and Piraeus/LINSTOR are optional deeper
 > integrations, not installation prerequisites.
 
 Install straight from GitHub Container Registry — no cloning, no image builds:
@@ -130,9 +132,10 @@ combination of deeper provider workspaces with a Helm upgrade:
 | **Longhorn** | `--set providers.longhorn.enabled=true --set longhorn.namespace=longhorn-system` | Full Longhorn operations, backups, snapshots, nodes/disks, settings, and native workflows |
 | **Rook/Ceph** | `--set providers.rookCeph.enabled=true --set providers.rookCeph.namespace=rook-ceph` | Ceph health, quorum, OSD, pool, RBD, CephFS, mirroring, and guarded native workflows |
 | **OpenEBS** | `--set providers.openebs.enabled=true --set providers.openebs.namespace=openebs` | Engine-aware inventory for LocalPV HostPath/LVM/ZFS, Mayastor, and RawFile |
+| **Piraeus / LINSTOR** | `--set providers.linstor.enabled=true --set providers.linstor.namespace=piraeus-datastore` | Piraeus lifecycle status plus LINSTOR runtime, capacity, placement, protection, diagnostics, and CSI correlation |
 | **Any other CSI driver** | No provider setting required | Provider-neutral drivers, classes, claims, volumes, workloads, snapshots, topology, capacity, events, and operations |
 
-For example, a cluster running all three managed providers can enable them together:
+For example, a cluster running all four managed providers can enable them together:
 
 ```bash
 helm upgrade highland oci://ghcr.io/alphabravo-oss/charts/highland \
@@ -144,7 +147,9 @@ helm upgrade highland oci://ghcr.io/alphabravo-oss/charts/highland \
   --set providers.rookCeph.enabled=true \
   --set providers.rookCeph.namespace=rook-ceph \
   --set providers.openebs.enabled=true \
-  --set providers.openebs.namespace=openebs
+  --set providers.openebs.namespace=openebs \
+  --set providers.linstor.enabled=true \
+  --set providers.linstor.namespace=piraeus-datastore
 ```
 
 Provider switches add discovery and the corresponding UI workspace; they do not install those
@@ -207,7 +212,8 @@ docker compose -f deploy/docker-compose.yaml up --build
 Browser ──▶ highland-web ──▶ highland-api ──▶ Kubernetes APIs (CSI inventory + operations)
             static console    auth/RBAC/audit ├──▶ Longhorn manager (managed adapter + legacy API)
                               signed sessions ├──▶ Rook CRDs · Ceph Dashboard GET · Prometheus
-                                              └──▶ OpenEBS CRDs and controller status
+                                              ├──▶ OpenEBS CRDs and controller status
+                                              └──▶ Piraeus CRDs · LINSTOR REST (fixed GET endpoints)
 ```
 
 The browser never receives Kubernetes/provider credentials or direct provider access. The **BFF**
@@ -238,6 +244,7 @@ highland/
 | **Longhorn provider** | `longhorn.enabled=true` for the legacy bolt-on switch, or `providers.longhorn.enabled`; namespace defaults to `longhorn-system`. |
 | **Rook/Ceph provider** | Opt in with `providers.rookCeph.enabled=true` and a dedicated read-only Dashboard Secret. |
 | **OpenEBS provider** | Opt in with `providers.openebs.enabled=true`; Highland adds bounded read-only engine discovery and no OpenEBS write RBAC. |
+| **Piraeus / LINSTOR provider** | Opt in with `providers.linstor.enabled=true`; an optional fixed controller URL, token Secret, and CA Secret add bounded runtime detail. Highland never installs or lifecycle-manages LINSTOR. |
 | **Runtime policy** | `adminPolicyControl.enabled=true` exposes the admin policy UI; it can only enable capabilities installed in `adminPolicyControl.ceiling.*`. |
 | **Ceph Dashboard gateway** | Configure `providers.rookCeph.dashboard.url`; Highland serves the native Dashboard through its authenticated `/ceph-dashboard/` path, so `publicUrl` is not required. |
 | **Embedded Longhorn** | `embeddedLonghorn.enabled=true` installs pinned Longhorn 1.12.0 in the release namespace; default is `false`. |

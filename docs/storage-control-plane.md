@@ -27,7 +27,8 @@ continuation tokens. Filters include provider, driver, namespace, status, and se
 
 Pages include Providers, Storage Classes, Claims & Workloads, PVs, Snapshots, Attachments, Capacity,
 Events, Operations, and Benchmarks. Filters remain in the URL. Provider-specific Longhorn routes are
-unchanged; Ceph pages are curated, typed, and read-only unless a workflow is separately enabled.
+unchanged; Ceph, OpenEBS, and Piraeus/LINSTOR pages are curated and provider-scoped. LINSTOR native
+resources are read-only; its independently installed CSI continues running without Highland.
 
 ## Scope and partial data
 

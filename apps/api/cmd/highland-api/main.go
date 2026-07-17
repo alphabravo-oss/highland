@@ -18,6 +18,7 @@ import (
 	"github.com/highland-io/highland/apps/api/internal/kube"
 	"github.com/highland-io/highland/apps/api/internal/observability"
 	"github.com/highland-io/highland/apps/api/internal/policy"
+	linstorprovider "github.com/highland-io/highland/apps/api/internal/providers/linstor"
 	longhornprovider "github.com/highland-io/highland/apps/api/internal/providers/longhorn"
 	openebsprovider "github.com/highland-io/highland/apps/api/internal/providers/openebs"
 	"github.com/highland-io/highland/apps/api/internal/providers/rookceph"
@@ -210,6 +211,32 @@ func main() {
 		}
 		if registerErr := storageRegistry.Register(context.Background(), openEBSAdapter); registerErr != nil {
 			slog.Error("OpenEBS provider registration failed", "err", registerErr)
+			os.Exit(1)
+		}
+	}
+	if cfg.LinstorEnabled {
+		if kubeClients == nil {
+			slog.Error("LINSTOR provider requires Kubernetes connectivity")
+			os.Exit(1)
+		}
+		linstorClient, clientErr := linstorprovider.NewClient(linstorprovider.ClientConfig{
+			URL: cfg.LinstorControllerURL, Token: cfg.LinstorAuthToken, CAFile: cfg.LinstorCAFile,
+			InsecureSkipVerify: cfg.LinstorInsecureTLS, Timeout: cfg.LinstorTimeout,
+		})
+		if clientErr != nil {
+			slog.Error("LINSTOR client config invalid", "err", clientErr)
+			os.Exit(1)
+		}
+		linstorAdapter, providerErr := linstorprovider.New(linstorprovider.Config{
+			ID: linstorprovider.ProviderID, Namespace: cfg.LinstorNamespace,
+			Dynamic: kubeClients.Dynamic, Client: linstorClient, Observer: obsMetrics,
+		})
+		if providerErr != nil {
+			slog.Error("LINSTOR provider init failed", "err", providerErr)
+			os.Exit(1)
+		}
+		if registerErr := storageRegistry.Register(context.Background(), linstorAdapter); registerErr != nil {
+			slog.Error("LINSTOR provider registration failed", "err", registerErr)
 			os.Exit(1)
 		}
 	}

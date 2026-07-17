@@ -1,5 +1,5 @@
 schemaVersion: 1
-lastUpdated: "2026-07-16"
+lastUpdated: "2026-07-17"
 releaseLine: "0.2.x-storage-preview"
 
 kubernetes:
@@ -76,6 +76,22 @@ providers:
       hostpathK3sLab: required
       mayastorThreeNodeLab: phase-2-release-gate
     note: "Phase 1 is read-only. HostPath is explicitly non-replicated; Mayastor runtime detail and every OpenEBS infrastructure write remain gated."
+  linstor:
+    supportLevel: managed
+    releaseStage: preview
+    piraeusApi: piraeus.io/v1
+    tested:
+      kubernetes: "1.36.2+k3s1"
+      piraeusOperator: "2.10.8"
+      linstorController: "1.33.3"
+      linstorCsi: "1.11.3"
+      topology: "single-node file-thin validation; three-node DRBD quorum remains a production release gate"
+    driverNames: [linstor.csi.linbit.com]
+    validation:
+      normalizedResourceContract: required
+      independentK3sInstall: required
+      threeNodeDrbdLab: production-release-gate
+    note: "Highland is read-only and never owns Piraeus/LINSTOR lifecycle. CSI handles correlate only as <resource-name>[/<volume-number>]."
 
 genericCsi:
   supportLevel: detected

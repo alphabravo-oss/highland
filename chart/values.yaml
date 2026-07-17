@@ -123,6 +123,20 @@ providers:
     # mutate OpenEBS through this switch.
     enabled: false
     namespace: openebs
+  linstor:
+    # Observe an independently installed Piraeus/LINSTOR deployment. Highland
+    # never owns its install, upgrade, configuration, or removal lifecycle.
+    enabled: false
+    namespace: piraeus-datastore
+    controller:
+      # Example lab URL: http://linstor-controller.piraeus-datastore.svc:3370
+      url: ""
+      port: 3370
+      allowHttp: false
+      existingSecret: "" # optional key: token
+      caSecret: ""       # optional key: ca.crt
+      insecureSkipVerify: false
+      timeout: 5s
   rookCeph:
     enabled: false
     namespace: rook-ceph

@@ -100,6 +100,8 @@ const CephResourcePage = lazy(() => import('@/features/storage/StoragePages').th
 const CephResourceDetailPage = lazy(() => import('@/features/storage/StoragePages').then((m) => ({ default: m.CephResourceDetailPage })))
 const OpenEBSResourcePage = lazy(() => import('@/features/storage/OpenEBSStoragePages').then((m) => ({ default: m.OpenEBSResourcePage })))
 const OpenEBSResourceDetailPage = lazy(() => import('@/features/storage/OpenEBSStoragePages').then((m) => ({ default: m.OpenEBSResourceDetailPage })))
+const LinstorResourcePage = lazy(() => import('@/features/storage/LinstorStoragePages').then((m) => ({ default: m.LinstorResourcePage })))
+const LinstorResourceDetailPage = lazy(() => import('@/features/storage/LinstorStoragePages').then((m) => ({ default: m.LinstorResourceDetailPage })))
 const StorageOperationsPage = lazy(() => import('@/features/storage/StorageOperationsPage').then((m) => ({ default: m.StorageOperationsPage })))
 const StorageActionPage = lazy(() => import('@/features/storage/StorageOperationsPage').then((m) => ({ default: m.StorageActionPage })))
 const StorageOperationDetailPage = lazy(() => import('@/features/storage/StorageOperationsPage').then((m) => ({ default: m.StorageOperationDetailPage })))
@@ -171,6 +173,8 @@ export default function App() {
                     <Route path="storage/providers/:providerId/ceph/:kind/:resourceId" element={<CephResourceDetailPage />} />
                     <Route path="storage/providers/:providerId/openebs/:kind" element={<OpenEBSResourcePage />} />
                     <Route path="storage/providers/:providerId/openebs/:kind/:resourceId" element={<OpenEBSResourceDetailPage />} />
+                    <Route path="storage/providers/:providerId/linstor/:kind" element={<LinstorResourcePage />} />
+                    <Route path="storage/providers/:providerId/linstor/:kind/:resourceId" element={<LinstorResourceDetailPage />} />
                     <Route path="storage/inventory" element={<StorageInventoryPage />} />
                     <Route path="storage/classes" element={<StorageClassesPage />} />
                     <Route path="storage/claims" element={<StorageClaimsPage />} />

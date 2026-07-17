@@ -47,6 +47,13 @@ helm template highland "$CHART" --namespace highland-system "${common_values[@]}
   --set providers.rookCeph.dashboard.existingSecret=ceph-dashboard-user \
   --set providers.rookCeph.prometheus.url=http://prometheus-operated.monitoring.svc:9090 >"$tmp/ceph-observability.yaml"
 helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set providers.linstor.enabled=true \
+  --set providers.linstor.namespace=piraeus-datastore \
+  --set providers.linstor.controller.url=https://linstor-controller.piraeus-datastore.svc:3371 \
+  --set providers.linstor.controller.port=3371 \
+  --set providers.linstor.controller.existingSecret=linstor-reader \
+  --set providers.linstor.controller.caSecret=linstor-ca >"$tmp/linstor-read.yaml"
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
   --set storage.writes.recoveryEnabled=true >"$tmp/recovery.yaml"
 helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
   --set storage.writes.enabled=true \
@@ -197,6 +204,20 @@ not_contains "$tmp/ceph-read.yaml" "port: 9090"
 not_contains "$tmp/ceph-read.yaml" "name: highland-ceph-pool-writer"
 contains "$tmp/ceph-observability.yaml" "port: 8443"
 contains "$tmp/ceph-observability.yaml" "port: 9090"
+contains "$tmp/linstor-read.yaml" "name: highland-linstor-read"
+contains "$tmp/linstor-read.yaml" "kind: ClusterRole"
+contains "$tmp/linstor-read.yaml" 'resources: ["linstorclusters", "linstorsatellites", "linstorsatelliteconfigurations", "linstornodeconnections"]'
+contains "$tmp/linstor-read.yaml" "name: highland-linstor-workloads-read"
+contains "$tmp/linstor-read.yaml" 'namespace: "piraeus-datastore"'
+contains "$tmp/linstor-read.yaml" 'name: "linstor-reader"'
+contains "$tmp/linstor-read.yaml" 'secretName: "linstor-ca"'
+contains "$tmp/linstor-read.yaml" "port: 3371"
+not_contains "$tmp/linstor-read.yaml" 'value: "linstor-reader"'
+not_contains "$tmp/linstor-read.yaml" 'value: "linstor-ca"'
+not_contains "$tmp/linstor-read.yaml" 'verbs: ["create"'
+not_contains "$tmp/linstor-read.yaml" 'verbs: ["update"'
+not_contains "$tmp/linstor-read.yaml" 'verbs: ["patch"'
+not_contains "$tmp/linstor-read.yaml" 'verbs: ["delete"'
 contains "$tmp/recovery.yaml" "name: highland-storage-operation-controller"
 contains "$tmp/recovery.yaml" '"get", "list", "watch", "delete"'
 contains "$tmp/recovery.yaml" "name: highland-namespaced-storage-writer"
@@ -235,7 +256,7 @@ contains "$tmp/dashboard.yaml" "highland_storage_provider_up"
 contains "$tmp/benchmark.yaml" "name: highland-benchmark"
 contains "$tmp/benchmark.yaml" 'resources: ["persistentvolumeclaims"]'
 
-for rendered in "$tmp/default.yaml" "$tmp/namespaces.yaml" "$tmp/no-longhorn.yaml" "$tmp/ceph-read.yaml" "$tmp/recovery.yaml" "$tmp/ceph-create-only.yaml" "$tmp/writes.yaml" "$tmp/benchmark.yaml" "$tmp/policy-no-ceiling.yaml" "$tmp/policy-portable-longhorn.yaml" "$tmp/policy-namespaces.yaml" "$tmp/policy-ceph.yaml"; do
+for rendered in "$tmp/default.yaml" "$tmp/namespaces.yaml" "$tmp/no-longhorn.yaml" "$tmp/ceph-read.yaml" "$tmp/linstor-read.yaml" "$tmp/recovery.yaml" "$tmp/ceph-create-only.yaml" "$tmp/writes.yaml" "$tmp/benchmark.yaml" "$tmp/policy-no-ceiling.yaml" "$tmp/policy-portable-longhorn.yaml" "$tmp/policy-namespaces.yaml" "$tmp/policy-ceph.yaml"; do
   not_contains "$rendered" 'resources: ["*"]'
   not_contains "$rendered" 'verbs: ["*"]'
   not_contains "$rendered" 'resources: ["roles"'
