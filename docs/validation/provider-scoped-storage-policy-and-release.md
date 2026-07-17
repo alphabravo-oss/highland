@@ -114,4 +114,8 @@ fresh-install ordering, the keep policy, and matching provider-scope validation 
 
 ## GitHub release evidence
 
-Commit, pull request, merge commit, and annotated tag are recorded here after the final Git phase.
+- Release commit: [`e90121e`](https://github.com/alphabravo-oss/highland/commit/e90121e9c663ab8520c19cd2d787a3e68f038052)
+- Pull request: [#13](https://github.com/alphabravo-oss/highland/pull/13)
+- Merge commit: [`fd99885`](https://github.com/alphabravo-oss/highland/commit/fd998853af362dd0104008977939ec76afaaf0a6)
+- Annotated release tag: [`v0.2.0`](https://github.com/alphabravo-oss/highland/tree/v0.2.0)
+- Required GitHub checks: Go, web/Storybook/OpenAPI, Helm, parity, and Playwright all passed before merge.
