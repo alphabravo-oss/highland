@@ -50,7 +50,7 @@ export function Sidebar({ className }: SidebarProps) {
       <div
         className={cn(
           'flex h-14 items-center border-b border-[var(--color-border)] px-3',
-          'justify-center',
+          collapsed ? 'justify-center' : 'justify-start',
         )}
       >
         {!collapsed && (
