@@ -7,7 +7,7 @@ import { useAuth } from '@/auth/AuthContext'
 import { HighlandLogo } from '@/components/layout/HighlandLogo'
 import { PageHeader } from '@/components/data/PageHeader'
 import { QueryState } from '@/components/data/QueryState'
-import { Badge, stateTone } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
@@ -70,6 +70,14 @@ function compatibilityKey(provider: ProviderDescriptor) {
   return 'generic-csi'
 }
 
+function healthTone(status?: string): 'success' | 'warning' | 'danger' | 'info' | 'default' {
+  if (status === 'ok') return 'success'
+  if (status === 'error') return 'danger'
+  if (status === 'warning') return 'warning'
+  if (status === 'info') return 'info'
+  return 'default'
+}
+
 function notableConditions(providers: ProviderDescriptor[], core: StorageCondition[], coreLabel: string) {
   return [
     ...core.map((condition) => ({ provider: coreLabel, condition })),
@@ -86,12 +94,13 @@ export function StatusPage() {
   const s = status.data
   const providers = s?.storage?.providers ?? []
   const healthyProviders = providers.filter((provider) => provider.health.status === 'ok').length
-  const errorProviders = providers.filter((provider) => provider.health.status === 'error').length
+  const attentionProviders = providers.filter((provider) => provider.health.status === 'warning' || provider.health.status === 'error').length
+  const unknownProviders = providers.filter((provider) => provider.health.status === 'unknown').length
   const conditions = notableConditions(providers, s?.storage?.conditions ?? [], t('status.storageCore'))
   const policy = s?.storagePolicy
   const effective = policy?.effective
   const operationsEnabled = Boolean(effective?.acceptNewOperations)
-  const overallOperational = Boolean(s?.storage?.ready) && errorProviders === 0
+  const overallOperational = Boolean(s?.storage?.ready) && attentionProviders === 0
 
   return (
     <div data-testid="status-page">
@@ -112,7 +121,7 @@ export function StatusPage() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" data-testid="status-summary">
           <Fact icon={Activity} label={t('status.platform')} value={`Highland ${s?.highland.version ?? '—'}`} detail={`Kubernetes ${s?.kubernetes.version ?? '—'}`} />
           <Fact icon={Database} label={t('status.storageCore')} value={s?.storage?.ready ? t('status.ready') : t('status.notReady')} detail={`${t('status.lastSync')}: ${formatTime(s?.storage?.lastSync)}`} />
-          <Fact icon={ShieldCheck} label={t('status.providers')} value={`${healthyProviders}/${providers.length} ${t('status.healthy')}`} detail={errorProviders ? t('status.providersNeedAttention', { count: errorProviders }) : t('status.noProviderErrors')} />
+          <Fact icon={ShieldCheck} label={t('status.providers')} value={t('status.providerHealthSummary', { healthy: healthyProviders, unknown: unknownProviders })} detail={attentionProviders ? t('status.providersNeedAttention', { count: attentionProviders }) : t('status.providersDetectedNoErrors', { count: providers.length })} />
           <Fact icon={Clock3} label={t('status.changeWorkflows')} value={operationsEnabled ? t('status.enabled') : t('status.readOnly')} detail={policy ? `${policy.source} · ${t('status.generation')} ${policy.generation}` : t('status.policyUnavailable')} />
         </div>
 
@@ -122,30 +131,28 @@ export function StatusPage() {
             <p className="text-sm text-[var(--color-muted-foreground)]">{t('status.storageProvidersDescription')}</p>
           </CardHeader>
           <CardContent>
-            <Table className="min-w-[900px] table-fixed" aria-label={t('status.storageProviders')}>
+            <Table className="min-w-[860px] table-fixed" aria-label={t('status.storageProviders')}>
               <THead><TR>
-                <TH className="w-44">{t('status.provider')}</TH>
-                <TH className="w-28">{t('status.health')}</TH>
-                <TH className="w-40">{t('status.installedVersion')}</TH>
+                <TH className="w-48">{t('status.provider')}</TH>
+                <TH className="w-24">{t('status.health')}</TH>
+                <TH className="w-36">{t('status.installedVersion')}</TH>
                 <TH>{t('status.testedCompatibility')}</TH>
-                <TH className="w-40">{t('status.managementMode')}</TH>
-                <TH className="w-36">{t('status.namespace')}</TH>
+                <TH className="w-36">{t('status.managementMode')}</TH>
                 <TH className="w-16"><span className="sr-only">{t('common.actions')}</span></TH>
               </TR></THead>
               <TBody>
                 {providers.map((provider) => {
                   const compatibility = s?.compatibility?.providers[compatibilityKey(provider)]
                   return <TR key={provider.id} data-testid={`status-provider-${provider.id}`}>
-                    <TD><div className="font-medium">{provider.displayName}</div><Badge tone={provider.supportLevel === 'managed' ? 'primary' : 'default'} className="mt-1">{provider.supportLevel}</Badge></TD>
-                    <TD><Badge tone={stateTone(provider.health.status)}>{provider.health.status}</Badge>{provider.health.stale ? <span className="mt-1 block text-[10px] font-medium text-amber-700 dark:text-amber-300">{t('status.stale')}</span> : null}</TD>
+                    <TD><div className="font-medium">{provider.displayName}</div><div className="mt-1 flex min-w-0 items-center gap-1.5"><Badge tone={provider.supportLevel === 'managed' ? 'primary' : 'default'}>{provider.supportLevel}</Badge><span className="truncate text-[10px] text-[var(--color-muted-foreground)]" title={provider.namespace}>{provider.namespace || t('status.clusterWide')}</span></div></TD>
+                    <TD><Badge tone={healthTone(provider.health.status)}>{provider.health.status}</Badge>{provider.health.stale ? <span className="mt-1 block text-[10px] font-medium text-amber-700 dark:text-amber-300">{t('status.stale')}</span> : null}</TD>
                     <TD className="break-words">{providerVersion(provider)}</TD>
                     <TD><div className="text-sm">{compatibility?.tested ?? '—'}</div><div className="mt-1 text-xs capitalize text-[var(--color-muted-foreground)]">{compatibility?.stage ?? provider.supportLevel}</div></TD>
                     <TD>{t(`status.${providerMode(provider)}`)}</TD>
-                    <TD className="truncate" title={provider.namespace}>{provider.namespace || t('status.clusterWide')}</TD>
                     <TD><Link to={`/storage/providers/${encodeURIComponent(provider.id)}`} className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-[var(--color-accent)]" aria-label={t('status.openProvider', { provider: provider.displayName })}><ExternalLink size={15} aria-hidden /></Link></TD>
                   </TR>
                 })}
-                {!providers.length ? <TR><TD colSpan={7} className="py-8 text-center text-[var(--color-muted-foreground)]">{t('status.noProvidersDetected')}</TD></TR> : null}
+                {!providers.length ? <TR><TD colSpan={6} className="py-8 text-center text-[var(--color-muted-foreground)]">{t('status.noProvidersDetected')}</TD></TR> : null}
               </TBody>
             </Table>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--color-muted-foreground)]">
@@ -191,7 +198,7 @@ export function StatusPage() {
             {conditions.map(({ provider, condition }, index) => <div key={`${provider}-${condition.type}-${index}`} className="grid gap-2 py-3 sm:grid-cols-[10rem_1fr_auto] sm:items-start">
               <div className="font-medium">{provider}</div>
               <div><div className="text-sm font-medium">{condition.type}{condition.reason ? ` · ${condition.reason}` : ''}</div><div className="mt-0.5 text-sm text-[var(--color-muted-foreground)]">{condition.message || t('status.noConditionDetail')}</div></div>
-              <Badge tone={stateTone(condition.severity)}>{condition.severity}</Badge>
+              <Badge tone={healthTone(condition.severity)}>{condition.severity}</Badge>
             </div>)}
           </CardContent>
         </Card> : null}
