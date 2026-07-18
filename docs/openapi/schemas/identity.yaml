@@ -1,0 +1,205 @@
+# Identity, account, and admin schemas. Secret fields are write-only in requests
+# and never appear in response schemas.
+
+StatusOK:
+  type: object
+  required: [status]
+  properties:
+    status:
+      type: string
+
+PublicUser:
+  type: object
+  required: [username, role]
+  properties:
+    username: { type: string }
+    email: { type: string }
+    role:
+      $ref: ./common.yaml#/Role
+    disabled: { type: boolean }
+    mfaEnabled: { type: boolean }
+    createdAt:
+      type: string
+      format: date-time
+    lastLoginAt:
+      type: string
+      format: date-time
+
+UserListResponse:
+  type: object
+  required: [data]
+  properties:
+    data:
+      type: array
+      items:
+        $ref: '#/PublicUser'
+
+CreateUserRequest:
+  type: object
+  required: [username, password, role]
+  properties:
+    username:
+      type: string
+      minLength: 1
+      maxLength: 64
+    email: { type: string }
+    password:
+      type: string
+      format: password
+      writeOnly: true
+    role:
+      $ref: ./common.yaml#/Role
+
+UpdateUserRequest:
+  type: object
+  properties:
+    email: { type: string }
+    password:
+      type: string
+      format: password
+      writeOnly: true
+    role:
+      $ref: ./common.yaml#/Role
+    disabled: { type: boolean }
+    resetMfa: { type: boolean }
+
+AccountResponse:
+  type: object
+  additionalProperties: true
+  properties:
+    username: { type: string }
+    email: { type: string }
+    role:
+      $ref: ./common.yaml#/Role
+    authSource: { type: string }
+    mfaEnabled: { type: boolean }
+    mfaSetupRequired: { type: boolean }
+    policy:
+      $ref: '#/SecurityPolicy'
+
+ChangePasswordRequest:
+  type: object
+  required: [currentPassword, newPassword]
+  properties:
+    currentPassword:
+      type: string
+      format: password
+      writeOnly: true
+    newPassword:
+      type: string
+      format: password
+      writeOnly: true
+
+ChangeEmailRequest:
+  type: object
+  required: [currentPassword, email]
+  properties:
+    currentPassword:
+      type: string
+      format: password
+      writeOnly: true
+    email: { type: string }
+
+MFAVerifyRequest:
+  type: object
+  required: [challengeToken, code]
+  properties:
+    challengeToken: { type: string }
+    code:
+      type: string
+      description: TOTP or recovery code.
+
+MFAEnrollBeginRequest:
+  type: object
+  required: [currentPassword]
+  properties:
+    currentPassword:
+      type: string
+      format: password
+      writeOnly: true
+
+MFAEnrollBeginResponse:
+  type: object
+  additionalProperties: true
+  properties:
+    secret: { type: string, description: Base32 TOTP secret (enrollment only). }
+    otpauthUrl: { type: string }
+    issuer: { type: string }
+
+MFAConfirmRequest:
+  type: object
+  required: [code]
+  properties:
+    code: { type: string }
+
+MFAConfirmResponse:
+  type: object
+  properties:
+    status: { type: string }
+    recoveryCodes:
+      type: array
+      items: { type: string }
+      description: Shown once; never returned again.
+
+MFADisableRequest:
+  type: object
+  required: [currentPassword, code]
+  properties:
+    currentPassword:
+      type: string
+      format: password
+      writeOnly: true
+    code: { type: string }
+
+SecurityPolicy:
+  type: object
+  additionalProperties: true
+  properties:
+    mfaMode: { type: string }
+    passwordMinLength: { type: integer }
+    passwordHistory: { type: integer }
+    sessionMaxAge: { type: string }
+
+PublicOIDCConfig:
+  type: object
+  additionalProperties: true
+  properties:
+    enabled: { type: boolean }
+    issuerUrl: { type: string }
+    clientId: { type: string }
+    redirectUrl: { type: string }
+    roleClaim: { type: string }
+    secretSet:
+      type: boolean
+      description: Whether a client secret is stored (value never returned).
+
+OIDCUpdateRequest:
+  type: object
+  properties:
+    enabled: { type: boolean }
+    issuerUrl: { type: string }
+    clientId: { type: string }
+    clientSecret:
+      type: string
+      format: password
+      writeOnly: true
+      description: Write-only; omitted from all response schemas.
+    redirectUrl: { type: string }
+    roleClaim: { type: string }
+
+OIDCMockLoginRequest:
+  type: object
+  properties:
+    email: { type: string }
+    role:
+      $ref: ./common.yaml#/Role
+
+CephCredentialRevealResponse:
+  type: object
+  required: [username, password]
+  properties:
+    username: { type: string }
+    password:
+      type: string
+      format: password
+      description: Revealed once to an authenticated admin; not a reusable API secret field for clients to store.

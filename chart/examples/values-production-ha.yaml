@@ -1,0 +1,143 @@
+# Production HA profile for Highland.
+#
+# Prerequisites operators must provide outside this chart:
+#   - Redis (TLS + auth) for shared login limiting / optional session store
+#   - PostgreSQL for durable multi-replica audit (PostgresAuditSink)
+#   - Multi-zone capacity when tightening topology to zone spread
+#   - Image digests verified against the release notes / Cosign signatures
+#
+# Install (example):
+#   helm upgrade --install highland ./chart -n highland-system --create-namespace \
+#     -f chart/examples/values-production-ha.yaml \
+#     --set auth.local.password='...' \
+#     --set image.api.digest='sha256:...' \
+#     --set image.web.digest='sha256:...' \
+#     --set redis.addr='highland-redis:6379' \
+#     --set redis.passwordSecret=highland-redis \
+#     --set config.sessionSecret='...'
+
+replicaCount:
+  api: 3
+  web: 2
+
+# Prefer digest mode in production. Leave tag blank (or keep a human-readable
+# comment version) and set digest to the promoted release artifact.
+image:
+  api:
+    repository: ghcr.io/alphabravo-oss/highland-api
+    tag: "" # convenience only; ignored when digest is set
+    digest: "" # e.g. sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    pullPolicy: IfNotPresent
+  web:
+    repository: ghcr.io/alphabravo-oss/highland-web
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+
+podDisruptionBudget:
+  api:
+    enabled: true
+    maxUnavailable: 1
+  web:
+    enabled: true
+    maxUnavailable: 1
+
+topologySpread:
+  api:
+    enabled: true
+    maxSkew: 1
+    # Use topology.kubernetes.io/zone when the cluster is multi-zone.
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+  web:
+    enabled: true
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+
+podAntiAffinity:
+  api:
+    enabled: true
+    weight: 100
+    topologyKey: kubernetes.io/hostname
+  web:
+    enabled: true
+    weight: 100
+    topologyKey: kubernetes.io/hostname
+
+strategy:
+  api:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  web:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+# Durable multi-replica audit (ADR-0004): Postgres DSN from a Secret.
+# Operators must create Secret highland-audit-postgres with key `dsn`, e.g.
+#   postgresql://highland:…@highland-audit-pg:5432/highland_audit?sslmode=require
+# Shared RWX JSONL is not used in production HA.
+audit:
+  postgres:
+    enabled: true
+    existingSecret: highland-audit-postgres
+    secretKey: dsn
+    # Fail closed at API startup when the sink is not durable.
+    required: true
+
+persistence:
+  audit:
+    # JSONL PVC remains off for HA (not a multi-writer design).
+    enabled: false
+    required: false
+
+# Redis is not bundled. Point at an operator-managed service with TLS and auth
+# as appropriate for the environment (see ADR-0004 / ADR-0005).
+redis:
+  enabled: true
+  addr: "highland-redis.highland-system.svc:6379" # replace with your Redis Service
+  passwordSecret: highland-redis # optional; keys must include passwordKey
+  passwordKey: password
+  db: 0
+  loginLimiterFailOpen: false
+
+metrics:
+  enabled: true
+  podAnnotations: true
+  serviceMonitor:
+    enabled: true
+  prometheusRule:
+    enabled: true
+  grafanaDashboard:
+    enabled: true
+
+networkPolicy:
+  enabled: true
+
+ingress:
+  enabled: true
+  className: ""
+  annotations: {}
+  # TLS edge should add HSTS. Example (nginx-ingress):
+  #   nginx.ingress.kubernetes.io/configuration-snippet: |
+  #     more_set_headers "Strict-Transport-Security: max-age=63072000; includeSubDomains";
+  hosts:
+    - host: highland.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: highland-tls
+      hosts: [highland.example.com]
+
+# Pin the fio helper when kubernetes benchmarks are enabled in production.
+benchmark:
+  kubernetesJobEnabled: false
+  fioImage:
+    repository: ghcr.io/aksakalli/fio
+    tag: "3.39"
+    digest: "" # e.g. sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

@@ -1,3 +1,16 @@
+# Redocly CLI configuration for Highland OpenAPI documents.
+# Lint entrypoints: docs/openapi/storage-v1.yaml, docs/openapi/highland-v1.yaml
+# (see hack/check-openapi.sh and CI "Lint storage OpenAPI contract" step).
+#
+# apis: named roots for `redocly lint` / `redocly bundle` without path args.
+# decorators/rules apply to all unless overridden per-api.
+
+apis:
+  storage@v1:
+    root: docs/openapi/storage-v1.yaml
+  highland@v1:
+    root: docs/openapi/highland-v1.yaml
+
 extends:
   - recommended
 

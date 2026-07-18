@@ -1,11 +1,13 @@
 package handlers_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/highland-io/highland/apps/api/internal/audit"
 	"github.com/highland-io/highland/apps/api/internal/handlers"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,7 +44,7 @@ func TestCephDashboardCredentialRevealIsAdminOnlyAuditedAndNoStore(t *testing.T)
 	if credential["username"] != "admin" || credential["password"] != "ceph-test-password" {
 		t.Fatalf("credential = %#v", credential)
 	}
-	events := deps.Audit.List(10)
+	events := audit.ListRecent(context.Background(), deps.Audit, 10)
 	found := false
 	for _, event := range events {
 		if event.Action == "ceph_dashboard_credential_reveal" && event.Result == "ok" {

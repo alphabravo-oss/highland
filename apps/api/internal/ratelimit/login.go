@@ -22,6 +22,7 @@
 package ratelimit
 
 import (
+	"context"
 	"net"
 	"sync"
 	"time"
@@ -70,11 +71,13 @@ func New(opt Options) *LoginLimiter {
 	return l
 }
 
-// Allow reports whether a login attempt may proceed. When denied it returns the
-// remaining lockout duration (the longer of the two keys, if both are locked).
-func (l *LoginLimiter) Allow(username, remoteAddr string) (bool, time.Duration) {
+// Allow implements Limiter.
+func (l *LoginLimiter) Allow(ctx context.Context, username, remoteAddr string) (Decision, error) {
+	if err := ctx.Err(); err != nil {
+		return Decision{}, err
+	}
 	if !l.opt.Enabled {
-		return true, 0
+		return Decision{Allowed: true}, nil
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -90,14 +93,16 @@ func (l *LoginLimiter) Allow(username, remoteAddr string) (bool, time.Duration) 
 			}
 		}
 	}
-	return !locked, retry
+	return Decision{Allowed: !locked, RetryIn: retry}, nil
 }
 
-// RecordFailure increments the IP and user@IP counters after an invalid
-// credential attempt, applying exponential backoff once a threshold is hit.
-func (l *LoginLimiter) RecordFailure(username, remoteAddr string) {
+// RecordFailure implements Limiter.
+func (l *LoginLimiter) RecordFailure(ctx context.Context, username, remoteAddr string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !l.opt.Enabled {
-		return
+		return nil
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -105,19 +110,45 @@ func (l *LoginLimiter) RecordFailure(username, remoteAddr string) {
 	ipk := l.ipKey(remoteAddr)
 	l.bump(l.ip, ipk, l.opt.MaxFailuresIP, now)
 	l.bump(l.combo, username+"@"+ipk, l.opt.MaxFailuresUser, now)
+	return nil
 }
 
-// RecordSuccess clears accumulated failures for the IP and the user@IP key.
-func (l *LoginLimiter) RecordSuccess(username, remoteAddr string) {
+// RecordSuccess implements Limiter.
+func (l *LoginLimiter) RecordSuccess(ctx context.Context, username, remoteAddr string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !l.opt.Enabled {
-		return
+		return nil
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	ipk := l.ipKey(remoteAddr)
 	delete(l.ip, ipk)
 	delete(l.combo, username+"@"+ipk)
+	return nil
 }
+
+// Health implements Limiter.
+func (l *LoginLimiter) Health(ctx context.Context) Health {
+	_ = ctx
+	if l == nil {
+		return Health{Status: "unavailable", Backend: "memory"}
+	}
+	if !l.opt.Enabled {
+		return Health{Status: "ok", Backend: "memory", Message: "disabled"}
+	}
+	return Health{Status: "ok", Backend: "memory"}
+}
+
+// Close implements Limiter.
+func (l *LoginLimiter) Close() error {
+	l.Stop()
+	return nil
+}
+
+// Ensure LoginLimiter satisfies Limiter.
+var _ Limiter = (*LoginLimiter)(nil)
 
 // Stop halts the janitor goroutine (safe to call more than once).
 func (l *LoginLimiter) Stop() {

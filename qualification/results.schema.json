@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://highland.io/schemas/qualification/results.json",
+  "title": "Highland qualification result document",
+  "description": "Normalized result produced by a qualification profile run. States skipped and not-run never satisfy a release gate.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "profileId",
+    "provider",
+    "gate",
+    "status",
+    "startedAt",
+    "endedAt"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "runId": {
+      "type": "string",
+      "description": "Deterministic or CI-assigned run identifier."
+    },
+    "profileId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "gate": {
+      "type": "string",
+      "enum": ["pr", "nightly", "preview", "production"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["passed", "failed", "flaky", "skipped", "blocked", "not-run"],
+      "description": "Overall outcome. Only passed satisfies a gate. skipped and not-run are visible non-evidence."
+    },
+    "sourceCommit": {
+      "type": "string",
+      "description": "Git commit SHA the run was executed against."
+    },
+    "artifactDigests": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Image or chart digests under test (no credentials)."
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "endedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "class": {
+          "type": "string"
+        },
+        "kubernetesVersion": {
+          "type": "string"
+        },
+        "providerVersions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "architecture": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "assertions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^QA-C4\\.(1[0-4]|[1-9])$"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["passed", "failed", "skipped", "blocked", "not-run"]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["passed", "failed", "skipped", "not-run"]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Links or relative paths to logs/artifacts. Must not contain secrets.",
+      "additionalProperties": true
+    },
+    "message": {
+      "type": "string"
+    }
+  }
+}

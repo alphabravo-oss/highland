@@ -1,0 +1,265 @@
+openapi: 3.1.0
+info:
+  title: Highland API
+  version: 0.4.0-preview
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+  description: >
+    Root OpenAPI 3.1 contract for the Highland public HTTP surface. Modular path
+    and schema fragments live under docs/openapi/{paths,schemas}/. The storage
+    control-plane remains fully specified in storage-v1.yaml and is composed
+    here via $ref so both documents stay independently lintable.
+
+    Public surface (ADR-0007 / DEC-12): /auth/*, /api/v1/*, health/readiness.
+    Metrics scrape endpoints may be excluded from public client contracts.
+servers:
+  - url: /
+security:
+  - cookieAuth: []
+tags:
+  - name: Status
+    description: Liveness, readiness, and consolidated status.
+  - name: Auth
+    description: Session authentication and identity.
+  - name: Account
+    description: Signed-in user self-service.
+  - name: Users
+    description: Local user administration.
+  - name: Admin
+    description: Security policy, OIDC, and privileged admin actions.
+  - name: Platform
+    description: Compatibility, health narrative, dashboard, SSE, backup setup.
+  - name: Benchmarks
+    description: fio benchmark history and jobs.
+  - name: Audit
+    description: Durable audit event listing.
+  - name: Inventory
+    description: Provider-neutral Kubernetes and CSI inventory (from storage-v1).
+  - name: Providers
+    description: Managed-provider health and bounded typed resources (from storage-v1).
+  - name: Context
+    description: Resource relationships, workload impact, and drift (from storage-v1).
+  - name: Operations
+    description: Planned, durable, authorized storage workflows (from storage-v1).
+  - name: Policy
+    description: Admin-controlled runtime storage policy (from storage-v1).
+
+paths:
+  # --- Status / probes ---
+  /healthz:
+    $ref: ./paths/status.yaml#/~1healthz
+  /readyz:
+    $ref: ./paths/status.yaml#/~1readyz
+  /api/v1/status:
+    $ref: ./paths/status.yaml#/~1api~1v1~1status
+
+  # --- Auth ---
+  /auth/providers:
+    $ref: ./paths/auth.yaml#/~1auth~1providers
+  /auth/login:
+    $ref: ./paths/auth.yaml#/~1auth~1login
+  /auth/logout:
+    $ref: ./paths/auth.yaml#/~1auth~1logout
+  /auth/me:
+    $ref: ./paths/auth.yaml#/~1auth~1me
+
+  # --- Auth extras (MFA / OIDC) ---
+  /auth/mfa/verify:
+    $ref: ./paths/auth-extra.yaml#/~1auth~1mfa~1verify
+  /auth/oidc/start:
+    $ref: ./paths/auth-extra.yaml#/~1auth~1oidc~1start
+  /auth/oidc/callback:
+    $ref: ./paths/auth-extra.yaml#/~1auth~1oidc~1callback
+  /auth/oidc/mock:
+    $ref: ./paths/auth-extra.yaml#/~1auth~1oidc~1mock
+
+  # --- Account / users / admin ---
+  /api/v1/account:
+    $ref: ./paths/account.yaml#/~1api~1v1~1account
+  /api/v1/account/password:
+    $ref: ./paths/account.yaml#/~1api~1v1~1account~1password
+  /api/v1/account/email:
+    $ref: ./paths/account.yaml#/~1api~1v1~1account~1email
+  /api/v1/account/mfa/enroll:
+    $ref: ./paths/account.yaml#/~1api~1v1~1account~1mfa~1enroll
+  /api/v1/account/mfa/confirm:
+    $ref: ./paths/account.yaml#/~1api~1v1~1account~1mfa~1confirm
+  /api/v1/account/mfa:
+    $ref: ./paths/account.yaml#/~1api~1v1~1account~1mfa
+  /api/v1/users:
+    $ref: ./paths/users.yaml#/~1api~1v1~1users
+  /api/v1/users/{username}:
+    $ref: ./paths/users.yaml#/~1api~1v1~1users~1{username}
+  /api/v1/auth/security-policy:
+    $ref: ./paths/admin.yaml#/~1api~1v1~1auth~1security-policy
+  /api/v1/auth/oidc-config:
+    $ref: ./paths/admin.yaml#/~1api~1v1~1auth~1oidc-config
+  /api/v1/admin/providers/rook-ceph/dashboard-credential/reveal:
+    $ref: ./paths/admin.yaml#/~1api~1v1~1admin~1providers~1rook-ceph~1dashboard-credential~1reveal
+
+  # --- Platform / benchmarks ---
+  /api/v1/compatibility:
+    $ref: ./paths/platform.yaml#/~1api~1v1~1compatibility
+  /api/v1/health:
+    $ref: ./paths/platform.yaml#/~1api~1v1~1health
+  /api/v1/preflight:
+    $ref: ./paths/platform.yaml#/~1api~1v1~1preflight
+  /api/v1/dashboard:
+    $ref: ./paths/platform.yaml#/~1api~1v1~1dashboard
+  /api/v1/capacity:
+    $ref: ./paths/platform.yaml#/~1api~1v1~1capacity
+  /api/v1/volumes/{name}/metrics:
+    $ref: ./paths/platform.yaml#/~1api~1v1~1volumes~1{name}~1metrics
+  /api/v1/events/stream:
+    $ref: ./paths/platform.yaml#/~1api~1v1~1events~1stream
+  /api/v1/backup-credential:
+    $ref: ./paths/platform.yaml#/~1api~1v1~1backup-credential
+  /api/v1/benchmarks:
+    $ref: ./paths/benchmarks.yaml#/~1api~1v1~1benchmarks
+  /api/v1/benchmarks/{name}:
+    $ref: ./paths/benchmarks.yaml#/~1api~1v1~1benchmarks~1{name}
+  /api/v1/providers/{providerId}/longhorn/operations/{actionId}:
+    $ref: ./paths/operations-extra.yaml#/~1api~1v1~1providers~1{providerId}~1longhorn~1operations~1{actionId}
+
+  # --- Audit ---
+  /api/v1/audit:
+    $ref: ./paths/audit.yaml#/~1api~1v1~1audit
+
+  # --- Storage control plane (re-exported from storage-v1.yaml) ---
+  /api/v1/admin/storage-policy:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1admin~1storage-policy
+  /api/v1/admin/storage-policy/plans:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1admin~1storage-policy~1plans
+  /api/v1/admin/storage-policy/history:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1admin~1storage-policy~1history
+  /api/v1/storage/providers:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1providers
+  /api/v1/storage/providers/{providerId}:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1providers~1{providerId}
+  /api/v1/storage/drivers:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1drivers
+  /api/v1/storage/classes:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1classes
+  /api/v1/storage/claims:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1claims
+  /api/v1/storage/claims/{namespace}/{name}:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1claims~1{namespace}~1{name}
+  /api/v1/storage/claims/{namespace}/{name}/size:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1claims~1{namespace}~1{name}~1size
+  /api/v1/storage/volumes:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1volumes
+  /api/v1/storage/volumes/{name}:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1volumes~1{name}
+  /api/v1/storage/snapshots:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1snapshots
+  /api/v1/storage/snapshots/{namespace}/{name}:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1snapshots~1{namespace}~1{name}
+  /api/v1/storage/attachments:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1attachments
+  /api/v1/storage/capacity:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1capacity
+  /api/v1/storage/events:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1events
+  /api/v1/storage/timeline:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1timeline
+  /api/v1/storage/capacity/ownership:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1capacity~1ownership
+  /api/v1/storage/comparison:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1comparison
+  /api/v1/storage/remediations:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1remediations
+  /api/v1/storage/relationships:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1relationships
+  /api/v1/storage/resources/{kind}/{id}/relationships:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1resources~1{kind}~1{id}~1relationships
+  /api/v1/storage/impact:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1impact
+  /api/v1/providers/{providerId}/summary:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1providers~1{providerId}~1summary
+  /api/v1/providers/{providerId}/relationships:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1providers~1{providerId}~1relationships
+  /api/v1/providers/{providerId}/drift:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1providers~1{providerId}~1drift
+  /api/v1/providers/{providerId}/capacity/forecast:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1providers~1{providerId}~1capacity~1forecast
+  /api/v1/providers/{providerId}/health:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1providers~1{providerId}~1health
+  /api/v1/providers/{providerId}/resources/{kind}:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1providers~1{providerId}~1resources~1{kind}
+  /api/v1/providers/{providerId}/resources/{kind}/{id}:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1providers~1{providerId}~1resources~1{kind}~1{id}
+  /api/v1/storage/actions:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1actions
+  /api/v1/storage/plans:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1plans
+  /api/v1/storage/operations:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1operations
+  /api/v1/storage/operations/{operationId}:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1operations~1{operationId}
+  /api/v1/storage/restores:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1restores
+  /api/v1/storage/clones:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1storage~1clones
+  /api/v1/providers/{providerId}/ceph/block-pools:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1providers~1{providerId}~1ceph~1block-pools
+  /api/v1/providers/{providerId}/ceph/block-pools/{namespace}/{name}:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1providers~1{providerId}~1ceph~1block-pools~1{namespace}~1{name}
+  /api/v1/providers/{providerId}/ceph/storage-classes:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1providers~1{providerId}~1ceph~1storage-classes
+  /api/v1/providers/{providerId}/ceph/storage-classes/{name}:
+    $ref: ./paths/storage.yaml#/~1api~1v1~1providers~1{providerId}~1ceph~1storage-classes~1{name}
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: highland_session
+  parameters:
+    Csrf:
+      $ref: ./schemas/parameters.yaml#/Csrf
+    Limit:
+      $ref: ./schemas/parameters.yaml#/Limit
+  responses:
+    Error:
+      $ref: ./schemas/errors.yaml#/ErrorResponse
+  schemas:
+    APIError:
+      $ref: ./schemas/errors.yaml#/APIError
+    ErrorEnvelope:
+      $ref: ./schemas/errors.yaml#/ErrorEnvelope
+    SimpleError:
+      $ref: ./schemas/errors.yaml#/SimpleError
+    HealthzResponse:
+      $ref: ./schemas/common.yaml#/HealthzResponse
+    ReadyzResponse:
+      $ref: ./schemas/common.yaml#/ReadyzResponse
+    StatusResponse:
+      $ref: ./schemas/common.yaml#/StatusResponse
+    Role:
+      $ref: ./schemas/common.yaml#/Role
+    User:
+      $ref: ./schemas/common.yaml#/User
+    AuthProvidersResponse:
+      $ref: ./schemas/common.yaml#/AuthProvidersResponse
+    LoginRequest:
+      $ref: ./schemas/common.yaml#/LoginRequest
+    LoginSuccessResponse:
+      $ref: ./schemas/common.yaml#/LoginSuccessResponse
+    MFARequiredResponse:
+      $ref: ./schemas/common.yaml#/MFARequiredResponse
+    LogoutResponse:
+      $ref: ./schemas/common.yaml#/LogoutResponse
+    MeResponse:
+      $ref: ./schemas/common.yaml#/MeResponse
+    AuditEvent:
+      $ref: ./schemas/common.yaml#/AuditEvent
+    AuditListResponse:
+      $ref: ./schemas/common.yaml#/AuditListResponse
+    # Pull storage schemas through so bundlers/generators resolve storage $refs
+    # when consuming highland-v1 alone. storage-v1 remains the authoring source.
+    StorageAPIError:
+      $ref: ./storage-v1.yaml#/components/schemas/APIError
+    StorageErrorEnvelope:
+      $ref: ./storage-v1.yaml#/components/schemas/ErrorEnvelope

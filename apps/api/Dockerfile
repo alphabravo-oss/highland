@@ -5,6 +5,14 @@
 # Go toolchain under QEMU emulation, so multi-arch (amd64 + arm64) builds are
 # near-native speed. The final distroless stage only COPYs the binary, so it
 # needs no emulation either.
+#
+# Base images: pin by digest when a reviewed digest is available (ADR-0006).
+# Capture with: docker buildx imagetools inspect <image>:<tag>
+# Prefer: FROM image:tag@sha256:<digest>
+
+# golang:1.26.5-alpine
+# TODO: pin by digest once reviewed
+#   FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine@sha256:<digest> AS build
 FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache git ca-certificates
@@ -18,6 +26,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -trimpath -ldflags="-s -w" -o /out/highland-api ./cmd/highland-api
 
+# gcr.io/distroless/static-debian12:nonroot
+# TODO: pin by digest once reviewed
+#   FROM gcr.io/distroless/static-debian12:nonroot@sha256:<digest>
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /
 COPY --from=build /out/highland-api /highland-api

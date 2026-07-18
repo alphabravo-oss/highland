@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/highland-io/highland/apps/api/internal/audit"
 	"github.com/highland-io/highland/apps/api/internal/auth"
 	"github.com/highland-io/highland/apps/api/internal/middleware"
 )
@@ -136,9 +137,31 @@ func (a *API) PutSecurityPolicy(w http.ResponseWriter, r *http.Request) {
 	if !decodeAccountRequest(w, r, &policy) {
 		return
 	}
+	user, _ := middleware.UserFromContext(r.Context())
+	// Identity/security admin mutation: fail closed when durable audit required (ADR-0004).
+	if a.Audit != nil && a.Audit.Durable() {
+		admit := audit.Event{
+			Username: user.Username, Role: string(user.Role),
+			Action: "security_policy_admit", Target: "security-policy", Method: r.Method, Path: r.URL.Path,
+			Result: "ok", SourceIP: r.RemoteAddr, Message: "pre-mutation security policy admission",
+		}
+		if err := audit.RequireAppend(r.Context(), a.Audit, admit); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error": "security policy update blocked because required audit admission failed",
+			})
+			return
+		}
+	}
 	if err := a.Users.UpdatePolicy(r.Context(), policy); err != nil {
 		writeAccountMutationError(w, err)
 		return
+	}
+	if a.Audit != nil {
+		_ = a.Audit.Append(r.Context(), audit.Event{
+			Username: user.Username, Role: string(user.Role),
+			Action: "security_policy_update", Target: "security-policy", Method: r.Method, Path: r.URL.Path,
+			Result: "ok", SourceIP: r.RemoteAddr,
+		})
 	}
 	updated, _ := a.Users.Policy(r.Context())
 	writeJSON(w, http.StatusOK, updated)

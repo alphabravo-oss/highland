@@ -1,0 +1,145 @@
+# Admin identity, SSO, and provider credential routes.
+
+/api/v1/auth/security-policy:
+  get:
+    tags: [Admin]
+    operationId: getSecurityPolicy
+    summary: Get identity security policy
+    responses:
+      "200":
+        description: Current security policy.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/SecurityPolicy
+      "403":
+        $ref: ../schemas/errors.yaml#/Forbidden
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+  put:
+    tags: [Admin]
+    operationId: putSecurityPolicy
+    summary: Update identity security policy
+    parameters:
+      - $ref: ../schemas/parameters.yaml#/Csrf
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/identity.yaml#/SecurityPolicy
+    responses:
+      "200":
+        description: Updated policy.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/SecurityPolicy
+      "400":
+        description: HTTP 400.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "403":
+        $ref: ../schemas/errors.yaml#/Forbidden
+      "503":
+        description: Required audit admission failed.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/auth/oidc-config:
+  get:
+    tags: [Admin]
+    operationId: getOidcConfig
+    summary: Get public OIDC runtime configuration
+    description: Secret fields are never returned; secretSet indicates whether a client secret is stored.
+    responses:
+      "200":
+        description: Public OIDC config.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/PublicOIDCConfig
+      "403":
+        $ref: ../schemas/errors.yaml#/Forbidden
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+  put:
+    tags: [Admin]
+    operationId: putOidcConfig
+    summary: Update OIDC runtime configuration
+    description: clientSecret is write-only and never appears in responses.
+    parameters:
+      - $ref: ../schemas/parameters.yaml#/Csrf
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/identity.yaml#/OIDCUpdateRequest
+    responses:
+      "200":
+        description: Updated public OIDC config.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/PublicOIDCConfig
+      "400":
+        description: HTTP 400.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "403":
+        $ref: ../schemas/errors.yaml#/Forbidden
+      "503":
+        description: Required audit admission failed or runtime unavailable.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/admin/providers/rook-ceph/dashboard-credential/reveal:
+  post:
+    tags: [Admin]
+    operationId: revealCephDashboardCredential
+    summary: Reveal Ceph Dashboard admin credential
+    description: >
+      Admin-only. Returns the dashboard password once after an explicit action.
+      Response must not be cached. Audited. Does not include Kubernetes Secret
+      metadata beyond the revealed username/password.
+    parameters:
+      - $ref: ../schemas/parameters.yaml#/Csrf
+    responses:
+      "200":
+        description: Credential revealed.
+        headers:
+          Cache-Control:
+            schema: { type: string }
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/CephCredentialRevealResponse
+      "403":
+        $ref: ../schemas/errors.yaml#/Forbidden
+      "404":
+        description: Feature disabled.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "503":
+        description: HTTP 503.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse

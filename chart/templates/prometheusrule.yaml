@@ -148,4 +148,38 @@ spec:
             summary: Highland observed a Ceph pool postflight mismatch
             description: Rook desired state and fresh Ceph runtime state did not agree after an approved pool operation. Inspect the durable operation and Ceph health; do not force cleanup.
         {{- end }}
+    - name: highland.ha
+      rules:
+        - alert: HighlandAPIReadyReplicasLow
+          expr: kube_deployment_status_replicas_ready{deployment=~".*-api"} < 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: Highland API has no ready replicas
+            description: Check pod logs, readiness, and recent rollouts. See docs/runbooks/ha-availability.md.
+        - alert: HighlandSharedLimiterUnavailable
+          expr: highland_login_limiter_up == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: Shared login limiter backend is unavailable
+            description: Local logins may fail closed in production HA. See docs/runbooks/login-limiter-outage.md.
+        - alert: HighlandDurableAuditUnavailable
+          expr: highland_audit_sink_up{durable="true"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: Durable audit sink is unavailable
+            description: Privileged mutations fail closed when required audit cannot append. See docs/runbooks/durable-audit.md.
+        - alert: HighlandAuditAppendFailures
+          expr: increase(highland_audit_append_failures_total[10m]) > 5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Sustained audit append failures
+            description: Investigate backend capacity, network, and disk. Privileged paths may be blocked.
 {{- end }}

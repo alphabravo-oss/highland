@@ -26,10 +26,10 @@ type API struct {
 	Store       *auth.Store
 	Users       *auth.UserStore
 	Challenge   *auth.MFAChallengeSigner
-	Audit       *audit.Store
+	Audit       audit.Sink
 	OIDC        *auth.OIDCProvider // legacy pointer; prefer OIDCRuntime
 	OIDCRuntime *auth.OIDCRuntime  // runtime-configurable enterprise SSO
-	Limiter     *ratelimit.LoginLimiter
+	Limiter     ratelimit.Limiter
 	Obs         *observability.Metrics
 	Storage     *storage.HTTPAPI
 	Started     time.Time
@@ -169,9 +169,19 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 	// account or client IP is locked out. Response is identical regardless of
 	// which key tripped or whether the account exists.
 	if a.Limiter != nil {
-		if ok, retry := a.Limiter.Allow(req.Username, r.RemoteAddr); !ok {
+		dec, limErr := a.Limiter.Allow(r.Context(), req.Username, r.RemoteAddr)
+		if limErr != nil {
+			// Shared limiter required outage policy is enforced by the limiter
+			// implementation / wrapper; surface as 503 when not allowed to proceed.
+			a.Obs.IncLoginAttempt("limiter_error")
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error": "login protection temporarily unavailable",
+			})
+			return
+		}
+		if !dec.Allowed {
 			a.Obs.IncLoginAttempt("locked_out")
-			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retry.Seconds()))))
+			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(dec.RetryIn.Seconds()))))
 			writeJSON(w, http.StatusTooManyRequests, map[string]string{
 				"error": "too many login attempts, please try again later",
 			})
@@ -182,7 +192,7 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrAccountDisabled) {
 			if a.Limiter != nil {
-				a.Limiter.RecordFailure(req.Username, r.RemoteAddr)
+				_ = a.Limiter.RecordFailure(r.Context(), req.Username, r.RemoteAddr)
 			}
 			a.Obs.IncLoginAttempt("invalid_credentials")
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
@@ -211,7 +221,7 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.Limiter != nil {
-		a.Limiter.RecordSuccess(req.Username, r.RemoteAddr)
+		_ = a.Limiter.RecordSuccess(r.Context(), req.Username, r.RemoteAddr)
 	}
 	a.Obs.IncLoginAttempt("success")
 	a.setSessionCookie(w, id)
@@ -236,8 +246,13 @@ func (a *API) VerifyMFA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.Limiter != nil {
-		if ok, retry := a.Limiter.Allow(username, r.RemoteAddr); !ok {
-			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retry.Seconds()))))
+		dec, limErr := a.Limiter.Allow(r.Context(), username, r.RemoteAddr)
+		if limErr != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "login protection temporarily unavailable"})
+			return
+		}
+		if !dec.Allowed {
+			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(dec.RetryIn.Seconds()))))
 			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many verification attempts, please try again later"})
 			return
 		}
@@ -245,7 +260,7 @@ func (a *API) VerifyMFA(w http.ResponseWriter, r *http.Request) {
 	user, err := a.Users.VerifySecondFactor(r.Context(), username, request.Code)
 	if err != nil {
 		if a.Limiter != nil {
-			a.Limiter.RecordFailure(username, r.RemoteAddr)
+			_ = a.Limiter.RecordFailure(r.Context(), username, r.RemoteAddr)
 		}
 		a.Obs.IncLoginAttempt("invalid_mfa")
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid verification code"})
@@ -257,7 +272,7 @@ func (a *API) VerifyMFA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.Limiter != nil {
-		a.Limiter.RecordSuccess(username, r.RemoteAddr)
+		_ = a.Limiter.RecordSuccess(r.Context(), username, r.RemoteAddr)
 	}
 	a.Obs.IncLoginAttempt("success")
 	a.setSessionCookie(w, id)

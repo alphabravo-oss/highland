@@ -54,8 +54,9 @@ func NewK8sRunner(client kubernetes.Interface, cfg *rest.Config) *K8sRunner {
 	}
 	img := os.Getenv("HIGHLAND_FIO_IMAGE")
 	if img == "" {
-		// Public image with sh + fio (the Job runs `sh -c <fioCmd>`).
-		img = "xridge/fio:latest"
+		// Reviewed default (chart also pins this). Never use a floating :latest tag.
+		// See ADR-0006 / SC-B1.4.
+		img = "ghcr.io/aksakalli/fio:3.39"
 	}
 	sc := os.Getenv("HIGHLAND_FIO_STORAGECLASS")
 	size := os.Getenv("HIGHLAND_FIO_SIZE")

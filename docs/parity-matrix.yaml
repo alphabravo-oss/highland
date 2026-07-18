@@ -4,7 +4,7 @@
 # priority: P0 | P1 | P2 | H
 version: 1
 last_updated: "2026-07-18"
-highland_version: "0.3.x"
+highland_version: "0.4.x"
 longhorn_target: "1.12.x"
 notes: >
   Generated from HIGHLAND_PLAN.md §8. Update status when shipping features.

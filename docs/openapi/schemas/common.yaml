@@ -1,0 +1,217 @@
+# Shared non-domain schemas for Highland root OpenAPI (highland-v1.yaml).
+
+HealthzResponse:
+  type: object
+  required: [status, service]
+  properties:
+    status:
+      type: string
+      example: ok
+    service:
+      type: string
+      example: highland-api
+
+ReadyzResponse:
+  type: object
+  required: [status]
+  properties:
+    status:
+      type: string
+      description: ready | not_ready
+      example: ready
+    uptime:
+      type: string
+      description: Process uptime when ready.
+    reason:
+      type: string
+      description: Present when status is not_ready.
+    managerUrl:
+      type: string
+    providerId:
+      type: string
+    storage:
+      type: object
+      additionalProperties: true
+
+StatusResponse:
+  type: object
+  description: Consolidated versions, component health, and runtime facts for About/Status.
+  additionalProperties: true
+  properties:
+    highland:
+      type: object
+      additionalProperties: true
+    longhorn:
+      type: object
+      additionalProperties: true
+    kubernetes:
+      type: object
+      additionalProperties: true
+    compatibility:
+      type: object
+      additionalProperties: true
+    components:
+      type: object
+      additionalProperties: true
+    vendor:
+      type: object
+      additionalProperties: true
+    storage:
+      type: object
+      additionalProperties: true
+    storagePolicy:
+      type: object
+      additionalProperties: true
+
+Role:
+  type: string
+  enum: [viewer, operator, admin]
+
+User:
+  type: object
+  required: [username, role]
+  properties:
+    username:
+      type: string
+    email:
+      type: string
+    role:
+      $ref: '#/Role'
+    authSource:
+      type: string
+    mfaEnabled:
+      type: boolean
+    mfaSetupRequired:
+      type: boolean
+
+AuthProvidersResponse:
+  type: object
+  required: [mode, local, oidc]
+  properties:
+    mode:
+      type: string
+      description: Auth mode configured for this deployment.
+    local:
+      type: boolean
+      description: Whether local username/password login is offered.
+    oidc:
+      type: boolean
+      description: Whether OIDC/SSO is offered.
+    oidcReady:
+      type: boolean
+      description: Whether an OIDC provider is currently configured and ready.
+    oidcMock:
+      type: boolean
+    localAlways:
+      type: boolean
+    message:
+      type: string
+
+LoginRequest:
+  type: object
+  required: [username, password]
+  properties:
+    username:
+      type: string
+    password:
+      type: string
+      format: password
+
+LoginSuccessResponse:
+  type: object
+  required: [user]
+  properties:
+    user:
+      $ref: '#/User'
+
+MFARequiredResponse:
+  type: object
+  required: [mfaRequired, challengeToken]
+  properties:
+    mfaRequired:
+      type: boolean
+      const: true
+    challengeToken:
+      type: string
+      description: Short-lived token required by POST /auth/mfa/verify.
+
+LogoutResponse:
+  type: object
+  required: [status]
+  properties:
+    status:
+      type: string
+      example: logged_out
+
+MeResponse:
+  type: object
+  required: [user]
+  properties:
+    user:
+      $ref: '#/User'
+
+AuditEvent:
+  type: object
+  required: [id, timestamp, username, role, action, result]
+  properties:
+    schemaVersion:
+      type: integer
+    id:
+      type: string
+    timestamp:
+      type: string
+      format: date-time
+    username:
+      type: string
+    role:
+      type: string
+    action:
+      type: string
+    target:
+      type: string
+    method:
+      type: string
+    path:
+      type: string
+    result:
+      type: string
+      description: ok | denied | error
+    sourceIp:
+      type: string
+    message:
+      type: string
+    operationId:
+      type: string
+    actionId:
+      type: string
+    providerId:
+      type: string
+    providerKind:
+      type: string
+    targetKind:
+      type: string
+    targetNamespace:
+      type: string
+    targetName:
+      type: string
+    targetUid:
+      type: string
+    planHash:
+      type: string
+    correlationId:
+      type: string
+    httpCorrelationId:
+      type: string
+    kubernetesCorrelationId:
+      type: string
+    cephCorrelationId:
+      type: string
+
+AuditListResponse:
+  type: object
+  required: [data]
+  properties:
+    data:
+      type: array
+      items:
+        $ref: '#/AuditEvent'

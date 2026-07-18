@@ -148,34 +148,46 @@ func (p *Planner) Plan(ctx context.Context, requester string, request Request) (
 	plan := Plan{Action: action, ProviderID: request.ProviderID, Target: request.Target, BlastRadius: "one Kubernetes resource", ObservedAt: time.Now().UTC()}
 	plan.Checks = append(plan.Checks, Check{ID: "namespace-scope", Status: "pass", Message: "target is within the configured namespace scope"})
 	var err error
-	switch action.ID {
-	case "create-pvc":
-		err = p.planPVC(ctx, &plan, request, "create")
-	case "restore-snapshot":
-		err = p.planPVC(ctx, &plan, request, "restore")
-	case "clone-pvc":
-		err = p.planPVC(ctx, &plan, request, "clone")
-	case "expand-pvc":
-		err = p.planExpand(ctx, &plan, request)
-	case "delete-pvc":
-		err = p.planDeletePVC(ctx, &plan, request)
-	case "create-snapshot":
-		err = p.planSnapshot(ctx, &plan, request, false)
-	case "delete-snapshot":
-		err = p.planSnapshot(ctx, &plan, request, true)
-	case "create-ceph-rbd-storageclass", "create-cephfs-storageclass":
-		err = p.planCephClass(ctx, &plan, request)
-	case "delete-ceph-storageclass":
-		err = p.planDeleteClass(ctx, &plan, request)
-	case "create-ceph-blockpool":
-		err = p.planPool(ctx, &plan, request, false)
-	case "delete-ceph-blockpool":
-		err = p.planPool(ctx, &plan, request, true)
-	case "longhorn-volume-attach", "longhorn-volume-detach", "longhorn-volume-replica-count",
-		"longhorn-volume-backup", "longhorn-recurring-job-add", "longhorn-recurring-job-remove",
-		"longhorn-volume-salvage", "longhorn-engine-upgrade", "longhorn-backup-target-configure",
-		"longhorn-backup-delete", "longhorn-backup-restore":
-		err = p.planLonghorn(ctx, &plan, request)
+	// Prefer extracted ActionPlanner registrations (ENG-E2.2+); otherwise dispatch
+	// the built-in switch. Unhandled IDs fail closed — never admit an empty plan.
+	if registered, ok := actionPlanners[action.ID]; ok {
+		err = registered.Plan(ctx, p, &plan, request)
+	} else {
+		switch action.ID {
+		case "create-pvc":
+			err = p.planPVC(ctx, &plan, request, "create")
+		case "restore-snapshot":
+			err = p.planPVC(ctx, &plan, request, "restore")
+		case "clone-pvc":
+			err = p.planPVC(ctx, &plan, request, "clone")
+		case "expand-pvc":
+			err = p.planExpand(ctx, &plan, request)
+		case "delete-pvc":
+			err = p.planDeletePVC(ctx, &plan, request)
+		case "create-snapshot":
+			err = p.planSnapshot(ctx, &plan, request, false)
+		case "delete-snapshot":
+			err = p.planSnapshot(ctx, &plan, request, true)
+		case "create-ceph-rbd-storageclass", "create-cephfs-storageclass":
+			err = p.planCephClass(ctx, &plan, request)
+		case "delete-ceph-storageclass":
+			err = p.planDeleteClass(ctx, &plan, request)
+		case "create-ceph-blockpool":
+			err = p.planPool(ctx, &plan, request, false)
+		case "delete-ceph-blockpool":
+			err = p.planPool(ctx, &plan, request, true)
+		case "longhorn-volume-attach", "longhorn-volume-detach", "longhorn-volume-replica-count",
+			"longhorn-volume-backup", "longhorn-recurring-job-add", "longhorn-recurring-job-remove",
+			"longhorn-volume-salvage", "longhorn-engine-upgrade", "longhorn-backup-target-configure",
+			"longhorn-backup-delete", "longhorn-backup-restore":
+			err = p.planLonghorn(ctx, &plan, request)
+		default:
+			return Plan{}, &PlanError{
+				Code:    "ACTION_PLANNER_MISSING",
+				Message: "storage action is registered but has no planner implementation",
+				Details: map[string]any{"actionId": action.ID},
+			}
+		}
 	}
 	if err != nil {
 		return Plan{}, err

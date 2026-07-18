@@ -27,7 +27,7 @@ type PreflightObserver interface{ PreflightDenied(provider, reason string) }
 type APIConfig struct {
 	Store                   *Store
 	Planner                 *Planner
-	Audit                   *audit.Store
+	Audit                   audit.Sink
 	Observer                PreflightObserver
 	WritesEnabled           bool
 	CephWritesEnabled       bool
@@ -42,7 +42,7 @@ type APIConfig struct {
 type API struct {
 	store                   *Store
 	planner                 *Planner
-	audit                   *audit.Store
+	audit                   audit.Sink
 	observer                PreflightObserver
 	writesEnabled           bool
 	cephWritesEnabled       bool
@@ -305,6 +305,27 @@ func (a *API) submit(actionID, providerKind string, target targetBuilder) http.H
 			writeError(w, r, http.StatusConflict, "OPERATION_IN_PROGRESS", "another nonterminal storage operation already targets this resource", false, map[string]any{"operationId": active.Name})
 			return
 		}
+		// Required pre-mutation audit admission (ADR-0004): when the sink is
+		// durable, privileged operation creation fails closed if the admission
+		// event cannot be persisted.
+		if a.audit != nil && a.audit.Durable() {
+			admit := audit.Event{
+				Username: user.Username, Role: string(user.Role),
+				Action: action.AuditAction + "_admit", ActionID: action.ID,
+				ProviderID: plan.ProviderID, ProviderKind: nonempty(action.ProviderKind, "kubernetes"),
+				Target: plan.Target.Namespace + "/" + plan.Target.Name, TargetKind: plan.Target.Kind,
+				TargetNamespace: plan.Target.Namespace, TargetName: plan.Target.Name, TargetUID: plan.Target.UID,
+				PlanHash: plan.Hash, Method: r.Method, Path: r.URL.Path, Result: "ok",
+				SourceIP: r.RemoteAddr, Message: "pre-mutation admission",
+				CorrelationID: chimw.GetReqID(r.Context()), HTTPCorrelationID: chimw.GetReqID(r.Context()),
+			}
+			if err := audit.RequireAppend(r.Context(), a.audit, admit); err != nil {
+				a.deny(plan.ProviderID, "audit_unavailable")
+				writeError(w, r, http.StatusServiceUnavailable, "AUDIT_REQUIRED_UNAVAILABLE",
+					"privileged mutation blocked because required audit admission failed", true, nil)
+				return
+			}
+		}
 		operation, err := a.store.Create(r.Context(), spec)
 		if err != nil {
 			if apierrors.IsAlreadyExists(err) {
@@ -457,7 +478,7 @@ func (a *API) auditEvent(user auth.User, r *http.Request, actionID, action, prov
 	}
 	actionDefinition, _ := ActionByID(actionID)
 	requestID := chimw.GetReqID(r.Context())
-	a.audit.Append(audit.Event{Username: user.Username, Role: string(user.Role), Action: action, ActionID: actionID, ProviderID: providerID, ProviderKind: nonempty(actionDefinition.ProviderKind, "kubernetes"), OperationID: operationID, Target: target.Namespace + "/" + target.Name, TargetKind: target.Kind, TargetNamespace: target.Namespace, TargetName: target.Name, TargetUID: target.UID, PlanHash: planHash, CorrelationID: requestID, HTTPCorrelationID: requestID, KubernetesCorrelationID: target.UID, Method: r.Method, Path: r.URL.Path, Result: result, SourceIP: r.RemoteAddr, Message: sanitize(message)})
+	_ = a.audit.Append(r.Context(), audit.Event{Username: user.Username, Role: string(user.Role), Action: action, ActionID: actionID, ProviderID: providerID, ProviderKind: nonempty(actionDefinition.ProviderKind, "kubernetes"), OperationID: operationID, Target: target.Namespace + "/" + target.Name, TargetKind: target.Kind, TargetNamespace: target.Namespace, TargetName: target.Name, TargetUID: target.UID, PlanHash: planHash, CorrelationID: requestID, HTTPCorrelationID: requestID, KubernetesCorrelationID: target.UID, Method: r.Method, Path: r.URL.Path, Result: result, SourceIP: r.RemoteAddr, Message: sanitize(message)})
 }
 
 func decodeRequest(r *http.Request, target *Request) error {

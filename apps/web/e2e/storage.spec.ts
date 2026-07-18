@@ -333,12 +333,12 @@ test.describe('provider-neutral storage UI', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          highland: { version: '0.3.0', sessionBackend: 'signed-cookie', benchmarkMode: 'kubernetes-job' },
+          highland: { version: '0.4.0', sessionBackend: 'signed-cookie', benchmarkMode: 'kubernetes-job' },
           kubernetes: { version: 'v1.36.2+k3s1' },
           longhorn: { enabled: true, version: 'v1.12.0', namespace: 'longhorn-system', managerUrl: 'http://longhorn-backend', reachable: true, supported: ['1.12.x', '1.11.x'] },
           components: { api: 'ok', managerProxy: 'ok', metricsScraper: 'ok', scrapeError: '' },
           compatibility: {
-            releaseLine: '0.3.x-storage-preview',
+            releaseLine: '0.4.x-production-readiness-preview',
             lastUpdated: '2026-07-18',
             kubernetes: { minimum: '1.34', maximum: '1.36' },
             providers: {

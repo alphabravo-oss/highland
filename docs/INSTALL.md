@@ -1,5 +1,23 @@
 # Install Highland (Kubernetes-native)
 
+## Deployment profiles
+
+| Profile | Replicas | Redis | Durable audit | PDB / topology | Use |
+|---|---|---|---|---|---|
+| **Development** | 1 API / 1 web | optional | memory or optional JSONL | no PDB | local / kind |
+| **Default** | 2 / 2 | optional sessions | optional JSONL (RWX if multi-replica file) | soft PDB + spread | small clusters |
+| **Production HA** | ≥2 API / ≥2 web | **required** for shared login limiter (and recommended for revocable sessions) | **PostgreSQL** when writes/admin enabled | PDB, topology, digest pins | multi-node |
+
+Production HA example values: [`chart/examples/values-production-ha.yaml`](../chart/examples/values-production-ha.yaml).
+Artifact verification: [`security/artifact-verification.md`](security/artifact-verification.md).
+HA runbooks: [`runbooks/ha-availability.md`](runbooks/ha-availability.md), [`runbooks/durable-audit.md`](runbooks/durable-audit.md), [`runbooks/login-limiter-outage.md`](runbooks/login-limiter-outage.md).
+
+Shared login limiter env (API):
+
+- `HIGHLAND_LOGIN_LIMITER_REDIS_ADDR` — when set, uses Redis atomic limiter (fail closed by default)
+- `HIGHLAND_LOGIN_LIMITER_FAIL_OPEN=true` — break-glass only (audited/warned)
+- `HIGHLAND_AUDIT_REQUIRED=true` — fail startup unless audit sink is durable
+
 Highland supports two Helm deployment modes:
 
 - **Bolt-on (default):** install Highland in any namespace and connect it to an existing Longhorn installation.
@@ -50,10 +68,10 @@ Skip this section when installing a released chart that uses the published GHCR 
 
 ```bash
 # From the Highland repository.
-docker build -t your-registry/highland-api:0.3.0 apps/api
-docker build -t your-registry/highland-web:0.3.0 apps/web
-docker push your-registry/highland-api:0.3.0
-docker push your-registry/highland-web:0.3.0
+docker build -t your-registry/highland-api:0.4.0 apps/api
+docker build -t your-registry/highland-web:0.4.0 apps/web
+docker push your-registry/highland-api:0.4.0
+docker push your-registry/highland-web:0.4.0
 ```
 
 ## 2. Bolt-on install (default)
@@ -69,9 +87,9 @@ helm upgrade --install highland ./chart \
   --namespace highland-system \
   --create-namespace \
   --set image.api.repository=your-registry/highland-api \
-  --set image.api.tag=0.3.0 \
+  --set image.api.tag=0.4.0 \
   --set image.web.repository=your-registry/highland-web \
-  --set image.web.tag=0.3.0 \
+  --set image.web.tag=0.4.0 \
   --set auth.local.createSecret=true \
   --set auth.local.username=admin \
   --set auth.local.password='change-me-strong' \
@@ -90,10 +108,10 @@ Or use a values file (GitOps-friendly):
 image:
   api:
     repository: your-registry/highland-api
-    tag: "0.3.0"
+    tag: "0.4.0"
   web:
     repository: your-registry/highland-web
-    tag: "0.3.0"
+    tag: "0.4.0"
 auth:
   local:
     createSecret: true
@@ -150,7 +168,7 @@ For the released OCI chart, the Longhorn subchart is already bundled:
 
 ```bash
 helm install highland oci://ghcr.io/alphabravo-oss/charts/highland \
-  --version 0.3.0 \
+  --version 0.4.0 \
   --namespace longhorn-system --create-namespace \
   --set embeddedLonghorn.enabled=true \
   --set auth.local.password='change-me-strong' \

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://highland.io/schemas/qualification/profiles.json",
+  "title": "Highland qualification profiles",
+  "description": "Machine-readable qualification profile manifest linked to docs/compatibility.yaml.",
+  "type": "object",
+  "required": ["schemaVersion", "profiles"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/profile" }
+    }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "required": [
+        "id",
+        "provider",
+        "gate",
+        "environmentClass",
+        "requiredAssertions",
+        "timeout",
+        "cleanupRequired"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "description": "Stable profile identifier referenced by result documents and compatibility.yaml."
+        },
+        "provider": {
+          "type": "string",
+          "enum": [
+            "generic-csi",
+            "longhorn",
+            "rook-ceph",
+            "openebs",
+            "linstor",
+            "highland"
+          ]
+        },
+        "gate": {
+          "type": "string",
+          "enum": ["pr", "nightly", "preview", "production"],
+          "description": "Highest gate this profile may satisfy. skipped/not-run never satisfy any gate."
+        },
+        "environmentClass": {
+          "type": "string",
+          "enum": [
+            "kind",
+            "hosted-runner",
+            "self-hosted-lab",
+            "disposable-vm"
+          ]
+        },
+        "versionSelectors": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Exact or range selectors for Kubernetes and provider versions."
+        },
+        "requiredAssertions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^QA-C4\\.(1[0-4]|[1-9])$"
+          },
+          "description": "Subset of Workstream C assertion catalogue (QA-C4.1–QA-C4.14)."
+        },
+        "timeout": {
+          "type": "string",
+          "pattern": "^[0-9]+(s|m|h)$",
+          "description": "Total profile timeout (Go duration-style)."
+        },
+        "cleanupRequired": {
+          "type": "boolean",
+          "description": "When true, cleanup failure fails the profile even if assertions passed."
+        },
+        "destructiveRisk": {
+          "type": "string",
+          "enum": ["none", "disposable-only", "ha-disruption"],
+          "default": "none"
+        },
+        "promoted": {
+          "type": "boolean",
+          "default": true,
+          "description": "False for profiles that exist but do not yet gate promotion (e.g. mayastor)."
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

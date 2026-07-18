@@ -1,4 +1,12 @@
 # Build SPA then serve with nginx (proxies /auth /api to highland-api Service)
+#
+# Base images: pin by digest when a reviewed digest is available (ADR-0006).
+# Capture with: docker buildx imagetools inspect <image>:<tag>
+# Prefer: FROM image:tag@sha256:<digest>
+
+# node:26-alpine
+# TODO: pin by digest once reviewed
+#   FROM node:26-alpine@sha256:<digest> AS build
 FROM node:26-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -9,6 +17,9 @@ RUN apk add --no-cache brotli \
     && find /app/dist -type f \( -name '*.css' -o -name '*.html' -o -name '*.js' -o -name '*.json' -o -name '*.svg' -o -name '*.txt' -o -name '*.xml' \) -size +1024c -exec gzip -9 -k {} \; \
     && find /app/dist -type f \( -name '*.css' -o -name '*.html' -o -name '*.js' -o -name '*.json' -o -name '*.svg' -o -name '*.txt' -o -name '*.xml' \) -size +1024c -exec brotli --quality=11 --keep {} \;
 
+# nginxinc/nginx-unprivileged:1.31-alpine
+# TODO: pin by digest once reviewed
+#   FROM nginxinc/nginx-unprivileged:1.31-alpine@sha256:<digest>
 # Unprivileged nginx: runs as uid 101 and listens on 8080 (no root needed to bind)
 FROM nginxinc/nginx-unprivileged:1.31-alpine
 COPY nginx.conf /etc/nginx/templates/default.conf.template

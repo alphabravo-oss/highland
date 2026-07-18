@@ -17,10 +17,14 @@ image:
   api:
     repository: ghcr.io/alphabravo-oss/highland-api
     tag: ""  # defaults to .Chart.AppVersion
+    # When set, image is repository@digest (tag is ignored for the pull ref).
+    # Must be "sha256:" + 64 hex chars. Production installs should prefer digests.
+    digest: ""
     pullPolicy: IfNotPresent
   web:
     repository: ghcr.io/alphabravo-oss/highland-web
     tag: ""  # defaults to .Chart.AppVersion
+    digest: ""
     pullPolicy: IfNotPresent
   pullSecrets: []
 
@@ -52,7 +56,7 @@ config:
   # ingress sits in-cluster. Empty = trust none (use the direct socket peer).
   trustedProxies: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
   oidcMock: false
-  version: "0.3.0"
+  version: "0.4.0"
   # Comma-separated; empty = same-origin via nginx only
   allowedOrigins: ""
 
@@ -192,14 +196,19 @@ benchmark:
   # chart render has no PVC/Job/ConfigMap write permissions. The UI remains
   # available in an explicitly disabled, read-only state.
   kubernetesJobEnabled: false
-  # Used when API can reach the Kubernetes API (in-cluster ServiceAccount)
-  fioImage: xridge/fio:latest
+  # Reviewed fio helper image. Structured form preferred; a legacy string such as
+  # "xridge/fio:3.x" is still accepted for backward compatibility.
+  # When digest is set the pull ref is repository@sha256:... .
+  fioImage:
+    repository: ghcr.io/aksakalli/fio
+    tag: "3.39"
+    digest: ""
   # CSI StorageClass the benchmark provisions from. Blank requires selection per run.
   storageClass: ""
   # Size of the PVC created for each benchmark run
   size: 10Gi
 
-# Optional Redis for multi-replica session HA
+# Optional Redis for multi-replica session HA and shared login limiting (ADR-0005).
 redis:
   enabled: false
   # When enabled without external, chart does not ship Redis — point at your service:
@@ -207,14 +216,30 @@ redis:
   passwordSecret: ""
   passwordKey: password
   db: 0
+  # Break-glass only: allow local login when Redis limiter is down (weakens protection).
+  loginLimiterFailOpen: false
 
 # Optional PVC for the append-only audit log. When disabled, terminal
 # StorageOperation CRs are retained indefinitely as the durable operation
 # record. Enabling this volume permits the controller's documented 30-day CR
 # retention policy while preserving audit history in audit.jsonl.
+# Production HA multi-replica durable audit uses PostgreSQL (ADR-0004), not
+# shared RWX multi-writer JSONL.
+# Durable multi-replica audit backend (ADR-0004). When postgres.enabled is true,
+# the API uses HIGHLAND_AUDIT_POSTGRES_DSN from the referenced Secret.
+audit:
+  postgres:
+    enabled: false
+    existingSecret: ""
+    secretKey: dsn
+    # When true with postgres.enabled, API startup requires a durable sink.
+    required: false
+
 persistence:
   audit:
     enabled: false
+    # Legacy single-replica JSONL flag (also set via audit.postgres.required).
+    required: false
     size: 1Gi
     storageClass: ""
     # Use ReadWriteMany with multiple API replicas, or set replicaCount.api=1.
@@ -328,6 +353,62 @@ securityContext:
 
 nodeSelector: {}
 tolerations: []
+# Full custom affinity applied to both workloads when non-empty. Prefer the
+# component-scoped podAntiAffinity / topologySpread knobs for defaults.
 affinity: {}
+
+# Soft preferred hostname anti-affinity. Ignored when affinity above is set.
+podAntiAffinity:
+  api:
+    enabled: true
+    weight: 100
+    topologyKey: kubernetes.io/hostname
+  web:
+    enabled: true
+    weight: 100
+    topologyKey: kubernetes.io/hostname
+
+# Soft topology spread. Production HA example can tighten whenUnsatisfiable or
+# switch topologyKey to topology.kubernetes.io/zone.
+topologySpread:
+  api:
+    enabled: true
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+  web:
+    enabled: true
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+
+# PDB is only rendered when enabled and the component has replicas >= 2.
+podDisruptionBudget:
+  api:
+    enabled: true
+    maxUnavailable: 1
+  web:
+    enabled: true
+    maxUnavailable: 1
+
+strategy:
+  api:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  web:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+# API startup probe covers slow informer cold-start on large clusters without
+# tripping liveness. Disable by setting enabled: false.
+startupProbe:
+  api:
+    enabled: true
+    failureThreshold: 30
+    periodSeconds: 5
 
 # Disable stock Longhorn UI exposure is an operator concern (document in NOTES)

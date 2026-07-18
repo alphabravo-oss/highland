@@ -1,0 +1,116 @@
+# Additional auth routes: MFA verify and OIDC lifecycle.
+
+/auth/mfa/verify:
+  post:
+    tags: [Auth]
+    operationId: verifyMfa
+    summary: Complete MFA challenge after local login
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/identity.yaml#/MFAVerifyRequest
+    responses:
+      "200":
+        description: MFA verified; session cookie set.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/common.yaml#/LoginSuccessResponse
+      "401":
+        description: Invalid code or challenge.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "429":
+        description: Too many verification attempts.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "503":
+        description: Login protection unavailable.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/auth/oidc/start:
+  get:
+    tags: [Auth]
+    operationId: startOidc
+    summary: Begin OIDC authorization code flow
+    description: Redirects the browser to the configured IdP. Returns 501 when OIDC is not ready.
+    security: []
+    responses:
+      "302":
+        description: Redirect to identity provider.
+      "501":
+        description: OIDC not configured.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/auth/oidc/callback:
+  get:
+    tags: [Auth]
+    operationId: oidcCallback
+    summary: OIDC authorization code callback
+    security: []
+    parameters:
+      - name: code
+        in: query
+        schema: { type: string }
+      - name: state
+        in: query
+        schema: { type: string }
+      - name: error
+        in: query
+        schema: { type: string }
+    responses:
+      "302":
+        description: Redirect into the SPA with session cookie set.
+      "400":
+        description: Invalid OIDC callback parameters.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/auth/oidc/mock:
+  post:
+    tags: [Auth]
+    operationId: mockOidcLogin
+    summary: Offline OIDC mock login (development only)
+    description: Available only when HIGHLAND_OIDC_MOCK is enabled.
+    security: []
+    requestBody:
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/identity.yaml#/OIDCMockLoginRequest
+    responses:
+      "200":
+        description: Mock session issued.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/common.yaml#/LoginSuccessResponse
+      "403":
+        description: Mock OIDC disabled.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse

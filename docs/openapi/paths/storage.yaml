@@ -1,0 +1,86 @@
+# Re-exports storage control-plane paths from the standalone storage-v1.yaml
+# document so highland-v1 can compose them via $ref without duplicating content.
+# storage-v1.yaml remains independently lintable for storage-focused CI.
+
+/api/v1/admin/storage-policy:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1admin~1storage-policy
+/api/v1/admin/storage-policy/plans:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1admin~1storage-policy~1plans
+/api/v1/admin/storage-policy/history:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1admin~1storage-policy~1history
+/api/v1/storage/providers:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1providers
+/api/v1/storage/providers/{providerId}:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1providers~1{providerId}
+/api/v1/storage/drivers:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1drivers
+/api/v1/storage/classes:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1classes
+/api/v1/storage/claims:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1claims
+/api/v1/storage/claims/{namespace}/{name}:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1claims~1{namespace}~1{name}
+/api/v1/storage/claims/{namespace}/{name}/size:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1claims~1{namespace}~1{name}~1size
+/api/v1/storage/volumes:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1volumes
+/api/v1/storage/volumes/{name}:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1volumes~1{name}
+/api/v1/storage/snapshots:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1snapshots
+/api/v1/storage/snapshots/{namespace}/{name}:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1snapshots~1{namespace}~1{name}
+/api/v1/storage/attachments:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1attachments
+/api/v1/storage/capacity:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1capacity
+/api/v1/storage/events:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1events
+/api/v1/storage/timeline:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1timeline
+/api/v1/storage/capacity/ownership:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1capacity~1ownership
+/api/v1/storage/comparison:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1comparison
+/api/v1/storage/remediations:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1remediations
+/api/v1/storage/relationships:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1relationships
+/api/v1/storage/resources/{kind}/{id}/relationships:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1resources~1{kind}~1{id}~1relationships
+/api/v1/storage/impact:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1impact
+/api/v1/providers/{providerId}/summary:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1providers~1{providerId}~1summary
+/api/v1/providers/{providerId}/relationships:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1providers~1{providerId}~1relationships
+/api/v1/providers/{providerId}/drift:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1providers~1{providerId}~1drift
+/api/v1/providers/{providerId}/capacity/forecast:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1providers~1{providerId}~1capacity~1forecast
+/api/v1/providers/{providerId}/health:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1providers~1{providerId}~1health
+/api/v1/providers/{providerId}/resources/{kind}:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1providers~1{providerId}~1resources~1{kind}
+/api/v1/providers/{providerId}/resources/{kind}/{id}:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1providers~1{providerId}~1resources~1{kind}~1{id}
+/api/v1/storage/actions:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1actions
+/api/v1/storage/plans:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1plans
+/api/v1/storage/operations:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1operations
+/api/v1/storage/operations/{operationId}:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1operations~1{operationId}
+/api/v1/storage/restores:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1restores
+/api/v1/storage/clones:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1storage~1clones
+/api/v1/providers/{providerId}/ceph/block-pools:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1providers~1{providerId}~1ceph~1block-pools
+/api/v1/providers/{providerId}/ceph/block-pools/{namespace}/{name}:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1providers~1{providerId}~1ceph~1block-pools~1{namespace}~1{name}
+/api/v1/providers/{providerId}/ceph/storage-classes:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1providers~1{providerId}~1ceph~1storage-classes
+/api/v1/providers/{providerId}/ceph/storage-classes/{name}:
+  $ref: ../storage-v1.yaml#/paths/~1api~1v1~1providers~1{providerId}~1ceph~1storage-classes~1{name}

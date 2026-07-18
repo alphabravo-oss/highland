@@ -1,0 +1,173 @@
+# Account self-service routes.
+
+/api/v1/account:
+  get:
+    tags: [Account]
+    operationId: getAccount
+    summary: Current account profile and policy summary
+    responses:
+      "200":
+        description: Account profile.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/AccountResponse
+      "401":
+        $ref: ../schemas/errors.yaml#/Unauthorized
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/account/password:
+  put:
+    tags: [Account]
+    operationId: changePassword
+    summary: Change password for the signed-in local user
+    parameters:
+      - $ref: ../schemas/parameters.yaml#/Csrf
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/identity.yaml#/ChangePasswordRequest
+    responses:
+      "200":
+        description: Password changed.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/StatusOK
+      "400":
+        description: HTTP 400.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "401":
+        $ref: ../schemas/errors.yaml#/Unauthorized
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/account/email:
+  put:
+    tags: [Account]
+    operationId: changeEmail
+    summary: Change email for the signed-in local user
+    parameters:
+      - $ref: ../schemas/parameters.yaml#/Csrf
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/identity.yaml#/ChangeEmailRequest
+    responses:
+      "200":
+        description: Email changed.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/StatusOK
+      "400":
+        description: HTTP 400.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "401":
+        $ref: ../schemas/errors.yaml#/Unauthorized
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/account/mfa/enroll:
+  post:
+    tags: [Account]
+    operationId: beginMfaEnrollment
+    summary: Begin TOTP enrollment
+    parameters:
+      - $ref: ../schemas/parameters.yaml#/Csrf
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/identity.yaml#/MFAEnrollBeginRequest
+    responses:
+      "200":
+        description: Enrollment secret and otpauth URL.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/MFAEnrollBeginResponse
+      "400":
+        description: HTTP 400.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "401":
+        $ref: ../schemas/errors.yaml#/Unauthorized
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/account/mfa/confirm:
+  post:
+    tags: [Account]
+    operationId: confirmMfaEnrollment
+    summary: Confirm TOTP enrollment with a code
+    parameters:
+      - $ref: ../schemas/parameters.yaml#/Csrf
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/identity.yaml#/MFAConfirmRequest
+    responses:
+      "200":
+        description: MFA enabled; recovery codes returned once.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/MFAConfirmResponse
+      "400":
+        description: HTTP 400.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "401":
+        $ref: ../schemas/errors.yaml#/Unauthorized
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/account/mfa:
+  delete:
+    tags: [Account]
+    operationId: disableMfa
+    summary: Disable TOTP for the signed-in user
+    parameters:
+      - $ref: ../schemas/parameters.yaml#/Csrf
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/identity.yaml#/MFADisableRequest
+    responses:
+      "200":
+        description: MFA disabled.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/StatusOK
+      "400":
+        description: HTTP 400.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "401":
+        $ref: ../schemas/errors.yaml#/Unauthorized
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse

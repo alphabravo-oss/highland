@@ -1,0 +1,62 @@
+# Probe and status routes from apps/api/internal/handlers/router.go
+# (GET /healthz, GET /readyz, GET /api/v1/status).
+
+/healthz:
+  get:
+    tags: [Status]
+    operationId: getHealthz
+    summary: Liveness probe
+    description: Unauthenticated process liveness. Always 200 when the process is up.
+    security: []
+    responses:
+      "200":
+        description: Service is alive.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/common.yaml#/HealthzResponse
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/readyz:
+  get:
+    tags: [Status]
+    operationId: getReadyz
+    summary: Readiness probe
+    description: >
+      Unauthenticated readiness. Returns 503 when required configuration, storage
+      cache, Longhorn manager, or required providers are unavailable.
+    security: []
+    responses:
+      "200":
+        description: Service is ready to accept traffic.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/common.yaml#/ReadyzResponse
+      "503":
+        description: Not ready.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/common.yaml#/ReadyzResponse
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/status:
+  get:
+    tags: [Status]
+    operationId: getStatus
+    summary: Consolidated status and version facts
+    description: >
+      Authenticated About/Status payload — Highland version, Kubernetes/Longhorn
+      facts, component health, and optional storage/policy snapshots.
+    responses:
+      "200":
+        description: Status snapshot.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/common.yaml#/StatusResponse
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse

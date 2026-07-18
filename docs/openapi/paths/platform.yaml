@@ -1,0 +1,154 @@
+# Platform read surfaces: compatibility, health narrative, preflight, dashboard, capacity, SSE, backup setup.
+
+/api/v1/compatibility:
+  get:
+    tags: [Platform]
+    operationId: getCompatibility
+    summary: Compatibility and version narrative
+    responses:
+      "200":
+        description: Compatibility payload.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/platform.yaml#/CompatibilityResponse
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/health:
+  get:
+    tags: [Platform]
+    operationId: getHealthNarrative
+    summary: Operator-facing health narrative items
+    responses:
+      "200":
+        description: Health items.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/platform.yaml#/HealthNarrativeResponse
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/preflight:
+  get:
+    tags: [Platform]
+    operationId: getPreflight
+    summary: Static preflight checks Highland can evaluate without cluster admin
+    responses:
+      "200":
+        description: Preflight check list.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/platform.yaml#/PreflightResponse
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/dashboard:
+  get:
+    tags: [Platform]
+    operationId: getDashboardAggregate
+    summary: Aggregated dashboard payload
+    responses:
+      "200":
+        description: Dashboard aggregate (shape may expand with providers).
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/platform.yaml#/DashboardResponse
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/capacity:
+  get:
+    tags: [Platform]
+    operationId: getCapacityPlanning
+    summary: Capacity planning summary
+    responses:
+      "200":
+        description: Capacity planning payload.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/platform.yaml#/CapacityResponse
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/volumes/{name}/metrics:
+  get:
+    tags: [Platform]
+    operationId: getVolumeMetrics
+    summary: Per-volume metrics summary for the UI
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Volume metrics payload.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/platform.yaml#/VolumeMetricsResponse
+      "404":
+        description: HTTP 404.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/events/stream:
+  get:
+    tags: [Platform]
+    operationId: streamEvents
+    summary: Server-Sent Events change stream
+    description: >
+      Authenticated SSE stream of cache invalidation / change events.
+      Reconnect with Last-Event-ID when supported by the client.
+    responses:
+      "200":
+        description: text/event-stream
+        content:
+          text/event-stream:
+            schema:
+              type: string
+      "401":
+        $ref: ../schemas/errors.yaml#/Unauthorized
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/backup-credential:
+  post:
+    tags: [Platform]
+    operationId: createBackupCredential
+    summary: Create backup target credentials Secret
+    description: Request contains secret material (write-only); response never echoes secret values.
+    parameters:
+      - $ref: ../schemas/parameters.yaml#/Csrf
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/platform.yaml#/BackupCredentialRequest
+    responses:
+      "201":
+        description: Credential secret created.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/platform.yaml#/BackupCredentialResponse
+      "400":
+        description: HTTP 400.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "403":
+        $ref: ../schemas/errors.yaml#/Forbidden
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse

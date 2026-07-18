@@ -11,7 +11,7 @@ import (
 )
 
 // RequireRole rejects requests that fail method-level RBAC or admin-only paths.
-func RequireRole(auditStore *audit.Store, m *observability.Metrics) func(http.Handler) http.Handler {
+func RequireRole(auditStore audit.Sink, m *observability.Metrics) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			user, ok := UserFromContext(r.Context())
@@ -37,7 +37,7 @@ func RequireRole(auditStore *audit.Store, m *observability.Metrics) func(http.Ha
 				strings.HasPrefix(path, "/api/v1/auth/security-policy") {
 				if !auth.AdminOnly(user.Role) {
 					if auditStore != nil {
-						auditStore.Append(audit.Event{
+						_ = auditStore.Append(r.Context(), audit.Event{
 							Username: user.Username,
 							Role:     string(user.Role),
 							Action:   "access_denied",
@@ -58,7 +58,7 @@ func RequireRole(auditStore *audit.Store, m *observability.Metrics) func(http.Ha
 			if strings.HasPrefix(path, "/api/v1/lh/settings") && r.Method != http.MethodGet && r.Method != http.MethodHead {
 				if user.Role != auth.RoleAdmin {
 					if auditStore != nil {
-						auditStore.Append(audit.Event{
+						_ = auditStore.Append(r.Context(), audit.Event{
 							Username: user.Username,
 							Role:     string(user.Role),
 							Action:   "settings_denied",
@@ -76,7 +76,7 @@ func RequireRole(auditStore *audit.Store, m *observability.Metrics) func(http.Ha
 
 			if !selfService && !auth.MethodAllowed(user.Role, r.Method) {
 				if auditStore != nil {
-					auditStore.Append(audit.Event{
+					_ = auditStore.Append(r.Context(), audit.Event{
 						Username: user.Username,
 						Role:     string(user.Role),
 						Action:   "method_denied",
@@ -102,7 +102,7 @@ func RequireRole(auditStore *audit.Store, m *observability.Metrics) func(http.Ha
 				if sw.status >= 400 {
 					result = "error"
 				}
-				auditStore.Append(audit.Event{
+				_ = auditStore.Append(r.Context(), audit.Event{
 					Username: user.Username,
 					Role:     string(user.Role),
 					Action:   "mutate",

@@ -1,0 +1,130 @@
+# Local user administration (admin).
+
+/api/v1/users:
+  get:
+    tags: [Users]
+    operationId: listUsers
+    summary: List local users
+    responses:
+      "200":
+        description: User list.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/UserListResponse
+      "401":
+        $ref: ../schemas/errors.yaml#/Unauthorized
+      "403":
+        $ref: ../schemas/errors.yaml#/Forbidden
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+  post:
+    tags: [Users]
+    operationId: createUser
+    summary: Create a local user
+    description: >
+      Privileged mutation. When durable audit is configured, required admission
+      fails closed with 503 if the audit sink cannot append.
+    parameters:
+      - $ref: ../schemas/parameters.yaml#/Csrf
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/identity.yaml#/CreateUserRequest
+    responses:
+      "201":
+        description: User created.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/PublicUser
+      "400":
+        description: HTTP 400.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "403":
+        $ref: ../schemas/errors.yaml#/Forbidden
+      "503":
+        description: Required audit admission failed.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/users/{username}:
+  parameters:
+    - name: username
+      in: path
+      required: true
+      schema:
+        type: string
+  put:
+    tags: [Users]
+    operationId: updateUser
+    summary: Update a local user (admin)
+    parameters:
+      - $ref: ../schemas/parameters.yaml#/Csrf
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/identity.yaml#/UpdateUserRequest
+    responses:
+      "200":
+        description: User updated.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/StatusOK
+      "400":
+        description: HTTP 400.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "403":
+        $ref: ../schemas/errors.yaml#/Forbidden
+      "503":
+        description: Required audit admission failed.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+  delete:
+    tags: [Users]
+    operationId: deleteUser
+    summary: Delete a local user (admin)
+    parameters:
+      - $ref: ../schemas/parameters.yaml#/Csrf
+    responses:
+      "200":
+        description: User deleted.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/StatusOK
+      "400":
+        description: HTTP 400.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "403":
+        $ref: ../schemas/errors.yaml#/Forbidden
+      "503":
+        description: Required audit admission failed.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse

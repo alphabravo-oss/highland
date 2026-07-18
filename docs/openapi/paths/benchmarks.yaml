@@ -1,0 +1,96 @@
+# Benchmark history and jobs.
+
+/api/v1/benchmarks:
+  get:
+    tags: [Benchmarks]
+    operationId: listBenchmarks
+    summary: List benchmark runs
+    responses:
+      "200":
+        description: Benchmark list.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/platform.yaml#/BenchmarkListResponse
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+  post:
+    tags: [Benchmarks]
+    operationId: createBenchmark
+    summary: Create a benchmark run
+    parameters:
+      - $ref: ../schemas/parameters.yaml#/Csrf
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/platform.yaml#/CreateBenchmarkRequest
+    responses:
+      "201":
+        description: Benchmark accepted.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/platform.yaml#/Benchmark
+      "400":
+        description: HTTP 400.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "503":
+        description: Kubernetes job execution disabled or unavailable.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/api/v1/benchmarks/{name}:
+  parameters:
+    - name: name
+      in: path
+      required: true
+      schema: { type: string }
+  get:
+    tags: [Benchmarks]
+    operationId: getBenchmark
+    summary: Get a benchmark run
+    responses:
+      "200":
+        description: Benchmark detail.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/platform.yaml#/Benchmark
+      "404":
+        description: HTTP 404.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+  delete:
+    tags: [Benchmarks]
+    operationId: deleteBenchmark
+    summary: Delete a benchmark run record
+    parameters:
+      - $ref: ../schemas/parameters.yaml#/Csrf
+    responses:
+      "200":
+        description: Deleted.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/identity.yaml#/StatusOK
+      "404":
+        description: HTTP 404.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse

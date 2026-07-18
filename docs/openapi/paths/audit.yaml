@@ -1,0 +1,28 @@
+# Audit routes from apps/api/internal/handlers/router.go (GET /api/v1/audit).
+
+/api/v1/audit:
+  get:
+    tags: [Audit]
+    operationId: listAudit
+    summary: List recent audit events
+    description: >
+      Returns newest-first audit events from the durable audit store.
+      Bounded by the optional limit query parameter (default 100).
+    parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 100
+        description: Maximum number of events to return.
+    responses:
+      "200":
+        description: Recent audit events.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/common.yaml#/AuditListResponse
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse

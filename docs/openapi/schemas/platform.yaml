@@ -1,0 +1,97 @@
+# Platform, benchmark, and backup setup schemas.
+
+CompatibilityResponse:
+  type: object
+  additionalProperties: true
+  properties:
+    highlandVersion: { type: string }
+    managerUrl: { type: string }
+    longhornSupport:
+      type: array
+      items: { type: string }
+    mode: { type: string }
+    enabled: { type: boolean }
+    notes: { type: string }
+
+HealthNarrativeResponse:
+  type: object
+  required: [items]
+  properties:
+    items:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
+    generatedAt:
+      type: string
+      format: date-time
+
+PreflightResponse:
+  type: object
+  properties:
+    checks:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
+
+DashboardResponse:
+  type: object
+  additionalProperties: true
+
+CapacityResponse:
+  type: object
+  additionalProperties: true
+
+VolumeMetricsResponse:
+  type: object
+  additionalProperties: true
+
+BackupCredentialRequest:
+  type: object
+  required: [name]
+  properties:
+    name: { type: string }
+    namespace: { type: string }
+    # Provider-specific secret fields are write-only and never returned.
+    secretData:
+      type: object
+      additionalProperties:
+        type: string
+      writeOnly: true
+
+BackupCredentialResponse:
+  type: object
+  required: [name, namespace]
+  properties:
+    name: { type: string }
+    namespace: { type: string }
+
+Benchmark:
+  type: object
+  additionalProperties: true
+  properties:
+    name: { type: string }
+    status: { type: string }
+    providerId: { type: string }
+    storageClass: { type: string }
+
+BenchmarkListResponse:
+  type: object
+  additionalProperties: true
+  properties:
+    data:
+      type: array
+      items:
+        $ref: '#/Benchmark'
+
+CreateBenchmarkRequest:
+  type: object
+  additionalProperties: true
+  properties:
+    name: { type: string }
+    storageClass: { type: string }
+    size: { type: string }
+    mode: { type: string }
+    retainFailedPvc: { type: boolean }
+    retainConfirmation: { type: string }

@@ -34,8 +34,15 @@ type Config struct {
 	CookieName        string
 	CookieSecure      bool
 	AllowedOrigins    []string
-	// AuditFile optional append-only audit log path.
+	// AuditFile optional append-only audit log path (single-replica JSONL).
 	AuditFile string
+	// AuditPostgresDSN selects the multi-replica durable Postgres audit sink
+	// (ADR-0004). When set, it takes precedence over AuditFile for primary writes.
+	AuditPostgresDSN string
+	// RequireAuditDurable fails startup when the audit sink is not durable
+	// (HIGHLAND_AUDIT_REQUIRED). Production HA profiles with writes/policy
+	// mutations should enable this (ADR-0004).
+	RequireAuditDurable bool
 	// MetricsInterval for manager /metrics scrape.
 	MetricsInterval time.Duration
 	// AuthMode is local | oidc | local+oidc. Default local (admin login without IdP).
@@ -168,10 +175,12 @@ func LoadFromEnv() (*Config, error) {
 		CookieName:        envOr("HIGHLAND_COOKIE_NAME", "highland_session"),
 		CookieSecure:      envBool("HIGHLAND_COOKIE_SECURE", false),
 		SessionTTL:        envDuration("HIGHLAND_SESSION_TTL", 24*time.Hour),
-		SessionSecret:     os.Getenv("HIGHLAND_SESSION_SECRET"),
-		AuditFile:         os.Getenv("HIGHLAND_AUDIT_FILE"),
-		MetricsInterval:   envDuration("HIGHLAND_METRICS_INTERVAL", 10*time.Second),
-		AuthMode:          mode,
+		SessionSecret:         os.Getenv("HIGHLAND_SESSION_SECRET"),
+		AuditFile:             os.Getenv("HIGHLAND_AUDIT_FILE"),
+		AuditPostgresDSN:      strings.TrimSpace(os.Getenv("HIGHLAND_AUDIT_POSTGRES_DSN")),
+		RequireAuditDurable:   envBool("HIGHLAND_AUDIT_REQUIRED", false),
+		MetricsInterval:       envDuration("HIGHLAND_METRICS_INTERVAL", 10*time.Second),
+		AuthMode:              mode,
 		// Break-glass local admin always on unless explicitly disabled
 		LocalAlways:      envBool("HIGHLAND_LOCAL_ALWAYS", true),
 		OIDCIssuer:       os.Getenv("HIGHLAND_OIDC_ISSUER"),
@@ -184,7 +193,7 @@ func LoadFromEnv() (*Config, error) {
 		RedisAddr:     os.Getenv("HIGHLAND_REDIS_ADDR"),
 		RedisPassword: os.Getenv("HIGHLAND_REDIS_PASSWORD"),
 		RedisDB:       envInt("HIGHLAND_REDIS_DB", 0),
-		Version:       envOr("HIGHLAND_VERSION", "0.3.0"),
+		Version:       envOr("HIGHLAND_VERSION", "0.4.0"),
 
 		StorageEnabled:                  envBool("HIGHLAND_STORAGE_ENABLED", true),
 		StorageScopeMode:                strings.ToLower(envOr("HIGHLAND_STORAGE_SCOPE", "cluster")),

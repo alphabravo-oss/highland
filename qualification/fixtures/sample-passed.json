@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "runId": "fixture-sample-passed",
+  "profileId": "generic-csi-kind",
+  "provider": "generic-csi",
+  "gate": "pr",
+  "status": "passed",
+  "sourceCommit": "0000000000000000000000000000000000000000",
+  "startedAt": "2026-07-18T10:00:00Z",
+  "endedAt": "2026-07-18T10:12:00Z",
+  "environment": {
+    "class": "kind",
+    "kubernetesVersion": "1.35.0",
+    "architecture": "amd64"
+  },
+  "assertions": [
+    { "id": "QA-C4.1", "status": "passed" },
+    { "id": "QA-C4.2", "status": "passed" },
+    { "id": "QA-C4.3", "status": "passed" },
+    { "id": "QA-C4.4", "status": "passed" },
+    { "id": "QA-C4.5", "status": "passed" },
+    { "id": "QA-C4.7", "status": "passed" },
+    { "id": "QA-C4.8", "status": "passed" },
+    { "id": "QA-C4.14", "status": "passed" }
+  ],
+  "cleanup": {
+    "required": true,
+    "status": "passed"
+  },
+  "message": "Fixture: successful PR smoke profile."
+}

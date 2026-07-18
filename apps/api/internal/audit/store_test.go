@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,8 +23,8 @@ func TestDurableRequiresWritableAppendOnlyFile(t *testing.T) {
 func TestDurableTerminalOperationIDsRequiresExactValidEvidence(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.jsonl")
 	store := NewStore(10, path)
-	store.Append(Event{Action: "storage_operation_succeeded", OperationID: "storage-complete", Result: "ok"})
-	store.Append(Event{Action: "storage_operation_execution_started", OperationID: "storage-running", Result: "ok"})
+	if err := store.Append(context.Background(), Event{Action: "storage_operation_succeeded", OperationID: "storage-complete", Result: "ok"}); err != nil { t.Fatal(err) }
+	if err := store.Append(context.Background(), Event{Action: "storage_operation_execution_started", OperationID: "storage-running", Result: "ok"}); err != nil { t.Fatal(err) }
 	ids, err := store.DurableTerminalOperationIDs()
 	if err != nil {
 		t.Fatal(err)

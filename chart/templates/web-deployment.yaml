@@ -7,6 +7,10 @@ metadata:
     app.kubernetes.io/component: web
 spec:
   replicas: {{ .Values.replicaCount.web }}
+  {{- if and .Values.strategy .Values.strategy.web }}
+  strategy:
+    {{- toYaml .Values.strategy.web | nindent 4 }}
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "highland.name" . }}
@@ -27,7 +31,7 @@ spec:
         {{- toYaml .Values.podSecurityContext.web | nindent 8 }}
       containers:
         - name: highland-web
-          image: "{{ .Values.image.web.repository }}:{{ .Values.image.web.tag | default .Chart.AppVersion }}"
+          image: {{ include "highland.webImage" . | quote }}
           imagePullPolicy: {{ .Values.image.web.pullPolicy }}
           securityContext:
             {{- toYaml .Values.securityContext.web | nindent 12 }}
@@ -78,9 +82,20 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
+      {{- $topo := include "highland.topologySpreadConstraints" (dict "root" . "component" "web") | trim -}}
+      {{- if $topo }}
+      topologySpreadConstraints:
+        {{- $topo | nindent 8 }}
+      {{- end }}
+      {{- if .Values.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- toYaml .Values.affinity | nindent 8 }}
+      {{- else }}
+      {{- $anti := include "highland.podAntiAffinity" (dict "root" . "component" "web") | trim -}}
+      {{- if $anti }}
+      affinity:
+        {{- $anti | nindent 8 }}
+      {{- end }}
       {{- end }}
       {{- with .Values.tolerations }}
       tolerations:

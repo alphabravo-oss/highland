@@ -33,7 +33,7 @@ type Deps struct {
 	OIDCRuntime       *auth.OIDCRuntime  // runtime-configurable enterprise SSO
 	Proxy             *longhorn.Proxy
 	Stream            *longhorn.StreamProxy
-	Audit             *audit.Store
+	Audit             audit.Sink
 	Metrics           *metrics.Scraper
 	Benchmarks        *benchmark.Store
 	Storage           *storage.HTTPAPI
@@ -54,6 +54,9 @@ type Deps struct {
 	// Obs holds Prometheus metrics; Logger is the structured request logger.
 	Obs    *observability.Metrics
 	Logger *slog.Logger
+	// Limiter is optional shared login throttle (memory or Redis). When nil,
+	// NewRouter constructs a process-local memory limiter from config.
+	Limiter ratelimit.Limiter
 }
 
 // NewRouter builds the Highland API HTTP router.
@@ -62,15 +65,18 @@ func NewRouter(d Deps) http.Handler {
 	if oidcProv == nil && d.OIDCRuntime != nil {
 		oidcProv = d.OIDCRuntime.Provider()
 	}
-	limiter := ratelimit.New(ratelimit.Options{
-		Enabled:         d.Cfg.LoginRateLimitEnabled,
-		MaxFailuresUser: d.Cfg.LoginMaxFailuresUser,
-		MaxFailuresIP:   d.Cfg.LoginMaxFailuresIP,
-		LockoutBase:     d.Cfg.LoginLockoutBase,
-		LockoutMax:      d.Cfg.LoginLockoutMax,
-		FailureWindow:   d.Cfg.LoginFailureWindow,
-		MaxEntries:      d.Cfg.LoginMaxEntries,
-	})
+	limiter := d.Limiter
+	if limiter == nil {
+		limiter = ratelimit.New(ratelimit.Options{
+			Enabled:         d.Cfg.LoginRateLimitEnabled,
+			MaxFailuresUser: d.Cfg.LoginMaxFailuresUser,
+			MaxFailuresIP:   d.Cfg.LoginMaxFailuresIP,
+			LockoutBase:     d.Cfg.LoginLockoutBase,
+			LockoutMax:      d.Cfg.LoginLockoutMax,
+			FailureWindow:   d.Cfg.LoginFailureWindow,
+			MaxEntries:      d.Cfg.LoginMaxEntries,
+		})
+	}
 	api := &API{
 		Cfg:         d.Cfg,
 		Auth:        d.Auth,

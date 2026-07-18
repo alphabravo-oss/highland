@@ -1,0 +1,125 @@
+# Auth routes from apps/api/internal/handlers/router.go.
+# Documents the public providers/login/logout/me surface accurately with simple
+# schemas. OIDC start/callback/mock and MFA verify are registered in Chi but
+# intentionally left for a later modular expansion.
+
+/auth/providers:
+  get:
+    tags: [Auth]
+    operationId: getAuthProviders
+    summary: List available authentication providers
+    description: Public endpoint describing whether local and/or OIDC login is offered.
+    security: []
+    responses:
+      "200":
+        description: Auth provider flags for the login UI.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/common.yaml#/AuthProvidersResponse
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/auth/login:
+  post:
+    tags: [Auth]
+    operationId: login
+    summary: Local username/password login
+    description: >
+      Authenticates a local account and sets the session cookie on success.
+      When MFA is enabled, returns 202 with a challenge token instead of a session.
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/common.yaml#/LoginRequest
+    responses:
+      "200":
+        description: Login succeeded; session cookie is set.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/common.yaml#/LoginSuccessResponse
+      "202":
+        description: MFA verification required before a session is issued.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/common.yaml#/MFARequiredResponse
+      "400":
+        description: Invalid request body.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "401":
+        description: Invalid credentials.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "403":
+        description: Local login disabled.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "429":
+        description: Too many login attempts.
+        headers:
+          Retry-After:
+            schema:
+              type: integer
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      "503":
+        description: Identity service or login protection unavailable.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/auth/logout:
+  post:
+    tags: [Auth]
+    operationId: logout
+    summary: End the current session
+    description: Deletes the server-side session (if present) and clears the session cookie.
+    security: []
+    responses:
+      "200":
+        description: Logged out.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/common.yaml#/LogoutResponse
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse
+
+/auth/me:
+  get:
+    tags: [Auth]
+    operationId: getMe
+    summary: Current authenticated principal
+    description: Requires a valid session cookie.
+    responses:
+      "200":
+        description: Current user.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/common.yaml#/MeResponse
+      "401":
+        description: Missing or invalid session.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/SimpleError
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse

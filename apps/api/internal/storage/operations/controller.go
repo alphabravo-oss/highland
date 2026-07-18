@@ -57,12 +57,12 @@ type Controller struct {
 	planner   *Planner
 	namespace string
 	observer  OperationObserver
-	audit     *audit.Store
+	audit     audit.Sink
 	now       func() time.Time
 	active    sync.Map
 }
 
-func NewController(core kubernetes.Interface, dynamicClient dynamic.Interface, store *Store, planner *Planner, namespace string, observer OperationObserver, auditStore *audit.Store) (*Controller, error) {
+func NewController(core kubernetes.Interface, dynamicClient dynamic.Interface, store *Store, planner *Planner, namespace string, observer OperationObserver, auditStore audit.Sink) (*Controller, error) {
 	if core == nil || dynamicClient == nil || store == nil || planner == nil {
 		return nil, fmt.Errorf("operation controller requires clients, store, and planner")
 	}
@@ -114,7 +114,12 @@ func (c *Controller) garbageCollect(ctx context.Context) {
 			// durability for object-count bounds.
 			return
 		}
-		terminalAudit, err := c.audit.DurableTerminalOperationIDs()
+		evidence, ok := c.audit.(audit.TerminalEvidence)
+		if !ok {
+			// Fail closed: durable sink without terminal evidence API cannot GC.
+			return
+		}
+		terminalAudit, err := evidence.DurableTerminalOperationIDs()
 		if err != nil {
 			return
 		}
@@ -798,7 +803,7 @@ func (c *Controller) auditOperation(operation *Operation, action, result, messag
 	}
 	target := operation.Spec.Target
 	actionDefinition, _ := ActionByID(operation.Spec.ActionID)
-	c.audit.Append(audit.Event{Username: operation.Spec.Requester, Role: operation.Spec.RequesterRole, Action: action, ActionID: operation.Spec.ActionID, ProviderID: operation.Spec.ProviderID, ProviderKind: nonempty(actionDefinition.ProviderKind, "kubernetes"), OperationID: operation.Name, Target: target.Namespace + "/" + target.Name, TargetKind: target.Kind, TargetNamespace: target.Namespace, TargetName: target.Name, TargetUID: target.UID, KubernetesCorrelationID: target.UID, PlanHash: operation.Spec.PlanHash, Result: result, Message: sanitize(message)})
+	_ = c.audit.Append(context.Background(), audit.Event{Username: operation.Spec.Requester, Role: operation.Spec.RequesterRole, Action: action, ActionID: operation.Spec.ActionID, ProviderID: operation.Spec.ProviderID, ProviderKind: nonempty(actionDefinition.ProviderKind, "kubernetes"), OperationID: operation.Name, Target: target.Namespace + "/" + target.Name, TargetKind: target.Kind, TargetNamespace: target.Namespace, TargetName: target.Name, TargetUID: target.UID, KubernetesCorrelationID: target.UID, PlanHash: operation.Spec.PlanHash, Result: result, Message: sanitize(message)})
 }
 
 func gvrFor(apiVersion, kind string) (schema.GroupVersionResource, bool, error) {

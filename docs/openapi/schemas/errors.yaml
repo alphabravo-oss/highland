@@ -1,0 +1,59 @@
+# Shared error envelope used by Highland public APIs.
+# Storage control-plane keeps an equivalent copy in storage-v1.yaml components;
+# generators should treat this as the canonical shape for non-storage surfaces.
+
+APIError:
+  type: object
+  required: [code, message, retryable]
+  properties:
+    code:
+      type: string
+      description: Stable machine-readable error code.
+    message:
+      type: string
+      description: Human-readable summary safe to show operators.
+    details:
+      type: object
+      additionalProperties: true
+    retryable:
+      type: boolean
+    requestId:
+      type: string
+
+ErrorEnvelope:
+  type: object
+  required: [error]
+  properties:
+    error:
+      $ref: '#/APIError'
+
+# Lightweight string-error body used by some auth handlers today
+# ({"error": "invalid credentials"}). Prefer ErrorEnvelope for new endpoints.
+SimpleError:
+  type: object
+  required: [error]
+  properties:
+    error:
+      type: string
+
+# Reusable response object (OpenAPI components.responses shape).
+ErrorResponse:
+  description: Stable machine-readable error.
+  content:
+    application/json:
+      schema:
+        $ref: '#/ErrorEnvelope'
+
+Unauthorized:
+  description: Missing or invalid session.
+  content:
+    application/json:
+      schema:
+        $ref: '#/SimpleError'
+
+Forbidden:
+  description: Authenticated but not authorized for this operation.
+  content:
+    application/json:
+      schema:
+        $ref: '#/SimpleError'

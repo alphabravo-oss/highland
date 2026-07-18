@@ -315,4 +315,116 @@ contains "$tmp/embedded.yaml" 'kubernetes.io/metadata.name: longhorn-system'
 contains "$tmp/embedded.yaml" 'value: "longhorn-system"'
 not_contains "$tmp/embedded.yaml" "should-not-be-used"
 
-echo "OK: storage RBAC, provider, default, and embedded chart renders passed"
+# ---------------------------------------------------------------------------
+# Production readiness: PDB / topology / digests / fio / HA example
+# ---------------------------------------------------------------------------
+
+# Default replicaCount is 2/2, so PDBs, topology, strategy, and soft anti-affinity
+# render for both components.
+contains "$tmp/default.yaml" "kind: PodDisruptionBudget"
+contains "$tmp/default.yaml" "name: highland-api"
+contains "$tmp/default.yaml" "name: highland-web"
+contains "$tmp/default.yaml" "topologySpreadConstraints:"
+contains "$tmp/default.yaml" "preferredDuringSchedulingIgnoredDuringExecution:"
+contains "$tmp/default.yaml" "maxUnavailable: 0"
+contains "$tmp/default.yaml" "maxSurge: 1"
+contains "$tmp/default.yaml" "startupProbe:"
+contains "$tmp/default.yaml" 'value: "ghcr.io/aksakalli/fio:3.39"'
+contains "$tmp/default.yaml" "image: \"ghcr.io/alphabravo-oss/highland-api:0.4.0\""
+contains "$tmp/default.yaml" "image: \"ghcr.io/alphabravo-oss/highland-web:0.4.0\""
+
+# 1 replica: no PDB for that component (impossible budget avoided).
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set replicaCount.api=1 --set replicaCount.web=1 >"$tmp/replicas-1.yaml"
+not_contains "$tmp/replicas-1.yaml" "kind: PodDisruptionBudget"
+
+# Mixed replicas: only the multi-replica component gets a PDB.
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set replicaCount.api=1 --set replicaCount.web=2 >"$tmp/replicas-mixed.yaml"
+grep -c 'kind: PodDisruptionBudget' "$tmp/replicas-mixed.yaml" | grep -Eq '^1$' \
+  || fail "expected exactly 1 PDB when only web has replicas>=2"
+grep -A3 'kind: PodDisruptionBudget' "$tmp/replicas-mixed.yaml" | grep -Fq 'name: highland-web' \
+  || fail "expected web PDB when replicaCount.web=2"
+
+# 2 and 3 replicas: PDBs present for both components.
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set replicaCount.api=2 --set replicaCount.web=2 >"$tmp/replicas-2.yaml"
+contains "$tmp/replicas-2.yaml" "kind: PodDisruptionBudget"
+grep -c 'kind: PodDisruptionBudget' "$tmp/replicas-2.yaml" | grep -Eq '^2$' \
+  || fail "expected exactly 2 PDBs at 2 replicas each"
+
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set replicaCount.api=3 --set replicaCount.web=3 >"$tmp/replicas-3.yaml"
+grep -c 'kind: PodDisruptionBudget' "$tmp/replicas-3.yaml" | grep -Eq '^2$' \
+  || fail "expected exactly 2 PDBs at 3 replicas each"
+
+# Digest-only image render (tag ignored when digest is set).
+api_digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+web_digest="sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set image.api.digest="$api_digest" \
+  --set image.web.digest="$web_digest" >"$tmp/digest-images.yaml"
+contains "$tmp/digest-images.yaml" "image: \"ghcr.io/alphabravo-oss/highland-api@${api_digest}\""
+contains "$tmp/digest-images.yaml" "image: \"ghcr.io/alphabravo-oss/highland-web@${web_digest}\""
+not_contains "$tmp/digest-images.yaml" "image: \"ghcr.io/alphabravo-oss/highland-api:"
+not_contains "$tmp/digest-images.yaml" "image: \"ghcr.io/alphabravo-oss/highland-web:"
+
+# Invalid digests fail helm template.
+if helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set image.api.digest="md5:deadbeef" >"$tmp/invalid-digest-prefix.yaml" 2>&1; then
+  fail "malformed digest prefix unexpectedly rendered"
+fi
+contains "$tmp/invalid-digest-prefix.yaml" "image digest must start with sha256:"
+
+if helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set image.api.digest="sha256:tooshort" >"$tmp/invalid-digest-short.yaml" 2>&1; then
+  fail "short digest unexpectedly rendered"
+fi
+contains "$tmp/invalid-digest-short.yaml" "image digest too short"
+
+# fio structured image + digest render; legacy string still accepted.
+fio_digest="sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set benchmark.fioImage.digest="$fio_digest" >"$tmp/fio-digest.yaml"
+contains "$tmp/fio-digest.yaml" "value: \"ghcr.io/aksakalli/fio@${fio_digest}\""
+
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set benchmark.fioImage="xridge/fio:legacy" >"$tmp/fio-legacy.yaml"
+contains "$tmp/fio-legacy.yaml" 'value: "xridge/fio:legacy"'
+
+if helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set benchmark.fioImage.digest="sha256:nope" >"$tmp/invalid-fio-digest.yaml" 2>&1; then
+  fail "short fio digest unexpectedly rendered"
+fi
+contains "$tmp/invalid-fio-digest.yaml" "image digest too short"
+
+# Production HA example values file renders (digests left blank → tag/AppVersion mode).
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  -f "$CHART/examples/values-production-ha.yaml" >"$tmp/production-ha.yaml"
+contains "$tmp/production-ha.yaml" "kind: PodDisruptionBudget"
+contains "$tmp/production-ha.yaml" "replicas: 3"
+contains "$tmp/production-ha.yaml" "replicas: 2"
+contains "$tmp/production-ha.yaml" "topologySpreadConstraints:"
+contains "$tmp/production-ha.yaml" "maxUnavailable: 0"
+contains "$tmp/production-ha.yaml" "kind: Ingress"
+# Durable Postgres audit + required flag + shared Redis login limiter (ADR-0004/0005).
+contains "$tmp/production-ha.yaml" "name: HIGHLAND_AUDIT_POSTGRES_DSN"
+contains "$tmp/production-ha.yaml" 'name: "highland-audit-postgres"'
+contains "$tmp/production-ha.yaml" "name: HIGHLAND_AUDIT_REQUIRED"
+contains "$tmp/production-ha.yaml" 'value: "true"'
+contains "$tmp/production-ha.yaml" "name: HIGHLAND_LOGIN_LIMITER_REDIS_ADDR"
+contains "$tmp/production-ha.yaml" 'value: "highland-redis.highland-system.svc:6379"'
+grep -c 'kind: PodDisruptionBudget' "$tmp/production-ha.yaml" | grep -Eq '^2$' \
+  || fail "production HA profile expected PDBs for api and web"
+
+# Postgres DSN env only when audit.postgres.enabled + secret set.
+helm template highland "$CHART" --namespace highland-system "${common_values[@]}" \
+  --set audit.postgres.enabled=true \
+  --set audit.postgres.existingSecret=my-pg \
+  --set audit.postgres.required=true >"$tmp/audit-postgres.yaml"
+contains "$tmp/audit-postgres.yaml" "name: HIGHLAND_AUDIT_POSTGRES_DSN"
+contains "$tmp/audit-postgres.yaml" 'name: "my-pg"'
+contains "$tmp/audit-postgres.yaml" "name: HIGHLAND_AUDIT_REQUIRED"
+not_contains "$tmp/default.yaml" "name: HIGHLAND_AUDIT_POSTGRES_DSN"
+
+echo "OK: storage RBAC, provider, default, embedded, HA, and digest chart renders passed"

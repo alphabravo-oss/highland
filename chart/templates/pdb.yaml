@@ -1,0 +1,36 @@
+{{- $pdb := .Values.podDisruptionBudget | default dict -}}
+{{- $pdbApi := $pdb.api | default dict -}}
+{{- $pdbWeb := $pdb.web | default dict -}}
+{{- if and $pdbApi.enabled (ge (int .Values.replicaCount.api) 2) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "highland.fullname" . }}-api
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  maxUnavailable: {{ default 1 $pdbApi.maxUnavailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "highland.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: api
+{{ end }}
+{{- if and $pdbWeb.enabled (ge (int .Values.replicaCount.web) 2) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "highland.fullname" . }}-web
+  labels:
+    {{- include "highland.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  maxUnavailable: {{ default 1 $pdbWeb.maxUnavailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "highland.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: web
+{{- end }}

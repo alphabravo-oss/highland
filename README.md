@@ -26,6 +26,23 @@ Rook/Ceph, OpenEBS, and Piraeus/LINSTOR — **without replacing the data plane**
 > values, and UI are subject to change without notice, and it is **not yet
 > recommended for production use**. Feedback and issues are very welcome.
 
+## 0.4.0 highlights
+
+- Production-HA foundations with an optional PostgreSQL audit sink, shared Redis login limiting,
+  replica-aware Helm defaults, PodDisruptionBudgets, topology spreading, rolling updates, and
+  startup probes.
+- A modular API bootstrap package and typed operation registry that make startup behavior and
+  supported storage actions easier to test and extend.
+- A canonical OpenAPI contract with linting, route inventory, generated Go/TypeScript wire types,
+  and migration guidance for incrementally replacing handwritten DTOs.
+- Storage qualification profiles, evidence aggregation, compatibility linkage, 10,000-object UI
+  characterization, and expanded race, fail-closed audit, and disabled-provider tests.
+- Initial supply-chain controls including digest-aware chart values, secret scanning,
+  `govulncheck`, SBOM generation, and documented artifact-verification procedures.
+
+Highland remains alpha software. Live multi-node/provider qualification, mandatory artifact
+signing, and the remaining production-readiness gates are tracked as follow-up work.
+
 ![Highland dashboard in dark mode](docs/highland-dashboard-dark.png)
 
 ## Why Highland
@@ -57,7 +74,7 @@ those facts into one hardened operator experience while keeping Kubernetes autho
   session revocation, email and password self-service, Argon2id password history and blocklist
   policy, optional or enforced TOTP with recovery codes, audited administration, and OIDC SSO.
 
-## What Highland 0.3.0 supports
+## What Highland 0.4.0 supports
 
 Highland discovers every CSI driver through Kubernetes and adds deeper, explicitly bounded support
 for managed providers. Capabilities are calculated from installed APIs, provider versions, cluster
@@ -71,7 +88,7 @@ disabled instead of failing optimistically.
 | **Any detected CSI driver** | Drivers, StorageClasses, PVC/PV, workloads, snapshots, attachments, topology, capacity, events, relationships, capacity forecasting, timelines, and remediation guidance | Portable PVC and snapshot lifecycle workflows when the driver, Kubernetes APIs, class policy, RBAC ceiling, and runtime policy permit them |
 | **Longhorn** | Dashboard, volumes, replicas, nodes/disks, live I/O, backups, snapshots, recurring jobs, backup targets, backing/engine images, instance managers, orphans, system backups, support bundles, preflight, and settings | Existing Longhorn-native volume, backup, snapshot, recurring-job, salvage, engine, node/disk, and backup-target actions, plus portable Kubernetes workflows |
 | **Rook/Ceph** | Cluster health, MON quorum, OSDs, block pools, RBD images, CephFS, mirroring, Ceph CSI inventory, Prometheus observations, and an authenticated same-origin handoff to the native Ceph Dashboard | Guarded creation of replicated pools and RBD/CephFS StorageClasses; separately gated deletion after fresh dependency and runtime checks; portable PVC/snapshot workflows |
-| **OpenEBS** | Components and engine-aware inventory for Dynamic LocalPV HostPath, LocalPV LVM, LocalPV ZFS, Replicated PV Mayastor, and RawFile LocalPV | Portable Kubernetes workflows only; OpenEBS-native mutations remain intentionally read-only in 0.3.0 |
+| **OpenEBS** | Components and engine-aware inventory for Dynamic LocalPV HostPath, LocalPV LVM, LocalPV ZFS, Replicated PV Mayastor, and RawFile LocalPV | Portable Kubernetes workflows only; OpenEBS-native mutations remain intentionally read-only in 0.4.0 |
 | **Piraeus / LINSTOR** | Piraeus cluster/satellite convergence, components, LINSTOR nodes, pools, resource groups, resources/replicas, snapshots, remotes, schedules, error reports, and exact CSI-handle correlation | Portable Kubernetes workflows only; LINSTOR remains independently lifecycle-managed and native mutations remain read-only |
 
 ### Platform capabilities
@@ -96,7 +113,7 @@ disabled instead of failing optimistically.
 Highland does not call raw CSI sockets, expose Kubernetes or provider credentials to the browser,
 relay arbitrary Ceph APIs or commands, or replace a provider's data plane. OpenEBS-native writes,
 Ceph OSD/MON/MGR repair and topology changes, backend upgrades, erasure-code management, and
-cross-provider data migration are not part of 0.3.0. See the
+cross-provider data migration are not part of 0.4.0. See the
 [capability matrix](docs/storage-capability-matrix.md) for the exact fail-closed contract and the
 [compatibility matrix](docs/compatibility.yaml) for tested versions.
 
@@ -114,7 +131,7 @@ Install straight from GitHub Container Registry — no cloning, no image builds:
 
 ```bash
 helm install highland oci://ghcr.io/alphabravo-oss/charts/highland \
-  --version 0.3.0 \
+  --version 0.4.0 \
   --namespace highland-system --create-namespace \
   --set auth.local.createSecret=true \
   --set auth.local.password='change-me'
@@ -142,7 +159,7 @@ For example, a cluster running all four managed providers can enable them togeth
 
 ```bash
 helm upgrade highland oci://ghcr.io/alphabravo-oss/charts/highland \
-  --version 0.3.0 \
+  --version 0.4.0 \
   --namespace highland-system \
   --reuse-values \
   --set providers.longhorn.enabled=true \
@@ -168,7 +185,7 @@ and install the release in `longhorn-system`:
 
 ```bash
 helm install highland oci://ghcr.io/alphabravo-oss/charts/highland \
-  --version 0.3.0 \
+  --version 0.4.0 \
   --namespace longhorn-system --create-namespace \
   --set embeddedLonghorn.enabled=true \
   --set auth.local.createSecret=true \
@@ -196,7 +213,7 @@ Prebuilt images are published to GHCR on every release:
 | API (BFF) | `ghcr.io/alphabravo-oss/highland-api` |
 | Web (console) | `ghcr.io/alphabravo-oss/highland-web` |
 
-Tags: `latest`, `edge` (main), `<version>` (e.g. `0.3.0`), `<major>.<minor>` (e.g. `0.3`), and `sha-<commit>`.
+Tags: `latest`, `edge` (main), `<version>` (e.g. `0.4.0`), `<major>.<minor>` (e.g. `0.4`), and `sha-<commit>`.
 
 ### Try it locally (Docker Compose)
 

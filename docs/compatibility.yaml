@@ -1,6 +1,6 @@
 schemaVersion: 1
 lastUpdated: "2026-07-18"
-releaseLine: "0.3.x-storage-preview"
+releaseLine: "0.4.x-production-readiness-preview"
 
 kubernetes:
   clientLibrary: "k8s.io/client-go v0.36.2"
@@ -31,6 +31,9 @@ providers:
       unitContract: required
       mockManagerRegression: required
       liveVmK3s: release-gate
+      qualificationProfiles:
+        - longhorn-current
+        - longhorn-previous
   rookCeph:
     supportLevel: managed
     releaseStage: preview
@@ -52,6 +55,9 @@ providers:
     validation:
       sanitizedFixtureContract: required
       disposableThreeNodeLab: release-gate
+      qualificationProfiles:
+        - rook-ceph-current
+        - rook-ceph-previous
     note: "Versions are pinned to the current and previous maintained Rook lines as of 2026-07-15. Ceph 20.2.0 is excluded because of its documented read-affinity data-corruption issue. The preview is not promoted until every live release gate passes."
   openebs:
     supportLevel: managed
@@ -75,6 +81,9 @@ providers:
       normalizedResourceContract: required
       hostpathK3sLab: required
       mayastorThreeNodeLab: phase-2-release-gate
+      qualificationProfiles:
+        - openebs-hostpath
+        - openebs-mayastor
     note: "Phase 1 is read-only. HostPath is explicitly non-replicated; Mayastor runtime detail and every OpenEBS infrastructure write remain gated."
   linstor:
     supportLevel: managed
@@ -91,11 +100,24 @@ providers:
       normalizedResourceContract: required
       independentK3sInstall: required
       threeNodeDrbdLab: production-release-gate
+      qualificationProfiles:
+        - linstor-single-node
+        - linstor-drbd
     note: "Highland is read-only and never owns Piraeus/LINSTOR lifecycle. CSI handles correlate only as <resource-name>[/<volume-number>]."
 
 genericCsi:
   supportLevel: detected
   contract: "Kubernetes common inventory only; capabilities are advertised only when discovered."
+  validation:
+    qualificationProfiles:
+      - generic-csi-kind
+
+highlandPlatform:
+  supportLevel: managed
+  note: "Cross-provider platform profiles (HA multi-replica disruption)."
+  validation:
+    qualificationProfiles:
+      - ha-multi-replica
 
 formats:
   timestamps: RFC3339Nano-UTC

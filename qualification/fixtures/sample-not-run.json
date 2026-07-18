@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "runId": "fixture-sample-not-run",
+  "profileId": "longhorn-current",
+  "provider": "longhorn",
+  "gate": "production",
+  "status": "not-run",
+  "sourceCommit": "0000000000000000000000000000000000000000",
+  "startedAt": "2026-07-18T12:00:00Z",
+  "endedAt": "2026-07-18T12:00:00Z",
+  "environment": {
+    "class": "disposable-vm"
+  },
+  "assertions": [
+    { "id": "QA-C4.1", "status": "not-run" }
+  ],
+  "cleanup": {
+    "required": true,
+    "status": "not-run"
+  },
+  "message": "Fixture: production profile not executed. Must NOT satisfy a production gate.",
+  "kubeconfig": "apiVersion: v1\nkind: Config\n",
+  "secret": "must-be-redacted-by-aggregator"
+}

@@ -1,0 +1,4409 @@
+openapi: 3.1.0
+info:
+  title: Highland API
+  version: 0.4.0-preview
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+  description: |
+    Root OpenAPI 3.1 contract for the Highland public HTTP surface. Modular path and schema fragments live under docs/openapi/{paths,schemas}/. The storage control-plane remains fully specified in storage-v1.yaml and is composed here via $ref so both documents stay independently lintable.
+    Public surface (ADR-0007 / DEC-12): /auth/*, /api/v1/*, health/readiness. Metrics scrape endpoints may be excluded from public client contracts.
+servers:
+  - url: /
+security:
+  - cookieAuth: []
+tags:
+  - name: Status
+    description: Liveness, readiness, and consolidated status.
+  - name: Auth
+    description: Session authentication and identity.
+  - name: Account
+    description: Signed-in user self-service.
+  - name: Users
+    description: Local user administration.
+  - name: Admin
+    description: Security policy, OIDC, and privileged admin actions.
+  - name: Platform
+    description: Compatibility, health narrative, dashboard, SSE, backup setup.
+  - name: Benchmarks
+    description: fio benchmark history and jobs.
+  - name: Audit
+    description: Durable audit event listing.
+  - name: Inventory
+    description: Provider-neutral Kubernetes and CSI inventory (from storage-v1).
+  - name: Providers
+    description: Managed-provider health and bounded typed resources (from storage-v1).
+  - name: Context
+    description: Resource relationships, workload impact, and drift (from storage-v1).
+  - name: Operations
+    description: Planned, durable, authorized storage workflows (from storage-v1).
+  - name: Policy
+    description: Admin-controlled runtime storage policy (from storage-v1).
+paths:
+  /healthz:
+    get:
+      tags:
+        - Status
+      operationId: getHealthz
+      summary: Liveness probe
+      description: Unauthenticated process liveness. Always 200 when the process is up.
+      security: []
+      responses:
+        '200':
+          description: Service is alive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthzResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /readyz:
+    get:
+      tags:
+        - Status
+      operationId: getReadyz
+      summary: Readiness probe
+      description: |
+        Unauthenticated readiness. Returns 503 when required configuration, storage cache, Longhorn manager, or required providers are unavailable.
+      security: []
+      responses:
+        '200':
+          description: Service is ready to accept traffic.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyzResponse'
+        '503':
+          description: Not ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyzResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/status:
+    get:
+      tags:
+        - Status
+      operationId: getStatus
+      summary: Consolidated status and version facts
+      description: |
+        Authenticated About/Status payload — Highland version, Kubernetes/Longhorn facts, component health, and optional storage/policy snapshots.
+      responses:
+        '200':
+          description: Status snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/providers:
+    get:
+      tags:
+        - Auth
+      operationId: getAuthProviders
+      summary: List available authentication providers
+      description: Public endpoint describing whether local and/or OIDC login is offered.
+      security: []
+      responses:
+        '200':
+          description: Auth provider flags for the login UI.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthProvidersResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      operationId: login
+      summary: Local username/password login
+      description: |
+        Authenticates a local account and sets the session cookie on success. When MFA is enabled, returns 202 with a challenge token instead of a session.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login succeeded; session cookie is set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginSuccessResponse'
+        '202':
+          description: MFA verification required before a session is issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MFARequiredResponse'
+        '400':
+          description: Invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '401':
+          description: Invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '403':
+          description: Local login disabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '429':
+          description: Too many login attempts.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '503':
+          description: Identity service or login protection unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      operationId: logout
+      summary: End the current session
+      description: Deletes the server-side session (if present) and clears the session cookie.
+      security: []
+      responses:
+        '200':
+          description: Logged out.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/me:
+    get:
+      tags:
+        - Auth
+      operationId: getMe
+      summary: Current authenticated principal
+      description: Requires a valid session cookie.
+      responses:
+        '200':
+          description: Current user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          description: Missing or invalid session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/mfa/verify:
+    post:
+      tags:
+        - Auth
+      operationId: verifyMfa
+      summary: Complete MFA challenge after local login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MFAVerifyRequest'
+      responses:
+        '200':
+          description: MFA verified; session cookie set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginSuccessResponse'
+        '401':
+          description: Invalid code or challenge.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '429':
+          description: Too many verification attempts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '503':
+          description: Login protection unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/oidc/start:
+    get:
+      tags:
+        - Auth
+      operationId: startOidc
+      summary: Begin OIDC authorization code flow
+      description: Redirects the browser to the configured IdP. Returns 501 when OIDC is not ready.
+      security: []
+      responses:
+        '302':
+          description: Redirect to identity provider.
+        '501':
+          description: OIDC not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/oidc/callback:
+    get:
+      tags:
+        - Auth
+      operationId: oidcCallback
+      summary: OIDC authorization code callback
+      security: []
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: error
+          in: query
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect into the SPA with session cookie set.
+        '400':
+          description: Invalid OIDC callback parameters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/oidc/mock:
+    post:
+      tags:
+        - Auth
+      operationId: mockOidcLogin
+      summary: Offline OIDC mock login (development only)
+      description: Available only when HIGHLAND_OIDC_MOCK is enabled.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OIDCMockLoginRequest'
+      responses:
+        '200':
+          description: Mock session issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginSuccessResponse'
+        '403':
+          description: Mock OIDC disabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/account:
+    get:
+      tags:
+        - Account
+      operationId: getAccount
+      summary: Current account profile and policy summary
+      responses:
+        '200':
+          description: Account profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/account/password:
+    put:
+      tags:
+        - Account
+      operationId: changePassword
+      summary: Change password for the signed-in local user
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusOK'
+        '400':
+          description: HTTP 400.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/account/email:
+    put:
+      tags:
+        - Account
+      operationId: changeEmail
+      summary: Change email for the signed-in local user
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeEmailRequest'
+      responses:
+        '200':
+          description: Email changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusOK'
+        '400':
+          description: HTTP 400.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/account/mfa/enroll:
+    post:
+      tags:
+        - Account
+      operationId: beginMfaEnrollment
+      summary: Begin TOTP enrollment
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MFAEnrollBeginRequest'
+      responses:
+        '200':
+          description: Enrollment secret and otpauth URL.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MFAEnrollBeginResponse'
+        '400':
+          description: HTTP 400.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/account/mfa/confirm:
+    post:
+      tags:
+        - Account
+      operationId: confirmMfaEnrollment
+      summary: Confirm TOTP enrollment with a code
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MFAConfirmRequest'
+      responses:
+        '200':
+          description: MFA enabled; recovery codes returned once.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MFAConfirmResponse'
+        '400':
+          description: HTTP 400.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/account/mfa:
+    delete:
+      tags:
+        - Account
+      operationId: disableMfa
+      summary: Disable TOTP for the signed-in user
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MFADisableRequest'
+      responses:
+        '200':
+          description: MFA disabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusOK'
+        '400':
+          description: HTTP 400.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/users:
+    get:
+      tags:
+        - Users
+      operationId: listUsers
+      summary: List local users
+      responses:
+        '200':
+          description: User list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      tags:
+        - Users
+      operationId: createUser
+      summary: Create a local user
+      description: |
+        Privileged mutation. When durable audit is configured, required admission fails closed with 503 if the audit sink cannot append.
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUser'
+        '400':
+          description: HTTP 400.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: Required audit admission failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/users/{username}:
+    parameters:
+      - name: username
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      tags:
+        - Users
+      operationId: updateUser
+      summary: Update a local user (admin)
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: User updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusOK'
+        '400':
+          description: HTTP 400.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: Required audit admission failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags:
+        - Users
+      operationId: deleteUser
+      summary: Delete a local user (admin)
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      responses:
+        '200':
+          description: User deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusOK'
+        '400':
+          description: HTTP 400.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: Required audit admission failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/auth/security-policy:
+    get:
+      tags:
+        - Admin
+      operationId: getSecurityPolicy
+      summary: Get identity security policy
+      responses:
+        '200':
+          description: Current security policy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityPolicy'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    put:
+      tags:
+        - Admin
+      operationId: putSecurityPolicy
+      summary: Update identity security policy
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecurityPolicy'
+      responses:
+        '200':
+          description: Updated policy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityPolicy'
+        '400':
+          description: HTTP 400.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: Required audit admission failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/auth/oidc-config:
+    get:
+      tags:
+        - Admin
+      operationId: getOidcConfig
+      summary: Get public OIDC runtime configuration
+      description: Secret fields are never returned; secretSet indicates whether a client secret is stored.
+      responses:
+        '200':
+          description: Public OIDC config.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicOIDCConfig'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    put:
+      tags:
+        - Admin
+      operationId: putOidcConfig
+      summary: Update OIDC runtime configuration
+      description: clientSecret is write-only and never appears in responses.
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OIDCUpdateRequest'
+      responses:
+        '200':
+          description: Updated public OIDC config.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicOIDCConfig'
+        '400':
+          description: HTTP 400.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: Required audit admission failed or runtime unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/admin/providers/rook-ceph/dashboard-credential/reveal:
+    post:
+      tags:
+        - Admin
+      operationId: revealCephDashboardCredential
+      summary: Reveal Ceph Dashboard admin credential
+      description: |
+        Admin-only. Returns the dashboard password once after an explicit action. Response must not be cached. Audited. Does not include Kubernetes Secret metadata beyond the revealed username/password.
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      responses:
+        '200':
+          description: Credential revealed.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CephCredentialRevealResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Feature disabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '503':
+          description: HTTP 503.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/compatibility:
+    get:
+      tags:
+        - Platform
+      operationId: getCompatibility
+      summary: Compatibility and version narrative
+      responses:
+        '200':
+          description: Compatibility payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompatibilityResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/health:
+    get:
+      tags:
+        - Platform
+      operationId: getHealthNarrative
+      summary: Operator-facing health narrative items
+      responses:
+        '200':
+          description: Health items.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthNarrativeResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/preflight:
+    get:
+      tags:
+        - Platform
+      operationId: getPreflight
+      summary: Static preflight checks Highland can evaluate without cluster admin
+      responses:
+        '200':
+          description: Preflight check list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreflightResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/dashboard:
+    get:
+      tags:
+        - Platform
+      operationId: getDashboardAggregate
+      summary: Aggregated dashboard payload
+      responses:
+        '200':
+          description: Dashboard aggregate (shape may expand with providers).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/capacity:
+    get:
+      tags:
+        - Platform
+      operationId: getCapacityPlanning
+      summary: Capacity planning summary
+      responses:
+        '200':
+          description: Capacity planning payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/volumes/{name}/metrics:
+    get:
+      tags:
+        - Platform
+      operationId: getVolumeMetrics
+      summary: Per-volume metrics summary for the UI
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Volume metrics payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VolumeMetricsResponse'
+        '404':
+          description: HTTP 404.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/events/stream:
+    get:
+      tags:
+        - Platform
+      operationId: streamEvents
+      summary: Server-Sent Events change stream
+      description: |
+        Authenticated SSE stream of cache invalidation / change events. Reconnect with Last-Event-ID when supported by the client.
+      responses:
+        '200':
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/backup-credential:
+    post:
+      tags:
+        - Platform
+      operationId: createBackupCredential
+      summary: Create backup target credentials Secret
+      description: Request contains secret material (write-only); response never echoes secret values.
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BackupCredentialRequest'
+      responses:
+        '201':
+          description: Credential secret created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackupCredentialResponse'
+        '400':
+          description: HTTP 400.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/benchmarks:
+    get:
+      tags:
+        - Benchmarks
+      operationId: listBenchmarks
+      summary: List benchmark runs
+      responses:
+        '200':
+          description: Benchmark list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenchmarkListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      tags:
+        - Benchmarks
+      operationId: createBenchmark
+      summary: Create a benchmark run
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBenchmarkRequest'
+      responses:
+        '201':
+          description: Benchmark accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Benchmark'
+        '400':
+          description: HTTP 400.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        '503':
+          description: Kubernetes job execution disabled or unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/benchmarks/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Benchmarks
+      operationId: getBenchmark
+      summary: Get a benchmark run
+      responses:
+        '200':
+          description: Benchmark detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Benchmark'
+        '404':
+          description: HTTP 404.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags:
+        - Benchmarks
+      operationId: deleteBenchmark
+      summary: Delete a benchmark run record
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusOK'
+        '404':
+          description: HTTP 404.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleError'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/providers/{providerId}/longhorn/operations/{actionId}:
+    post:
+      tags:
+        - Operations
+      operationId: submitLonghornOperation
+      summary: Submit a Longhorn-native storage operation
+      description: |
+        Same durable plan/confirm/execute semantics as portable storage operations. Privileged; required audit admission applies when the audit sink is durable.
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: actionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Csrf'
+        - name: X-Highland-Confirmation
+          in: header
+          schema:
+            type: string
+        - name: X-Highland-Typed-Name
+          in: header
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '202':
+          description: Operation accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: HTTP 400.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: HTTP 403.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Preflight, store, or required audit unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/audit:
+    get:
+      tags:
+        - Audit
+      operationId: listAudit
+      summary: List recent audit events
+      description: |
+        Returns newest-first audit events from the durable audit store. Bounded by the optional limit query parameter (default 100).
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 100
+          description: Maximum number of events to return.
+      responses:
+        '200':
+          description: Recent audit events.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/v1/admin/storage-policy:
+    get:
+      tags:
+        - Policy
+      operationId: getStoragePolicy
+      summary: Read requested, effective, and installed storage policy
+      responses:
+        '200':
+          description: Effective policy is readable by every authenticated Highland role.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoragePolicyResponse'
+        default:
+          $ref: '#/components/responses/responses-Error'
+    put:
+      tags:
+        - Policy
+      operationId: applyStoragePolicy
+      summary: Apply a freshly planned runtime storage policy change
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoragePolicyChangeRequest'
+      responses:
+        '200':
+          description: Persisted policy generation observed by the API.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoragePolicyResponse'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/admin/storage-policy/plans:
+    post:
+      tags:
+        - Policy
+      operationId: planStoragePolicy
+      summary: Plan an admin storage policy change and issue a five-minute challenge
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoragePolicyChangeRequest'
+      responses:
+        '200':
+          description: Current/requested/effective comparison and signed confirmation challenge.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoragePolicyPlan'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/admin/storage-policy/history:
+    get:
+      tags:
+        - Policy
+      operationId: listStoragePolicyHistory
+      summary: List bounded policy audit events
+      parameters:
+        - $ref: '#/components/parameters/parameters-Limit'
+      responses:
+        '200':
+          description: Policy planning, denial, error, and apply audit events.
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/providers:
+    get:
+      tags:
+        - Providers
+      operationId: listStorageProviders
+      summary: List discovered and configured storage providers
+      responses:
+        '200':
+          description: Configured managed and automatically detected CSI providers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderList'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/providers/{providerId}:
+    get:
+      tags:
+        - Providers
+      operationId: getStorageProvider
+      summary: Get one storage provider descriptor
+      parameters:
+        - $ref: '#/components/parameters/ProviderId'
+      responses:
+        '200':
+          description: Provider descriptor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderDescriptor'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/drivers:
+    get:
+      tags:
+        - Inventory
+      operationId: listStorageDrivers
+      summary: List discovered CSI drivers
+      parameters:
+        - $ref: '#/components/parameters/parameters-Limit'
+        - $ref: '#/components/parameters/Continue'
+        - $ref: '#/components/parameters/Search'
+        - name: provider
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: driver
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: namespace
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: status
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+      responses:
+        '200':
+          $ref: '#/components/responses/DriverPage'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/classes:
+    get:
+      tags:
+        - Inventory
+      operationId: listStorageClasses
+      summary: List Kubernetes StorageClasses
+      parameters:
+        - $ref: '#/components/parameters/parameters-Limit'
+        - $ref: '#/components/parameters/Continue'
+        - $ref: '#/components/parameters/Search'
+        - name: provider
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: driver
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: namespace
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: status
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+      responses:
+        '200':
+          $ref: '#/components/responses/ClassPage'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/claims:
+    get:
+      tags:
+        - Inventory
+      operationId: listStorageClaims
+      summary: List persistent volume claims
+      parameters:
+        - $ref: '#/components/parameters/parameters-Limit'
+        - $ref: '#/components/parameters/Continue'
+        - $ref: '#/components/parameters/Search'
+        - name: provider
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: driver
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: namespace
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: status
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+      responses:
+        '200':
+          $ref: '#/components/responses/ClaimPage'
+        default:
+          $ref: '#/components/responses/responses-Error'
+    post:
+      tags:
+        - Operations
+      operationId: createStorageClaim
+      summary: Submit an approved PVC creation
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        $ref: '#/components/requestBodies/OperationRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/OperationAccepted'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/claims/{namespace}/{name}:
+    get:
+      tags:
+        - Inventory
+      operationId: getStorageClaim
+      summary: Get one persistent volume claim
+      parameters:
+        - $ref: '#/components/parameters/Namespace'
+        - $ref: '#/components/parameters/Name'
+      responses:
+        '200':
+          description: Claim summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimSummary'
+        default:
+          $ref: '#/components/responses/responses-Error'
+    delete:
+      tags:
+        - Operations
+      operationId: deleteStorageClaim
+      summary: Submit an approved PVC deletion
+      parameters:
+        - $ref: '#/components/parameters/Namespace'
+        - $ref: '#/components/parameters/Name'
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        $ref: '#/components/requestBodies/OperationApproval'
+      responses:
+        '202':
+          $ref: '#/components/responses/OperationAccepted'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/claims/{namespace}/{name}/size:
+    patch:
+      tags:
+        - Operations
+      operationId: expandStorageClaim
+      summary: Submit an approved PVC expansion
+      parameters:
+        - $ref: '#/components/parameters/Namespace'
+        - $ref: '#/components/parameters/Name'
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        $ref: '#/components/requestBodies/OperationApproval'
+      responses:
+        '202':
+          $ref: '#/components/responses/OperationAccepted'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/volumes:
+    get:
+      tags:
+        - Inventory
+      operationId: listPersistentVolumes
+      summary: List Kubernetes persistent volumes
+      parameters:
+        - $ref: '#/components/parameters/parameters-Limit'
+        - $ref: '#/components/parameters/Continue'
+        - $ref: '#/components/parameters/Search'
+        - name: provider
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: driver
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: namespace
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: status
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+      responses:
+        '200':
+          $ref: '#/components/responses/VolumePage'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/volumes/{name}:
+    get:
+      tags:
+        - Inventory
+      operationId: getPersistentVolume
+      summary: Get one Kubernetes persistent volume
+      parameters:
+        - $ref: '#/components/parameters/Name'
+      responses:
+        '200':
+          description: PersistentVolume summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersistentVolumeSummary'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/snapshots:
+    get:
+      tags:
+        - Inventory
+      operationId: listVolumeSnapshots
+      summary: List CSI volume snapshots
+      parameters:
+        - $ref: '#/components/parameters/parameters-Limit'
+        - $ref: '#/components/parameters/Continue'
+        - $ref: '#/components/parameters/Search'
+        - name: provider
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: driver
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: namespace
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: status
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+      responses:
+        '200':
+          $ref: '#/components/responses/SnapshotPage'
+        default:
+          $ref: '#/components/responses/responses-Error'
+    post:
+      tags:
+        - Operations
+      operationId: createVolumeSnapshot
+      summary: Submit an approved volume snapshot creation
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        $ref: '#/components/requestBodies/OperationRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/OperationAccepted'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/snapshots/{namespace}/{name}:
+    delete:
+      tags:
+        - Operations
+      operationId: deleteVolumeSnapshot
+      summary: Submit an approved volume snapshot deletion
+      parameters:
+        - $ref: '#/components/parameters/Namespace'
+        - $ref: '#/components/parameters/Name'
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        $ref: '#/components/requestBodies/OperationApproval'
+      responses:
+        '202':
+          $ref: '#/components/responses/OperationAccepted'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/attachments:
+    get:
+      tags:
+        - Inventory
+      operationId: listVolumeAttachments
+      summary: List CSI volume attachments
+      parameters:
+        - $ref: '#/components/parameters/parameters-Limit'
+        - $ref: '#/components/parameters/Continue'
+        - $ref: '#/components/parameters/Search'
+        - name: provider
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: driver
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: namespace
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: status
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+      responses:
+        '200':
+          $ref: '#/components/responses/AttachmentPage'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/capacity:
+    get:
+      tags:
+        - Inventory
+      operationId: listStorageCapacity
+      summary: List topology-aware CSI storage capacity
+      parameters:
+        - $ref: '#/components/parameters/parameters-Limit'
+        - $ref: '#/components/parameters/Continue'
+        - $ref: '#/components/parameters/Search'
+        - name: provider
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: driver
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: namespace
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: status
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+      responses:
+        '200':
+          $ref: '#/components/responses/CapacityPage'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/events:
+    get:
+      tags:
+        - Inventory
+      operationId: listStorageEvents
+      summary: List storage-related Kubernetes events
+      parameters:
+        - $ref: '#/components/parameters/parameters-Limit'
+        - $ref: '#/components/parameters/Continue'
+        - $ref: '#/components/parameters/Search'
+        - name: provider
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: driver
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: namespace
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - name: status
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+      responses:
+        '200':
+          $ref: '#/components/responses/EventPage'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/timeline:
+    get:
+      tags:
+        - Context
+      operationId: getStorageTimeline
+      summary: Get bounded, provider-attributed storage incident history
+      parameters:
+        - name: provider
+          in: query
+          schema:
+            type: string
+        - name: namespace
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: source
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: severity
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - $ref: '#/components/parameters/ContextLimit'
+      responses:
+        '200':
+          description: Deduplicated storage timeline with attribution and ordering evidence.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/capacity/ownership:
+    get:
+      tags:
+        - Context
+      operationId: getStorageCapacityOwnership
+      summary: Attribute distinct storage capacity measures without combining unlike values
+      parameters:
+        - name: provider
+          in: query
+          schema:
+            type: string
+        - name: namespace
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: measure
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: authoritativeOnly
+          in: query
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/ContextLimit'
+      responses:
+        '200':
+          description: Separately labelled requested, provisioned, backend, usable, and raw measures.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/comparison:
+    get:
+      tags:
+        - Context
+      operationId: compareStorageCandidates
+      summary: Evaluate providers and StorageClasses against explicit placement requirements
+      parameters:
+        - name: provider
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: storageClass
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: accessMode
+          in: query
+          schema:
+            type: string
+        - name: healthy
+          in: query
+          schema:
+            type: boolean
+        - name: minimumSupport
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ContextLimit'
+      responses:
+        '200':
+          description: Evidence-labelled eligibility without an opaque provider score.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/remediations:
+    get:
+      tags:
+        - Context
+      operationId: getStorageRemediations
+      summary: Get read-only, evidence-backed remediation guidance
+      parameters:
+        - name: provider
+          in: query
+          schema:
+            type: string
+        - name: severity
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: condition
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - $ref: '#/components/parameters/ContextLimit'
+      responses:
+        '200':
+          description: Guidance with explicit action surface, prerequisites, risks, and escalation.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/relationships:
+    get:
+      tags:
+        - Context
+      operationId: listStorageRelationships
+      summary: Expand a bounded provider storage relationship graph
+      parameters:
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 253
+        - name: kind
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+        - name: namespace
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - $ref: '#/components/parameters/Depth'
+        - $ref: '#/components/parameters/ContextLimit'
+        - $ref: '#/components/parameters/Continue'
+      responses:
+        '200':
+          description: Nodes and edges selected from one provider snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipGraph'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/resources/{kind}/{id}/relationships:
+    get:
+      tags:
+        - Context
+      operationId: getStorageResourceRelationships
+      summary: Expand relationships around one exact canonical resource ID
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+        - name: id
+          in: path
+          required: true
+          description: URL-safe canonical graph ID returned by a relationship API.
+          schema:
+            type: string
+            maxLength: 1024
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 253
+        - $ref: '#/components/parameters/Depth'
+        - $ref: '#/components/parameters/ContextLimit'
+        - $ref: '#/components/parameters/Continue'
+      responses:
+        '200':
+          description: Bounded subgraph containing the exact target.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipGraph'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/impact:
+    get:
+      tags:
+        - Context
+      operationId: getStorageImpact
+      summary: Determine confirmed, potential, and unknown workload impact
+      parameters:
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 253
+        - name: kind
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+        - name: id
+          in: query
+          required: true
+          description: Exact canonical graph ID.
+          schema:
+            type: string
+            maxLength: 1024
+        - $ref: '#/components/parameters/Depth'
+      responses:
+        '200':
+          description: Read-only workload impact with source freshness and incomplete-source conditions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImpactResult'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/providers/{providerId}/summary:
+    get:
+      tags:
+        - Providers
+      operationId: getProviderSummary
+      summary: Get a managed provider summary
+      parameters:
+        - $ref: '#/components/parameters/ProviderId'
+      responses:
+        '200':
+          description: Typed, bounded provider summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/providers/{providerId}/relationships:
+    get:
+      tags:
+        - Context
+      operationId: getProviderRelationships
+      summary: Expand a bounded relationship graph for one provider
+      parameters:
+        - $ref: '#/components/parameters/ProviderId'
+        - name: kind
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+        - name: namespace
+          in: query
+          schema:
+            type: string
+            maxLength: 253
+        - $ref: '#/components/parameters/Depth'
+        - $ref: '#/components/parameters/ContextLimit'
+        - $ref: '#/components/parameters/Continue'
+      responses:
+        '200':
+          description: Provider-scoped relationship graph.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipGraph'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/providers/{providerId}/drift:
+    get:
+      tags:
+        - Context
+      operationId: getProviderDrift
+      summary: Compare supported Rook desired state with bounded Ceph runtime evidence
+      parameters:
+        - $ref: '#/components/parameters/ProviderId'
+        - $ref: '#/components/parameters/ContextLimit'
+        - $ref: '#/components/parameters/Continue'
+      responses:
+        '200':
+          description: Desired and runtime authorities remain separate in every drift record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriftReport'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/providers/{providerId}/capacity/forecast:
+    get:
+      tags:
+        - Context
+      operationId: getProviderCapacityForecast
+      summary: Project one explicit capacity measure when sufficient fresh history exists
+      parameters:
+        - $ref: '#/components/parameters/ProviderId'
+        - name: measure
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: horizon
+          in: query
+          schema:
+            type: string
+            example: 720h
+      responses:
+        '200':
+          description: Bounded trend forecast or an explicit unavailable result.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/providers/{providerId}/health:
+    get:
+      tags:
+        - Providers
+      operationId: getProviderHealth
+      summary: Get provider health independently of readiness
+      parameters:
+        - $ref: '#/components/parameters/ProviderId'
+      responses:
+        '200':
+          description: Provider health independent from global readiness.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderHealth'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/providers/{providerId}/resources/{kind}:
+    get:
+      tags:
+        - Providers
+      operationId: listProviderResources
+      summary: List bounded typed resources for a provider
+      parameters:
+        - $ref: '#/components/parameters/ProviderId'
+        - $ref: '#/components/parameters/Kind'
+        - $ref: '#/components/parameters/parameters-Limit'
+        - $ref: '#/components/parameters/Continue'
+        - $ref: '#/components/parameters/Search'
+      responses:
+        '200':
+          $ref: '#/components/responses/ProviderResourcePage'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/providers/{providerId}/resources/{kind}/{id}:
+    get:
+      tags:
+        - Providers
+      operationId: getProviderResource
+      summary: Get one bounded typed provider resource
+      parameters:
+        - $ref: '#/components/parameters/ProviderId'
+        - $ref: '#/components/parameters/Kind'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 253
+      responses:
+        '200':
+          description: Bounded typed provider resource.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/actions:
+    get:
+      tags:
+        - Operations
+      operationId: listStorageActions
+      summary: List approved storage actions and availability
+      responses:
+        '200':
+          description: Machine-readable approved action and current availability matrix.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - writesEnabled
+                  - portableProviderIds
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActionAvailability'
+                  writesEnabled:
+                    type: boolean
+                  portableProviderIds:
+                    type: array
+                    description: Provider IDs currently authorized for portable PVC and snapshot workflows. A legacy wildcard is represented by `*`.
+                    items:
+                      type: string
+                  policySource:
+                    type: string
+                  policyGeneration:
+                    type: integer
+                    format: int64
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/plans:
+    post:
+      tags:
+        - Operations
+      operationId: planStorageOperation
+      summary: Plan and preflight a storage action without mutation
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        $ref: '#/components/requestBodies/OperationRequest'
+      responses:
+        '200':
+          description: Fresh server plan and short-lived confirmation challenge; no mutation occurred.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationPlan'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/operations:
+    get:
+      tags:
+        - Operations
+      operationId: listStorageOperations
+      summary: List durable storage operations
+      parameters:
+        - name: provider
+          in: query
+          schema:
+            type: string
+            maxLength: 128
+        - name: action
+          in: query
+          schema:
+            type: string
+            maxLength: 128
+        - name: state
+          in: query
+          schema:
+            type: string
+            maxLength: 128
+        - name: user
+          in: query
+          schema:
+            type: string
+            maxLength: 128
+        - $ref: '#/components/parameters/parameters-Limit'
+      responses:
+        '200':
+          description: Durable operation history; non-admins see only their operations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/StorageOperation'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/operations/{operationId}:
+    get:
+      tags:
+        - Operations
+      operationId: getStorageOperation
+      summary: Get one durable storage operation
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 253
+      responses:
+        '200':
+          description: Durable operation detail and timeline.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorageOperation'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/restores:
+    post:
+      tags:
+        - Operations
+      operationId: restoreStorageSnapshot
+      summary: Submit an approved snapshot restore
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        $ref: '#/components/requestBodies/OperationRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/OperationAccepted'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/storage/clones:
+    post:
+      tags:
+        - Operations
+      operationId: cloneStorageClaim
+      summary: Submit an approved PVC clone
+      parameters:
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        $ref: '#/components/requestBodies/OperationRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/OperationAccepted'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/providers/{providerId}/ceph/block-pools:
+    post:
+      tags:
+        - Operations
+      operationId: createCephBlockPool
+      summary: Submit an approved replicated Ceph pool creation
+      parameters:
+        - $ref: '#/components/parameters/ProviderId'
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        $ref: '#/components/requestBodies/OperationRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/OperationAccepted'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/providers/{providerId}/ceph/block-pools/{namespace}/{name}:
+    delete:
+      tags:
+        - Operations
+      operationId: deleteCephBlockPool
+      summary: Submit an approved proven-empty Ceph pool deletion
+      parameters:
+        - $ref: '#/components/parameters/ProviderId'
+        - $ref: '#/components/parameters/Namespace'
+        - $ref: '#/components/parameters/Name'
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        $ref: '#/components/requestBodies/OperationApproval'
+      responses:
+        '202':
+          $ref: '#/components/responses/OperationAccepted'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/providers/{providerId}/ceph/storage-classes:
+    post:
+      tags:
+        - Operations
+      operationId: createCephStorageClass
+      summary: Submit an approved Ceph StorageClass creation
+      description: actionId selects the approved RBD or CephFS StorageClass workflow.
+      parameters:
+        - $ref: '#/components/parameters/ProviderId'
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        $ref: '#/components/requestBodies/OperationRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/OperationAccepted'
+        default:
+          $ref: '#/components/responses/responses-Error'
+  /api/v1/providers/{providerId}/ceph/storage-classes/{name}:
+    delete:
+      tags:
+        - Operations
+      operationId: deleteCephStorageClass
+      summary: Submit an approved Ceph StorageClass deletion
+      parameters:
+        - $ref: '#/components/parameters/ProviderId'
+        - $ref: '#/components/parameters/Name'
+        - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        $ref: '#/components/requestBodies/OperationApproval'
+      responses:
+        '202':
+          $ref: '#/components/responses/OperationAccepted'
+        default:
+          $ref: '#/components/responses/responses-Error'
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: highland_session
+  parameters:
+    Csrf:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Double-submit token paired with the signed session's CSRF cookie.
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 100
+    parameters-Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 100
+    ProviderId:
+      name: providerId
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 128
+    Continue:
+      name: continue
+      in: query
+      description: Opaque v1 continuation-token returned by the previous page.
+      schema:
+        type: string
+        maxLength: 128
+    Search:
+      name: search
+      in: query
+      schema:
+        type: string
+        maxLength: 256
+    Namespace:
+      name: namespace
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 63
+        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+    Name:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 253
+    ContextLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 100
+    Depth:
+      name: depth
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 6
+        default: 2
+    Kind:
+      name: kind
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 128
+  responses:
+    Error:
+      $ref: '#/components/responses/ErrorResponse'
+    ErrorResponse:
+      description: Stable machine-readable error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unauthorized:
+      description: Missing or invalid session.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SimpleError'
+    Forbidden:
+      description: Authenticated but not authorized for this operation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SimpleError'
+    responses-Error:
+      description: Stable machine-readable error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/schemas-ErrorEnvelope'
+    DriverPage:
+      description: Paginated drivers
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DriverPage'
+    ClassPage:
+      description: Paginated classes
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ClassPage'
+    ClaimPage:
+      description: Paginated claims
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ClaimPage'
+    OperationAccepted:
+      description: Durable operation accepted. Replays of an equivalent active request return the same operation.
+      headers:
+        Location:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - operation
+            properties:
+              operation:
+                $ref: '#/components/schemas/StorageOperation'
+              operationId:
+                type: string
+              duplicate:
+                type: boolean
+    VolumePage:
+      description: Paginated volumes
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VolumePage'
+    SnapshotPage:
+      description: Paginated snapshots
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SnapshotPage'
+    AttachmentPage:
+      description: Paginated attachments
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AttachmentPage'
+    CapacityPage:
+      description: Paginated capacities
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CapacityPage'
+    EventPage:
+      description: Paginated events
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EventPage'
+    ProviderResourcePage:
+      description: Paginated bounded provider resources.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/PageBase'
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+  schemas:
+    APIError:
+      type: object
+      required:
+        - code
+        - message
+        - retryable
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable error code.
+        message:
+          type: string
+          description: Human-readable summary safe to show operators.
+        details:
+          type: object
+          additionalProperties: true
+        retryable:
+          type: boolean
+        requestId:
+          type: string
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: '#/components/schemas/APIError'
+    SimpleError:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+    HealthzResponse:
+      type: object
+      required:
+        - status
+        - service
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: highland-api
+    ReadyzResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          description: ready | not_ready
+          example: ready
+        uptime:
+          type: string
+          description: Process uptime when ready.
+        reason:
+          type: string
+          description: Present when status is not_ready.
+        managerUrl:
+          type: string
+        providerId:
+          type: string
+        storage:
+          type: object
+          additionalProperties: true
+    StatusResponse:
+      type: object
+      description: Consolidated versions, component health, and runtime facts for About/Status.
+      additionalProperties: true
+      properties:
+        highland:
+          type: object
+          additionalProperties: true
+        longhorn:
+          type: object
+          additionalProperties: true
+        kubernetes:
+          type: object
+          additionalProperties: true
+        compatibility:
+          type: object
+          additionalProperties: true
+        components:
+          type: object
+          additionalProperties: true
+        vendor:
+          type: object
+          additionalProperties: true
+        storage:
+          type: object
+          additionalProperties: true
+        storagePolicy:
+          type: object
+          additionalProperties: true
+    Role:
+      type: string
+      enum:
+        - viewer
+        - operator
+        - admin
+    User:
+      type: object
+      required:
+        - username
+        - role
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+        authSource:
+          type: string
+        mfaEnabled:
+          type: boolean
+        mfaSetupRequired:
+          type: boolean
+    AuthProvidersResponse:
+      type: object
+      required:
+        - mode
+        - local
+        - oidc
+      properties:
+        mode:
+          type: string
+          description: Auth mode configured for this deployment.
+        local:
+          type: boolean
+          description: Whether local username/password login is offered.
+        oidc:
+          type: boolean
+          description: Whether OIDC/SSO is offered.
+        oidcReady:
+          type: boolean
+          description: Whether an OIDC provider is currently configured and ready.
+        oidcMock:
+          type: boolean
+        localAlways:
+          type: boolean
+        message:
+          type: string
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+    LoginSuccessResponse:
+      type: object
+      required:
+        - user
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+    MFARequiredResponse:
+      type: object
+      required:
+        - mfaRequired
+        - challengeToken
+      properties:
+        mfaRequired:
+          type: boolean
+          const: true
+        challengeToken:
+          type: string
+          description: Short-lived token required by POST /auth/mfa/verify.
+    LogoutResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          example: logged_out
+    MeResponse:
+      type: object
+      required:
+        - user
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+    AuditEvent:
+      type: object
+      required:
+        - id
+        - timestamp
+        - username
+        - role
+        - action
+        - result
+      properties:
+        schemaVersion:
+          type: integer
+        id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        username:
+          type: string
+        role:
+          type: string
+        action:
+          type: string
+        target:
+          type: string
+        method:
+          type: string
+        path:
+          type: string
+        result:
+          type: string
+          description: ok | denied | error
+        sourceIp:
+          type: string
+        message:
+          type: string
+        operationId:
+          type: string
+        actionId:
+          type: string
+        providerId:
+          type: string
+        providerKind:
+          type: string
+        targetKind:
+          type: string
+        targetNamespace:
+          type: string
+        targetName:
+          type: string
+        targetUid:
+          type: string
+        planHash:
+          type: string
+        correlationId:
+          type: string
+        httpCorrelationId:
+          type: string
+        kubernetesCorrelationId:
+          type: string
+        cephCorrelationId:
+          type: string
+    AuditListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+    StorageAPIError:
+      $ref: '#/components/schemas/schemas-APIError'
+    StorageErrorEnvelope:
+      $ref: '#/components/schemas/schemas-ErrorEnvelope'
+    MFAVerifyRequest:
+      type: object
+      required:
+        - challengeToken
+        - code
+      properties:
+        challengeToken:
+          type: string
+        code:
+          type: string
+          description: TOTP or recovery code.
+    OIDCMockLoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+    SecurityPolicy:
+      type: object
+      additionalProperties: true
+      properties:
+        mfaMode:
+          type: string
+        passwordMinLength:
+          type: integer
+        passwordHistory:
+          type: integer
+        sessionMaxAge:
+          type: string
+    AccountResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+        authSource:
+          type: string
+        mfaEnabled:
+          type: boolean
+        mfaSetupRequired:
+          type: boolean
+        policy:
+          $ref: '#/components/schemas/SecurityPolicy'
+    ChangePasswordRequest:
+      type: object
+      required:
+        - currentPassword
+        - newPassword
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          writeOnly: true
+        newPassword:
+          type: string
+          format: password
+          writeOnly: true
+    StatusOK:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+    ChangeEmailRequest:
+      type: object
+      required:
+        - currentPassword
+        - email
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          writeOnly: true
+        email:
+          type: string
+    MFAEnrollBeginRequest:
+      type: object
+      required:
+        - currentPassword
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          writeOnly: true
+    MFAEnrollBeginResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        secret:
+          type: string
+          description: Base32 TOTP secret (enrollment only).
+        otpauthUrl:
+          type: string
+        issuer:
+          type: string
+    MFAConfirmRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+    MFAConfirmResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        recoveryCodes:
+          type: array
+          items:
+            type: string
+          description: Shown once; never returned again.
+    MFADisableRequest:
+      type: object
+      required:
+        - currentPassword
+        - code
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          writeOnly: true
+        code:
+          type: string
+    PublicUser:
+      type: object
+      required:
+        - username
+        - role
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+        disabled:
+          type: boolean
+        mfaEnabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        lastLoginAt:
+          type: string
+          format: date-time
+    UserListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicUser'
+    CreateUserRequest:
+      type: object
+      required:
+        - username
+        - password
+        - role
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 64
+        email:
+          type: string
+        password:
+          type: string
+          format: password
+          writeOnly: true
+        role:
+          $ref: '#/components/schemas/Role'
+    UpdateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+          format: password
+          writeOnly: true
+        role:
+          $ref: '#/components/schemas/Role'
+        disabled:
+          type: boolean
+        resetMfa:
+          type: boolean
+    PublicOIDCConfig:
+      type: object
+      additionalProperties: true
+      properties:
+        enabled:
+          type: boolean
+        issuerUrl:
+          type: string
+        clientId:
+          type: string
+        redirectUrl:
+          type: string
+        roleClaim:
+          type: string
+        secretSet:
+          type: boolean
+          description: Whether a client secret is stored (value never returned).
+    OIDCUpdateRequest:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        issuerUrl:
+          type: string
+        clientId:
+          type: string
+        clientSecret:
+          type: string
+          format: password
+          writeOnly: true
+          description: Write-only; omitted from all response schemas.
+        redirectUrl:
+          type: string
+        roleClaim:
+          type: string
+    CephCredentialRevealResponse:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+          description: Revealed once to an authenticated admin; not a reusable API secret field for clients to store.
+    CompatibilityResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        highlandVersion:
+          type: string
+        managerUrl:
+          type: string
+        longhornSupport:
+          type: array
+          items:
+            type: string
+        mode:
+          type: string
+        enabled:
+          type: boolean
+        notes:
+          type: string
+    HealthNarrativeResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        generatedAt:
+          type: string
+          format: date-time
+    PreflightResponse:
+      type: object
+      properties:
+        checks:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    DashboardResponse:
+      type: object
+      additionalProperties: true
+    CapacityResponse:
+      type: object
+      additionalProperties: true
+    VolumeMetricsResponse:
+      type: object
+      additionalProperties: true
+    BackupCredentialRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        namespace:
+          type: string
+        secretData:
+          type: object
+          additionalProperties:
+            type: string
+          writeOnly: true
+    BackupCredentialResponse:
+      type: object
+      required:
+        - name
+        - namespace
+      properties:
+        name:
+          type: string
+        namespace:
+          type: string
+    Benchmark:
+      type: object
+      additionalProperties: true
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+        providerId:
+          type: string
+        storageClass:
+          type: string
+    BenchmarkListResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Benchmark'
+    CreateBenchmarkRequest:
+      type: object
+      additionalProperties: true
+      properties:
+        name:
+          type: string
+        storageClass:
+          type: string
+        size:
+          type: string
+        mode:
+          type: string
+        retainFailedPvc:
+          type: boolean
+        retainConfirmation:
+          type: string
+    schemas-APIError:
+      type: object
+      required:
+        - code
+        - message
+        - retryable
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        retryable:
+          type: boolean
+        requestId:
+          type: string
+    schemas-ErrorEnvelope:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: '#/components/schemas/schemas-APIError'
+    StorageWritePolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - acceptNewOperations
+        - portableKubernetesWrites
+        - portableKubernetesProviderIds
+        - longhornWrites
+        - rookCephWrites
+        - allowCephStorageClassDelete
+        - allowCephPoolDelete
+      properties:
+        acceptNewOperations:
+          type: boolean
+        portableKubernetesWrites:
+          type: boolean
+        portableKubernetesProviderIds:
+          type: array
+          maxItems: 64
+          uniqueItems: true
+          description: Explicit provider IDs allowed to use portable PVC and snapshot workflows. A legacy wildcard may be returned for a pre-scoping policy but is never emitted by the current UI.
+          items:
+            type: string
+        longhornWrites:
+          type: boolean
+        rookCephWrites:
+          type: boolean
+        allowCephStorageClassDelete:
+          type: boolean
+        allowCephPoolDelete:
+          type: boolean
+    StoragePolicyCeiling:
+      type: object
+      additionalProperties: false
+      properties:
+        portableKubernetesWrites:
+          type: boolean
+        longhornWrites:
+          type: boolean
+        rookCephWrites:
+          type: boolean
+        allowCephStorageClassDelete:
+          type: boolean
+        allowCephPoolDelete:
+          type: boolean
+    StoragePolicyResponse:
+      type: object
+      required:
+        - requested
+        - effective
+        - ceiling
+        - conditions
+        - source
+        - generation
+        - resourceVersion
+        - observedGeneration
+        - inFlightOperations
+        - meta
+      properties:
+        requested:
+          $ref: '#/components/schemas/StorageWritePolicy'
+        effective:
+          $ref: '#/components/schemas/StorageWritePolicy'
+        ceiling:
+          $ref: '#/components/schemas/StoragePolicyCeiling'
+        conditions:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        source:
+          type: string
+          enum:
+            - runtime-policy
+            - static-helm
+            - unavailable
+        generation:
+          type: integer
+          format: int64
+        resourceVersion:
+          type: string
+        observedGeneration:
+          type: integer
+          format: int64
+        inFlightOperations:
+          type: integer
+          minimum: 0
+        lastChange:
+          type: object
+          additionalProperties: true
+        meta:
+          type: object
+          additionalProperties: true
+    StoragePolicyConfirmation:
+      type: object
+      additionalProperties: false
+      required:
+        - challenge
+      properties:
+        challenge:
+          type: string
+        clusterIdentity:
+          type: string
+        enablePhrase:
+          type: string
+          enum:
+            - ENABLE STORAGE CHANGES
+        cephPoolPhrase:
+          type: string
+          enum:
+            - ENABLE CEPH POOL DELETE
+        impactAcknowledged:
+          type: boolean
+    StoragePolicyChangeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - policy
+        - resourceVersion
+      properties:
+        policy:
+          $ref: '#/components/schemas/StorageWritePolicy'
+        resourceVersion:
+          type: string
+        confirmation:
+          $ref: '#/components/schemas/StoragePolicyConfirmation'
+    StoragePolicyPlan:
+      type: object
+      required:
+        - current
+        - requested
+        - effective
+        - ceiling
+        - resourceVersion
+        - policyGeneration
+        - broadening
+        - impact
+        - inFlightOperations
+        - clusterIdentity
+        - actor
+        - requestId
+        - hash
+        - challenge
+        - challengeExpiresAt
+      properties:
+        current:
+          $ref: '#/components/schemas/StorageWritePolicy'
+        requested:
+          $ref: '#/components/schemas/StorageWritePolicy'
+        effective:
+          $ref: '#/components/schemas/StorageWritePolicy'
+        ceiling:
+          $ref: '#/components/schemas/StoragePolicyCeiling'
+        conditions:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        resourceVersion:
+          type: string
+        policyGeneration:
+          type: integer
+          format: int64
+        broadening:
+          type: boolean
+        enablesCephPoolDelete:
+          type: boolean
+        impact:
+          type: object
+          properties:
+            actionIds:
+              type: array
+              items:
+                type: string
+            roles:
+              type: array
+              items:
+                type: string
+        inFlightOperations:
+          type: integer
+          minimum: 0
+        clusterIdentity:
+          type: string
+        actor:
+          type: string
+        requestId:
+          type: string
+        hash:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        challenge:
+          type: string
+        challengeExpiresAt:
+          type: string
+          format: date-time
+        observedAt:
+          type: string
+          format: date-time
+    Condition:
+      type: object
+      required:
+        - type
+        - status
+        - severity
+      properties:
+        type:
+          type: string
+        status:
+          type: string
+        severity:
+          type: string
+          enum:
+            - ok
+            - info
+            - warning
+            - error
+            - unknown
+        reason:
+          type: string
+        message:
+          type: string
+        lastTransitionTime:
+          type: string
+          format: date-time
+        observedAt:
+          type: string
+          format: date-time
+    ProviderHealth:
+      type: object
+      required:
+        - status
+        - conditions
+        - observedAt
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - info
+            - warning
+            - error
+            - unknown
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+        observedAt:
+          type: string
+          format: date-time
+        stale:
+          type: boolean
+    ProviderDescriptor:
+      type: object
+      required:
+        - id
+        - kind
+        - displayName
+        - supportLevel
+        - drivers
+        - capabilities
+        - health
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        displayName:
+          type: string
+        supportLevel:
+          type: string
+          enum:
+            - detected
+            - verified
+            - managed
+        drivers:
+          type: array
+          items:
+            type: string
+        version:
+          type: string
+        namespace:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        resourceKinds:
+          type: array
+          description: Provider-specific resource collections supported by the typed resource API.
+          items:
+            type: string
+        health:
+          $ref: '#/components/schemas/ProviderHealth'
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          maxProperties: 64
+    ProviderList:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderDescriptor'
+        meta:
+          type: object
+          required:
+            - lastSync
+            - snapshotApi
+          properties:
+            lastSync:
+              type: string
+              format: date-time
+            snapshotApi:
+              type: boolean
+            conditions:
+              type: array
+              items:
+                $ref: '#/components/schemas/Condition'
+    PageMeta:
+      type: object
+      required:
+        - limit
+        - total
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+        continue:
+          type: string
+        total:
+          type: integer
+          minimum: 0
+    PageBase:
+      type: object
+      required:
+        - data
+        - page
+      properties:
+        data:
+          type: array
+        page:
+          $ref: '#/components/schemas/PageMeta'
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+    DriverSummary:
+      type: object
+      required:
+        - name
+        - providerId
+        - supportLevel
+        - nodeCount
+        - storageClassCount
+        - persistentVolumeCount
+      properties:
+        name:
+          type: string
+        providerId:
+          type: string
+        supportLevel:
+          type: string
+          enum:
+            - detected
+            - verified
+            - managed
+        nodeCount:
+          type: integer
+        storageClassCount:
+          type: integer
+        persistentVolumeCount:
+          type: integer
+    DriverPage:
+      allOf:
+        - $ref: '#/components/schemas/PageBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/DriverSummary'
+    StorageClassSummary:
+      type: object
+      required:
+        - name
+        - providerId
+        - provisioner
+      properties:
+        name:
+          type: string
+        kubernetesUid:
+          type: string
+        providerId:
+          type: string
+        provisioner:
+          type: string
+        reclaimPolicy:
+          type: string
+        volumeBindingMode:
+          type: string
+        allowVolumeExpansion:
+          type: boolean
+        default:
+          type: boolean
+        parameters:
+          type: object
+          additionalProperties:
+            type: string
+        claimCount:
+          type: integer
+        volumeCount:
+          type: integer
+        snapshotClasses:
+          type: array
+          items:
+            type: string
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+    ClassPage:
+      allOf:
+        - $ref: '#/components/schemas/PageBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/StorageClassSummary'
+    ProviderReference:
+      type: object
+      required:
+        - kind
+        - id
+      properties:
+        kind:
+          type: string
+        id:
+          type: string
+    ClaimSummary:
+      type: object
+      required:
+        - id
+        - namespace
+        - name
+        - providerId
+        - phase
+      properties:
+        id:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        kubernetesUid:
+          type: string
+        providerId:
+          type: string
+        driver:
+          type: string
+        storageClass:
+          type: string
+        pvName:
+          type: string
+        phase:
+          type: string
+        requestedCapacity:
+          type: string
+          description: Exact Kubernetes quantity string.
+        provisionedCapacity:
+          type: string
+          description: Exact Kubernetes quantity string.
+        volumeHandle:
+          type: string
+        volumeAttributes:
+          type: object
+          additionalProperties:
+            type: string
+          maxProperties: 8
+          description: Allowlisted non-secret CSI correlation metadata.
+        providerRef:
+          $ref: '#/components/schemas/ProviderReference'
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+    ClaimPage:
+      allOf:
+        - $ref: '#/components/schemas/PageBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/ClaimSummary'
+    ResourceTarget:
+      type: object
+      required:
+        - kind
+        - name
+      properties:
+        apiVersion:
+          type: string
+        kind:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        uid:
+          type: string
+        resourceVersion:
+          type: string
+    Confirmation:
+      type: object
+      properties:
+        challenge:
+          type: string
+        typedName:
+          type: string
+        warningsAcknowledged:
+          type: boolean
+          default: false
+    OperationRequest:
+      type: object
+      required:
+        - actionId
+        - target
+      properties:
+        actionId:
+          type: string
+          maxLength: 128
+        providerId:
+          type: string
+          maxLength: 128
+        target:
+          $ref: '#/components/schemas/ResourceTarget'
+        parameters:
+          type: object
+          additionalProperties: true
+          maxProperties: 64
+        confirmation:
+          $ref: '#/components/schemas/Confirmation'
+    StorageOperation:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - name
+        - creationTimestamp
+        - spec
+        - status
+      properties:
+        apiVersion:
+          const: highland.io/v1alpha1
+        kind:
+          const: StorageOperation
+        name:
+          type: string
+        uid:
+          type: string
+        resourceVersion:
+          type: string
+        creationTimestamp:
+          type: string
+          format: date-time
+        spec:
+          type: object
+          description: Immutable; confirmation secrets and provider credentials are never stored.
+          additionalProperties: true
+        status:
+          type: object
+          required:
+            - phase
+          properties:
+            phase:
+              type: string
+              enum:
+                - Pending
+                - Running
+                - Succeeded
+                - Failed
+                - Cancelled
+            step:
+              type: string
+            retries:
+              type: integer
+            errorCode:
+              type: string
+            diagnostics:
+              type: string
+              maxLength: 1000
+            startedAt:
+              type: string
+              format: date-time
+            finishedAt:
+              type: string
+              format: date-time
+            lastAttemptAt:
+              type: string
+              format: date-time
+    PersistentVolumeSummary:
+      type: object
+      required:
+        - name
+        - providerId
+        - phase
+      properties:
+        name:
+          type: string
+        kubernetesUid:
+          type: string
+        providerId:
+          type: string
+        driver:
+          type: string
+        volumeHandle:
+          type: string
+        volumeAttributes:
+          type: object
+          additionalProperties:
+            type: string
+          maxProperties: 8
+          description: Allowlisted non-secret CSI correlation metadata.
+        storageClass:
+          type: string
+        phase:
+          type: string
+        capacity:
+          type: string
+        reclaimPolicy:
+          type: string
+        claimNamespace:
+          type: string
+        claimName:
+          type: string
+        providerRef:
+          $ref: '#/components/schemas/ProviderReference'
+        backendAllocatedCapacity:
+          type: string
+        backend:
+          type: object
+          additionalProperties: true
+          maxProperties: 64
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+    VolumePage:
+      allOf:
+        - $ref: '#/components/schemas/PageBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/PersistentVolumeSummary'
+    SnapshotSummary:
+      type: object
+      required:
+        - id
+        - namespace
+        - name
+        - providerId
+      properties:
+        id:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        providerId:
+          type: string
+        driver:
+          type: string
+        snapshotClass:
+          type: string
+        sourcePvc:
+          type: string
+        readyToUse:
+          type: boolean
+        restoreSize:
+          type: string
+        deletionPolicy:
+          type: string
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+    SnapshotPage:
+      allOf:
+        - $ref: '#/components/schemas/PageBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/SnapshotSummary'
+    AttachmentSummary:
+      type: object
+      required:
+        - name
+        - providerId
+        - driver
+        - pvName
+        - nodeName
+        - attached
+      properties:
+        name:
+          type: string
+        providerId:
+          type: string
+        driver:
+          type: string
+        pvName:
+          type: string
+        nodeName:
+          type: string
+        attached:
+          type: boolean
+        attachError:
+          type: string
+        detachError:
+          type: string
+    AttachmentPage:
+      allOf:
+        - $ref: '#/components/schemas/PageBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/AttachmentSummary'
+    CapacitySummary:
+      type: object
+      required:
+        - providerId
+        - driver
+        - storageClass
+        - capacity
+        - observedAt
+      properties:
+        providerId:
+          type: string
+        driver:
+          type: string
+        storageClass:
+          type: string
+        capacity:
+          type: string
+        maximumVolumeSize:
+          type: string
+        observedAt:
+          type: string
+          format: date-time
+    CapacityPage:
+      allOf:
+        - $ref: '#/components/schemas/PageBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/CapacitySummary'
+    StorageEvent:
+      type: object
+      required:
+        - name
+      properties:
+        namespace:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        reason:
+          type: string
+        message:
+          type: string
+        regardingKind:
+          type: string
+        regardingName:
+          type: string
+        count:
+          type: integer
+        lastObservedAt:
+          type: string
+          format: date-time
+    EventPage:
+      allOf:
+        - $ref: '#/components/schemas/PageBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/StorageEvent'
+    GraphNode:
+      type: object
+      required:
+        - apiVersion
+        - id
+        - kind
+        - providerId
+        - name
+        - freshness
+      properties:
+        apiVersion:
+          type: string
+          const: storage.highland.io/v1alpha1
+        id:
+          type: string
+          description: Stable URL-safe canonical identity.
+        kind:
+          type: string
+        providerId:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        kubernetesUid:
+          type: string
+        providerRef:
+          $ref: '#/components/schemas/ProviderReference'
+        observedAt:
+          type: string
+          format: date-time
+        freshness:
+          type: string
+          enum:
+            - fresh
+            - aging
+            - stale
+            - unknown
+        attributes:
+          type: object
+          additionalProperties: true
+          maxProperties: 32
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+    RelationshipEvidence:
+      type: object
+      required:
+        - source
+        - freshness
+        - confidence
+      properties:
+        source:
+          type: string
+        ref:
+          type: string
+          description: Exact Kubernetes UID, CSI handle, or provider-native identifier.
+        observedAt:
+          type: string
+          format: date-time
+        freshness:
+          type: string
+          enum:
+            - fresh
+            - aging
+            - stale
+            - unknown
+        confidence:
+          type: string
+          enum:
+            - authoritative
+            - derived
+            - potential
+            - unknown
+        message:
+          type: string
+    GraphEdge:
+      type: object
+      required:
+        - apiVersion
+        - id
+        - type
+        - from
+        - to
+        - confidence
+        - evidence
+      properties:
+        apiVersion:
+          type: string
+          const: storage.highland.io/v1alpha1
+        id:
+          type: string
+        type:
+          type: string
+          enum:
+            - uses
+            - binds
+            - provisions
+            - attaches
+            - mounted-by
+            - owned-by
+            - backed-by
+            - belongs-to-pool
+            - belongs-to-filesystem
+            - managed-by
+            - affected-by
+        from:
+          type: string
+        to:
+          type: string
+        confidence:
+          type: string
+          enum:
+            - authoritative
+            - derived
+            - potential
+            - unknown
+        evidence:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RelationshipEvidence'
+    RelationshipGraph:
+      type: object
+      required:
+        - apiVersion
+        - providerId
+        - nodes
+        - edges
+        - page
+        - observedAt
+      properties:
+        apiVersion:
+          type: string
+          const: storage.highland.io/v1alpha1
+        providerId:
+          type: string
+        nodes:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/GraphNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphEdge'
+        page:
+          $ref: '#/components/schemas/PageMeta'
+        observedAt:
+          type: string
+          format: date-time
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+        incomplete:
+          type: boolean
+    ImpactResource:
+      type: object
+      required:
+        - node
+        - confidence
+      properties:
+        node:
+          $ref: '#/components/schemas/GraphNode'
+        confidence:
+          type: string
+          enum:
+            - authoritative
+            - derived
+            - potential
+            - unknown
+        path:
+          type: array
+          maxItems: 7
+          items:
+            type: string
+    ImpactResult:
+      type: object
+      required:
+        - apiVersion
+        - providerId
+        - target
+        - confirmed
+        - potential
+        - unknown
+        - backedBy
+        - summary
+        - observedAt
+        - freshness
+      properties:
+        apiVersion:
+          type: string
+          const: storage.highland.io/v1alpha1
+        providerId:
+          type: string
+        target:
+          $ref: '#/components/schemas/GraphNode'
+        confirmed:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/ImpactResource'
+        potential:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/ImpactResource'
+        unknown:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/ImpactResource'
+        backedBy:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/ImpactResource'
+        summary:
+          type: object
+          additionalProperties: true
+        observedAt:
+          type: string
+          format: date-time
+        freshness:
+          type: string
+          enum:
+            - fresh
+            - aging
+            - stale
+            - unknown
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+        incomplete:
+          type: boolean
+    DriftAuthority:
+      type: object
+      required:
+        - source
+        - freshness
+      properties:
+        source:
+          type: string
+        observedAt:
+          type: string
+          format: date-time
+        freshness:
+          type: string
+          enum:
+            - fresh
+            - aging
+            - stale
+            - unknown
+        fields:
+          type: object
+          additionalProperties: true
+          maxProperties: 100
+    DriftRecord:
+      type: object
+      required:
+        - id
+        - providerId
+        - category
+        - resource
+        - firstObserved
+        - lastObserved
+        - duration
+        - severity
+        - actionable
+        - actionSurface
+        - message
+      properties:
+        id:
+          type: string
+        providerId:
+          type: string
+        category:
+          type: string
+          enum:
+            - missing-runtime-resource
+            - unexpected-runtime-resource
+            - rook-not-ready
+            - spec-status-divergence
+            - reconciliation-stalled
+            - version-unsupported
+            - runtime-stale
+            - post-operation-verification-mismatch
+        resource:
+          $ref: '#/components/schemas/GraphNode'
+        desired:
+          $ref: '#/components/schemas/DriftAuthority'
+        runtime:
+          $ref: '#/components/schemas/DriftAuthority'
+        firstObserved:
+          type: string
+          format: date-time
+        lastObserved:
+          type: string
+          format: date-time
+        duration:
+          type: string
+        severity:
+          type: string
+          enum:
+            - ok
+            - info
+            - warning
+            - error
+            - unknown
+        actionable:
+          type: boolean
+        actionSurface:
+          type: string
+          enum:
+            - highland
+            - rook-ceph
+            - ceph-dashboard
+            - highland-configuration
+        suppressed:
+          type: boolean
+        message:
+          type: string
+    DriftReport:
+      type: object
+      required:
+        - apiVersion
+        - providerId
+        - data
+        - page
+        - summary
+        - observedAt
+      properties:
+        apiVersion:
+          type: string
+          const: storage.highland.io/v1alpha1
+        providerId:
+          type: string
+        data:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/DriftRecord'
+        page:
+          $ref: '#/components/schemas/PageMeta'
+        summary:
+          type: object
+          additionalProperties:
+            type: integer
+        observedAt:
+          type: string
+          format: date-time
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+        incomplete:
+          type: boolean
+    Action:
+      type: object
+      required:
+        - id
+        - capability
+        - minimumRole
+        - risk
+        - confirmation
+        - featureFlag
+        - preflightChecks
+        - auditAction
+      properties:
+        id:
+          type: string
+        capability:
+          type: string
+        minimumRole:
+          type: string
+          enum:
+            - operator
+            - admin
+        providerKind:
+          type: string
+        risk:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+            - critical
+        confirmation:
+          type: string
+          enum:
+            - summary
+            - typed-name
+        featureFlag:
+          type: string
+        preflightChecks:
+          type: array
+          items:
+            type: string
+        auditAction:
+          type: string
+    ActionAvailability:
+      type: object
+      required:
+        - action
+        - enabled
+        - available
+      properties:
+        action:
+          $ref: '#/components/schemas/Action'
+        enabled:
+          type: boolean
+        available:
+          type: boolean
+        unavailableReason:
+          type: string
+    PlannedResource:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - name
+        - operation
+      properties:
+        apiVersion:
+          type: string
+        kind:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        operation:
+          type: string
+          enum:
+            - server-side-apply
+            - update
+            - delete
+        manifest:
+          type: object
+          additionalProperties: true
+    OperationPlan:
+      type: object
+      required:
+        - action
+        - target
+        - resources
+        - checks
+        - blastRadius
+        - hash
+        - challenge
+        - challengeExpiresAt
+        - observedAt
+      properties:
+        action:
+          $ref: '#/components/schemas/Action'
+        providerId:
+          type: string
+        target:
+          $ref: '#/components/schemas/ResourceTarget'
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlannedResource'
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceTarget'
+        checks:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        warnings:
+          type: array
+          items:
+            type: string
+        blastRadius:
+          type: string
+        hash:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        policyVersion:
+          type: string
+          description: Observed runtime policy version bound into the challenge.
+        challenge:
+          type: string
+        challengeExpiresAt:
+          type: string
+          format: date-time
+        observedAt:
+          type: string
+          format: date-time
+  requestBodies:
+    OperationRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OperationRequest'
+    OperationApproval:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OperationRequest'

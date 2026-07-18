@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "runId": "fixture-sample-skipped",
+  "profileId": "linstor-drbd",
+  "provider": "linstor",
+  "gate": "production",
+  "status": "skipped",
+  "sourceCommit": "0000000000000000000000000000000000000000",
+  "startedAt": "2026-07-18T11:00:00Z",
+  "endedAt": "2026-07-18T11:00:05Z",
+  "environment": {
+    "class": "self-hosted-lab"
+  },
+  "assertions": [
+    { "id": "QA-C4.1", "status": "skipped", "message": "lab runner unavailable" }
+  ],
+  "cleanup": {
+    "required": true,
+    "status": "skipped"
+  },
+  "message": "Fixture: production profile skipped due to missing infrastructure. Must NOT satisfy a production gate.",
+  "password": "must-be-redacted-by-aggregator",
+  "token": "must-be-redacted-by-aggregator"
+}

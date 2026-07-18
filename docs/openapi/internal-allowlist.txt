@@ -1,0 +1,14 @@
+# Paths registered in Chi that are intentionally absent from the public
+# Highland client contract (ADR-0007 / DEC-12). One path per line; # comments ok.
+# Used by hack/openapi-route-inventory.sh when STRICT=1.
+
+# Prometheus scrape of the BFF process (in-cluster, NetworkPolicy-gated).
+/metrics
+# Application metrics summary (high-cardinality operational surface; not a stable client API).
+/api/v1/metrics
+
+# Longhorn manager proxy: Highland does not own the upstream Longhorn OpenAPI schema.
+# Documented as an authenticated same-origin proxy, not a Highland-authored contract.
+/api/v1/lh
+/api/v1/lh/dashboard
+/api/v1/lh/backingimages

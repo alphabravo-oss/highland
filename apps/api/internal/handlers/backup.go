@@ -73,7 +73,7 @@ func (h *HighlandAPI) CreateBackupCredential(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if h.Audit != nil {
-		h.Audit.Append(audit.Event{
+		_ = h.Audit.Append(r.Context(), audit.Event{
 			Username: user.Username, Role: string(user.Role),
 			Action: "backup_credential_create", Target: ns + "/" + body.Name,
 			Method: r.Method, Path: r.URL.Path, Result: "ok", SourceIP: r.RemoteAddr,

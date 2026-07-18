@@ -1,5 +1,71 @@
 # Changelog
 
+## 0.4.0 — Production-readiness foundations and engineering scale (2026-07-18)
+
+Highland 0.4.0 establishes the architecture, contracts, and automated validation needed to move
+the multi-provider control plane toward production HA. It adds durable-audit and shared-limiter
+foundations, safer multi-replica chart behavior, canonical API contracts, qualification evidence,
+and release-integrity scaffolding while retaining the existing alpha support boundary.
+
+### High availability and durable audit
+
+- Add a context-aware audit-sink contract with memory, JSONL, PostgreSQL, redaction, health, typed
+  errors, and a resumable JSONL import path.
+- Add required pre-mutation audit admission for storage operations, identity administration, and
+  storage-policy changes so configured durable-audit outages fail closed before privileged work is
+  created.
+- Add a shared Redis login limiter with atomic IP and user/IP accounting, IPv4 and IPv6
+  normalization, fail-closed production behavior, and an explicit fail-open break-glass option.
+- Extract API construction into a testable application package and add bootstrap-matrix coverage
+  for development, durable-audit-required, Redis, disabled-provider, and failure configurations.
+- Add production-HA example values and runbooks for durable audit, limiter outages, and replica
+  availability.
+
+### Helm and multi-replica operation
+
+- Add API and web PodDisruptionBudgets, rolling-update controls, startup probes, pod anti-affinity,
+  and topology-spread support.
+- Add digest-aware image references for API, web, and benchmark helper images, with chart-render
+  coverage for default, embedded, production-HA, RBAC, and digest configurations.
+- Keep provider writes and Kubernetes benchmark Jobs opt-in, preserving the least-privilege default
+  installation.
+
+### API contracts and engineering structure
+
+- Add a canonical modular OpenAPI contract, Redocly linting, route-inventory enforcement, bundled
+  specifications, generated Go server types, generated TypeScript client types, and migration
+  guidance.
+- Add a typed storage-operation registry and exhaustiveness tests so registered actions and planner
+  behavior cannot silently diverge.
+- Reduce the command entry point to composition and lifecycle management through the new
+  `internal/app` package.
+- Add inventory characterization and a bounded 10,000-claim browser test to protect large-cluster
+  behavior.
+
+### Qualification, CI, and release integrity
+
+- Add ten machine-readable qualification profiles and an evidence aggregator that rejects skipped,
+  not-run, malformed, redaction-unsafe, or incomplete production evidence.
+- Link qualification profiles to the compatibility matrix and extend nightly race, contract,
+  accessibility, and scale validation.
+- Add `govulncheck`, deterministic OpenAPI generation checks, a pattern-based secret scan, coverage
+  tier reporting, SBOM artifact generation, digest-promotion documentation, and artifact
+  verification guidance.
+- Expand unit, race, Playwright, Helm, fail-closed audit, shared-limiter, application-bootstrap, and
+  provider-disabled validation.
+
+### Known limitations
+
+- Highland remains alpha software and is not yet recommended for production use.
+- Live multi-node drain/failover and the complete provider qualification matrix require dedicated
+  storage labs and are not release gates for 0.4.0.
+- PostgreSQL audit pagination/migration hardening and end-to-end audit/limiter health reporting
+  remain follow-up work.
+- Container signing, provenance, mandatory final-image vulnerability scanning, and reviewed base
+  image digests are not yet enforced; SBOM generation is currently best-effort.
+- Generated OpenAPI wire types are present but adoption by all runtime handlers and web call sites
+  remains incremental.
+
 ## 0.3.0 — Enterprise identity and LINSTOR management (2026-07-18)
 
 Highland 0.3.0 extends the multi-provider storage control plane with a managed Piraeus/LINSTOR

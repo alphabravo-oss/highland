@@ -1,0 +1,13 @@
+# Shared parameters (referenced from path fragments without circular root refs).
+
+Csrf:
+  name: X-CSRF-Token
+  in: header
+  required: true
+  schema: { type: string }
+  description: Double-submit token paired with the signed session's CSRF cookie.
+
+Limit:
+  name: limit
+  in: query
+  schema: { type: integer, minimum: 1, maximum: 500, default: 100 }

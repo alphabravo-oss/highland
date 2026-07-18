@@ -14,8 +14,8 @@ jobs:
       run:
         working-directory: apps/api
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
           go-version-file: apps/api/go.mod
           cache-dependency-path: apps/api/go.sum
@@ -28,6 +28,10 @@ jobs:
       - name: Disabled-provider process smoke
         working-directory: .
         run: ./hack/test-api-disabled-providers.sh
+      - name: govulncheck
+        run: |
+          GOTOOLCHAIN=local go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          govulncheck ./...
 
   web:
     name: Web (typecheck, unit, build, storybook)
@@ -36,8 +40,8 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
         with:
           node-version: "22"
           cache: npm
@@ -47,17 +51,36 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
-      - name: Lint storage OpenAPI contract
+      - name: OpenAPI lint + STRICT route coverage + generate drift
         working-directory: .
-        run: npx --yes @redocly/cli@2.18.0 lint docs/openapi/storage-v1.yaml --config redocly.yaml
+        run: bash ./hack/openapi-check.sh
       - name: Build Storybook
         run: npm run build-storybook
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: success()
         with:
           name: storybook-static
           path: apps/web/storybook-static
           retention-days: 7
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # Primary gate: offline pattern scan (no license / network tools required).
+      # Policy: docs/security/supply-chain-policy.md (ADR-0006).
+      - name: Secret scan (hack/scan-secrets.sh)
+        run: bash ./hack/scan-secrets.sh
+      # Optional gitleaks (enable when org license / public free tier is ready).
+      # Private orgs need GITLEAKS_LICENSE from https://gitleaks.io.
+      # Flip `if` to true (or remove it) after license/policy is configured.
+      - name: Gitleaks
+        if: ${{ false }}
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
   e2e:
     name: Playwright Phase 1 smoke + a11y
@@ -67,12 +90,12 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
           go-version-file: apps/api/go.mod
           cache-dependency-path: apps/api/go.sum
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
         with:
           node-version: "22"
           cache: npm
@@ -86,7 +109,7 @@ jobs:
           HIGHLAND_ADMIN_USER: admin
           HIGHLAND_ADMIN_PASSWORD: highland
         run: npm run test:e2e
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
           name: playwright-report
@@ -99,8 +122,8 @@ jobs:
     name: Helm lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: azure/setup-helm@v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.14.4
       - name: Add Longhorn chart repository
@@ -116,6 +139,18 @@ jobs:
     name: Parity matrix gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Check P0 rows
         run: ./hack/check-parity.sh
+
+  qualification:
+    name: Qualification scaffolding
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version-file: apps/api/go.mod
+          cache: false
+      - name: Check qualification profiles, aggregator, and compatibility links
+        run: bash ./hack/check-qualification.sh

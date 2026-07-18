@@ -24,7 +24,7 @@ import (
 
 // HighlandAPI serves native Highland endpoints (not Longhorn proxy).
 type HighlandAPI struct {
-	Audit                           *audit.Store
+	Audit                           audit.Sink
 	Metrics                         *metrics.Scraper
 	Benchmarks                      *benchmark.Store
 	Users                           *auth.UserStore
@@ -53,7 +53,7 @@ func (h *HighlandAPI) RevealCephDashboardCredential(w http.ResponseWriter, r *ht
 	message := ""
 	defer func() {
 		if h.Audit != nil {
-			h.Audit.Append(audit.Event{
+			_ = h.Audit.Append(r.Context(), audit.Event{
 				Username: user.Username, Role: string(user.Role),
 				Action: "ceph_dashboard_credential_reveal", Target: "rook-ceph/dashboard-admin",
 				Method: r.Method, Path: r.URL.Path, Result: result, SourceIP: r.RemoteAddr,
@@ -108,8 +108,12 @@ func (h *HighlandAPI) ListAudit(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
+	var data []audit.Event
+	if h.Audit != nil {
+		data = audit.ListRecent(r.Context(), h.Audit, limit)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"data": h.Audit.List(limit),
+		"data": data,
 	})
 }
 
@@ -137,6 +141,21 @@ func (h *HighlandAPI) CreateUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
+	user, _ := middleware.UserFromContext(r.Context())
+	// Required admission before local user administration when durable audit is active.
+	if h.Audit != nil && h.Audit.Durable() {
+		admit := audit.Event{
+			Username: user.Username, Role: string(user.Role),
+			Action: "user_create_admit", Target: body.Username, Method: r.Method, Path: r.URL.Path,
+			Result: "ok", SourceIP: r.RemoteAddr, Message: "pre-mutation user admin admission",
+		}
+		if err := audit.RequireAppend(r.Context(), h.Audit, admit); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error": "user administration blocked because required audit admission failed",
+			})
+			return
+		}
+	}
 	if err := h.Users.Create(r.Context(), auth.CreateUserRequest{
 		Username: body.Username, Email: body.Email, Password: body.Password, Role: auth.ParseRole(body.Role),
 	}); err != nil {
@@ -144,8 +163,7 @@ func (h *HighlandAPI) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.Audit != nil {
-		user, _ := middleware.UserFromContext(r.Context())
-		h.Audit.Append(audit.Event{
+		_ = h.Audit.Append(r.Context(), audit.Event{
 			Username: user.Username, Role: string(user.Role),
 			Action: "user_create", Target: body.Username, Method: r.Method, Path: r.URL.Path, Result: "ok", SourceIP: r.RemoteAddr,
 		})
@@ -177,11 +195,31 @@ func (h *HighlandAPI) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		parsed := auth.ParseRole(*body.Role)
 		role = &parsed
 	}
+	// Required pre-mutation audit for identity admin (ADR-0004 DEC-3).
+	if h.Audit != nil && h.Audit.Durable() {
+		admit := audit.Event{
+			Username: principal.Username, Role: string(principal.Role),
+			Action: "user_update_admit", Target: username, Method: r.Method, Path: r.URL.Path,
+			Result: "ok", SourceIP: r.RemoteAddr, Message: "pre-mutation user admin admission",
+		}
+		if err := audit.RequireAppend(r.Context(), h.Audit, admit); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error": "user administration blocked because required audit admission failed",
+			})
+			return
+		}
+	}
 	if err := h.Users.UpdateAdmin(r.Context(), username, auth.AdminUserUpdate{
 		Email: body.Email, Password: body.Password, Role: role, Disabled: body.Disabled, ResetMFA: body.ResetMFA,
 	}); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
+	}
+	if h.Audit != nil {
+		_ = h.Audit.Append(r.Context(), audit.Event{
+			Username: principal.Username, Role: string(principal.Role),
+			Action: "user_update", Target: username, Method: r.Method, Path: r.URL.Path, Result: "ok", SourceIP: r.RemoteAddr,
+		})
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
@@ -194,9 +232,29 @@ func (h *HighlandAPI) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "you cannot delete your own signed-in account"})
 		return
 	}
+	// Required pre-mutation audit for identity admin (ADR-0004 DEC-3).
+	if h.Audit != nil && h.Audit.Durable() {
+		admit := audit.Event{
+			Username: principal.Username, Role: string(principal.Role),
+			Action: "user_delete_admit", Target: username, Method: r.Method, Path: r.URL.Path,
+			Result: "ok", SourceIP: r.RemoteAddr, Message: "pre-mutation user admin admission",
+		}
+		if err := audit.RequireAppend(r.Context(), h.Audit, admit); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error": "user administration blocked because required audit admission failed",
+			})
+			return
+		}
+	}
 	if err := h.Users.Delete(r.Context(), username); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
+	}
+	if h.Audit != nil {
+		_ = h.Audit.Append(r.Context(), audit.Event{
+			Username: principal.Username, Role: string(principal.Role),
+			Action: "user_delete", Target: username, Method: r.Method, Path: r.URL.Path, Result: "ok", SourceIP: r.RemoteAddr,
+		})
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
@@ -348,7 +406,7 @@ func (h *HighlandAPI) CreateBenchmark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.Audit != nil {
-		h.Audit.Append(audit.Event{
+		_ = h.Audit.Append(r.Context(), audit.Event{
 			Username: user.Username,
 			Role:     string(user.Role),
 			Action:   "benchmark_create",
@@ -405,10 +463,32 @@ func (a *API) PutOIDCConfig(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
+	user, _ := middleware.UserFromContext(r.Context())
+	// Identity/admin SSO mutation: fail closed when durable audit is active (ADR-0004).
+	if a.Audit != nil && a.Audit.Durable() {
+		admit := audit.Event{
+			Username: user.Username, Role: string(user.Role),
+			Action: "oidc_config_admit", Target: "oidc-config", Method: r.Method, Path: r.URL.Path,
+			Result: "ok", SourceIP: r.RemoteAddr, Message: "pre-mutation OIDC config admission",
+		}
+		if err := audit.RequireAppend(r.Context(), a.Audit, admit); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error": "OIDC configuration update blocked because required audit admission failed",
+			})
+			return
+		}
+	}
 	pub, err := a.OIDCRuntime.Update(r.Context(), body)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
+	}
+	if a.Audit != nil {
+		_ = a.Audit.Append(r.Context(), audit.Event{
+			Username: user.Username, Role: string(user.Role),
+			Action: "oidc_config_update", Target: "oidc-config", Method: r.Method, Path: r.URL.Path,
+			Result: "ok", SourceIP: r.RemoteAddr,
+		})
 	}
 	writeJSON(w, http.StatusOK, pub)
 }

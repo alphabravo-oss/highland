@@ -43,7 +43,7 @@ type Impact struct {
 
 type APIConfig struct {
 	Store           PolicyStore
-	Audit           *audit.Store
+	Audit           audit.Sink
 	Secret          []byte
 	ClusterIdentity string
 	ActiveCount     func(context.Context) (int, error)
@@ -54,7 +54,7 @@ type APIConfig struct {
 
 type API struct {
 	store           PolicyStore
-	audit           *audit.Store
+	audit           audit.Sink
 	secret          []byte
 	clusterIdentity string
 	activeCount     func(context.Context) (int, error)
@@ -213,6 +213,24 @@ func (a *API) Apply(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, r, err)
 		return
 	}
+	// Required pre-mutation audit when the sink is durable (ADR-0004 DEC-3).
+	if a.audit != nil && a.audit.Durable() {
+		admit := audit.Event{
+			Username: user.Username, Role: string(user.Role),
+			Action: "policy_change_admit", Target: "HighlandPolicy/highland",
+			Method: r.Method, Path: r.URL.Path, Result: "ok", SourceIP: r.RemoteAddr,
+			Message: "pre-mutation policy admission", PlanHash: plan.Hash,
+			CorrelationID: chimw.GetReqID(r.Context()), HTTPCorrelationID: chimw.GetReqID(r.Context()),
+		}
+		if err := audit.RequireAppend(r.Context(), a.audit, admit); err != nil {
+			if a.observer != nil {
+				a.observer.PolicyUpdate("error")
+			}
+			writePolicyError(w, r, http.StatusServiceUnavailable, "AUDIT_REQUIRED_UNAVAILABLE",
+				"policy mutation blocked because required audit admission failed", true, nil)
+			return
+		}
+	}
 	updated, err := a.store.Update(r.Context(), request.Policy, request.ResourceVersion, user.Username, chimw.GetReqID(r.Context()))
 	if err != nil {
 		if a.observer != nil {
@@ -267,7 +285,7 @@ func (a *API) History(w http.ResponseWriter, r *http.Request) {
 	}
 	result := []audit.Event{}
 	if a.audit != nil {
-		for _, event := range a.audit.List(2000) {
+		for _, event := range audit.ListRecent(r.Context(), a.audit, 2000) {
 			if strings.HasPrefix(event.Action, "policy_change_") {
 				result = append(result, event)
 				if len(result) == limit {
@@ -450,7 +468,7 @@ func (a *API) auditEvent(user auth.User, r *http.Request, action, result, messag
 	encoded, _ := json.Marshal(map[string]any{
 		"message": message, "before": Normalize(previous), "requested": Normalize(requested), "effective": effective,
 	})
-	a.audit.Append(audit.Event{
+	_ = a.audit.Append(r.Context(), audit.Event{
 		Username: user.Username, Role: string(user.Role), Action: action,
 		Target: "HighlandPolicy/highland", Method: r.Method, Path: r.URL.Path,
 		Result: result, SourceIP: r.RemoteAddr,

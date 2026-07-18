@@ -61,6 +61,11 @@ type Metrics struct {
 	storagePolicyCeilingMismatch  prometheus.Gauge
 	storagePolicyPortableProvider *prometheus.GaugeVec
 	storagePolicyLegacyWildcard   prometheus.Gauge
+	// HA / security-state (ADR-0004 / ADR-0005)
+	auditAppendTotal   *prometheus.CounterVec // {result}
+	auditSinkUp        *prometheus.GaugeVec   // {backend,durable}
+	loginLimiterUp     prometheus.Gauge
+	loginLimiterErrors prometheus.Counter
 }
 
 // New builds and registers all collectors (plus Go/process runtime metrics).
@@ -135,6 +140,22 @@ func New() *Metrics {
 	m.storagePolicyCeilingMismatch = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: namespace, Name: "storage_policy_ceiling_mismatch", Help: "Whether requested runtime policy exceeds the installed permission ceiling."})
 	m.storagePolicyPortableProvider = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: namespace, Name: "storage_policy_portable_provider_enabled", Help: "Providers explicitly enabled for portable Kubernetes storage workflows."}, []string{"provider"})
 	m.storagePolicyLegacyWildcard = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: namespace, Name: "storage_policy_legacy_wildcard", Help: "Whether portable Kubernetes workflows use the legacy all-provider wildcard."})
+	m.auditAppendTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace, Name: "audit_append_total",
+		Help: "Audit append attempts by result (ok|error).",
+	}, []string{"result"})
+	m.auditSinkUp = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: namespace, Name: "audit_sink_up",
+		Help: "Whether the audit sink health check is passing (1) or not (0).",
+	}, []string{"backend", "durable"})
+	m.loginLimiterUp = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: namespace, Name: "login_limiter_up",
+		Help: "Whether the login limiter backend health check is passing (1) or not (0).",
+	})
+	m.loginLimiterErrors = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: namespace, Name: "login_limiter_errors_total",
+		Help: "Login limiter backend errors (no username/IP labels).",
+	})
 
 	m.registry.MustRegister(
 		m.httpRequests, m.httpDuration, m.httpInFlight,
@@ -151,6 +172,7 @@ func New() *Metrics {
 		m.storagePolicyEnabled, m.storagePolicyUpdates, m.storagePolicyGeneration,
 		m.storagePolicyObservedAt, m.storagePolicyCeilingMismatch,
 		m.storagePolicyPortableProvider, m.storagePolicyLegacyWildcard,
+		m.auditAppendTotal, m.auditSinkUp, m.loginLimiterUp, m.loginLimiterErrors,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
@@ -452,6 +474,56 @@ func (m *Metrics) SetStorageForecastSufficient(provider, measure string, suffici
 		value = 1
 	}
 	m.storageForecastSufficient.WithLabelValues(provider, measure).Set(value)
+}
+
+// IncAuditAppend records audit append outcomes without high-cardinality labels.
+func (m *Metrics) IncAuditAppend(result string) {
+	if m == nil {
+		return
+	}
+	if result == "" {
+		result = "error"
+	}
+	m.auditAppendTotal.WithLabelValues(result).Inc()
+}
+
+// SetAuditSinkUp reports sink health (backend name, durable flag).
+func (m *Metrics) SetAuditSinkUp(backend string, durable, up bool) {
+	if m == nil {
+		return
+	}
+	if backend == "" {
+		backend = "unknown"
+	}
+	d := "false"
+	if durable {
+		d = "true"
+	}
+	v := 0.0
+	if up {
+		v = 1
+	}
+	m.auditSinkUp.WithLabelValues(backend, d).Set(v)
+}
+
+// SetLoginLimiterUp reports shared/local limiter backend health.
+func (m *Metrics) SetLoginLimiterUp(up bool) {
+	if m == nil {
+		return
+	}
+	if up {
+		m.loginLimiterUp.Set(1)
+		return
+	}
+	m.loginLimiterUp.Set(0)
+}
+
+// IncLoginLimiterError increments backend error count (no IP/username labels).
+func (m *Metrics) IncLoginLimiterError() {
+	if m == nil {
+		return
+	}
+	m.loginLimiterErrors.Inc()
 }
 
 func routePattern(r *http.Request) string {

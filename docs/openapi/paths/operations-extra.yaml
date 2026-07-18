@@ -1,0 +1,60 @@
+# Provider-native Longhorn operations (Highland-owned plan/confirm path).
+
+/api/v1/providers/{providerId}/longhorn/operations/{actionId}:
+  post:
+    tags: [Operations]
+    operationId: submitLonghornOperation
+    summary: Submit a Longhorn-native storage operation
+    description: >
+      Same durable plan/confirm/execute semantics as portable storage operations.
+      Privileged; required audit admission applies when the audit sink is durable.
+    parameters:
+      - name: providerId
+        in: path
+        required: true
+        schema: { type: string }
+      - name: actionId
+        in: path
+        required: true
+        schema: { type: string }
+      - $ref: ../schemas/parameters.yaml#/Csrf
+      - name: X-Highland-Confirmation
+        in: header
+        schema: { type: string }
+      - name: X-Highland-Typed-Name
+        in: header
+        schema: { type: string }
+    requestBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      "202":
+        description: Operation accepted.
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      "400":
+        description: HTTP 400.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/ErrorEnvelope
+      "403":
+        description: HTTP 403.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/ErrorEnvelope
+      "503":
+        description: Preflight, store, or required audit unavailable.
+        content:
+          application/json:
+            schema:
+              $ref: ../schemas/errors.yaml#/ErrorEnvelope
+      default:
+        $ref: ../schemas/errors.yaml#/ErrorResponse

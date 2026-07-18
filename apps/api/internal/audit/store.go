@@ -2,6 +2,7 @@ package audit
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 // Event is an audit log entry.
 type Event struct {
+	SchemaVersion           int       `json:"schemaVersion,omitempty"`
 	ID                      string    `json:"id"`
 	Timestamp               time.Time `json:"timestamp"`
 	Username                string    `json:"username"`
@@ -35,6 +37,33 @@ type Event struct {
 	HTTPCorrelationID       string    `json:"httpCorrelationId,omitempty"`
 	KubernetesCorrelationID string    `json:"kubernetesCorrelationId,omitempty"`
 	CephCorrelationID       string    `json:"cephCorrelationId,omitempty"`
+}
+
+// Store is an in-memory ring buffer with optional append-only JSONL file.
+// It implements Sink. JSONL is suitable for single-replica durability; production
+// HA uses PostgresAuditSink (ADR-0004).
+type Store struct {
+	mu       sync.RWMutex
+	events   []Event
+	max      int
+	filePath string
+	seq      int
+	backend  string
+}
+
+// Ensure Store satisfies Sink.
+var _ Sink = (*Store)(nil)
+
+// NewStore creates an audit store. max=0 defaults to 2000.
+func NewStore(max int, filePath string) *Store {
+	if max <= 0 {
+		max = 2000
+	}
+	backend := "memory"
+	if filePath != "" {
+		backend = "jsonl"
+	}
+	return &Store{events: make([]Event, 0, 256), max: max, filePath: filePath, backend: backend}
 }
 
 // Durable reports whether the append-only audit stream is configured and
@@ -98,25 +127,24 @@ func (s *Store) DurableTerminalOperationIDs() (map[string]bool, error) {
 	return result, nil
 }
 
-// Store is an in-memory ring buffer with optional append-only file.
-type Store struct {
-	mu       sync.RWMutex
-	events   []Event
-	max      int
-	filePath string
-	seq      int
-}
-
-// NewStore creates an audit store. max=0 defaults to 2000.
-func NewStore(max int, filePath string) *Store {
-	if max <= 0 {
-		max = 2000
+// Append implements Sink. Failures are returned to callers (no silent ignore).
+func (s *Store) Append(ctx context.Context, e Event) error {
+	if s == nil {
+		return fmt.Errorf("%w: store is nil", ErrUnavailable)
 	}
-	return &Store{events: make([]Event, 0, 256), max: max, filePath: filePath}
-}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if e.SchemaVersion == 0 {
+		e.SchemaVersion = SchemaVersion
+	}
+	// Reject secret material before redaction so required admission cannot
+	// launder sensitive fields into durable storage.
+	if err := ValidateEvent(e); err != nil {
+		return err
+	}
+	e.Message = redactMessage(e.Message)
 
-// Append records an event.
-func (s *Store) Append(e Event) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.seq++
@@ -132,26 +160,126 @@ func (s *Store) Append(e Event) {
 	}
 	if s.filePath != "" {
 		f, err := os.OpenFile(s.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-		if err == nil {
-			_ = json.NewEncoder(f).Encode(e)
-			_ = f.Close()
+		if err != nil {
+			return fmt.Errorf("%w: open jsonl: %v", ErrUnavailable, err)
+		}
+		encErr := json.NewEncoder(f).Encode(e)
+		closeErr := f.Close()
+		if encErr != nil {
+			return fmt.Errorf("%w: encode jsonl: %v", ErrUnavailable, encErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("%w: close jsonl: %v", ErrUnavailable, closeErr)
 		}
 	}
+	return nil
 }
 
-// List returns newest-first events, optionally limited.
-func (s *Store) List(limit int) []Event {
+// ListRecent returns newest-first events, optionally limited (legacy helper).
+func (s *Store) ListRecent(limit int) []Event {
+	page, err := s.List(context.Background(), Query{Limit: limit})
+	if err != nil {
+		return nil
+	}
+	return page.Events
+}
+
+// List implements Sink with filters and cursor pagination (newest-first).
+func (s *Store) List(ctx context.Context, query Query) (Page, error) {
+	if s == nil {
+		return Page{}, fmt.Errorf("%w: store is nil", ErrUnavailable)
+	}
+	if err := ctx.Err(); err != nil {
+		return Page{}, err
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	n := len(s.events)
-	if limit <= 0 || limit > n {
-		limit = n
+
+	var filtered []Event
+	for i := len(s.events) - 1; i >= 0; i-- {
+		e := s.events[i]
+		if !matchQuery(e, query) {
+			continue
+		}
+		filtered = append(filtered, e)
 	}
-	out := make([]Event, limit)
-	for i := 0; i < limit; i++ {
-		out[i] = s.events[n-1-i]
+
+	start := 0
+	if query.Cursor != "" {
+		for i, e := range filtered {
+			if e.ID == query.Cursor {
+				start = i + 1
+				break
+			}
+		}
 	}
-	return out
+	limit := query.Limit
+	if limit <= 0 {
+		limit = len(filtered)
+	}
+	if start > len(filtered) {
+		start = len(filtered)
+	}
+	end := start + limit
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	out := make([]Event, end-start)
+	copy(out, filtered[start:end])
+	page := Page{Events: out}
+	if end < len(filtered) && len(out) > 0 {
+		page.NextCursor = out[len(out)-1].ID
+	}
+	return page, nil
+}
+
+func matchQuery(e Event, q Query) bool {
+	if q.Action != "" && e.Action != q.Action {
+		return false
+	}
+	if q.Result != "" && e.Result != q.Result {
+		return false
+	}
+	if q.ProviderID != "" && e.ProviderID != q.ProviderID {
+		return false
+	}
+	if q.OperationID != "" && e.OperationID != q.OperationID {
+		return false
+	}
+	if q.Username != "" && e.Username != q.Username {
+		return false
+	}
+	if !q.Since.IsZero() && e.Timestamp.Before(q.Since) {
+		return false
+	}
+	if !q.Until.IsZero() && e.Timestamp.After(q.Until) {
+		return false
+	}
+	return true
+}
+
+// Health implements Sink.
+func (s *Store) Health(ctx context.Context) Health {
+	if s == nil {
+		return Health{Status: "unavailable", Backend: "none", Message: "nil store"}
+	}
+	_ = ctx
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	h := Health{Backend: s.backend, Durable: s.filePath != ""}
+	if s.filePath != "" && !s.durableUnlocked() {
+		h.Status = "unavailable"
+		h.Message = "jsonl not writable"
+		return h
+	}
+	h.Status = "ok"
+	return h
+}
+
+// Close implements Sink.
+func (s *Store) Close(ctx context.Context) error {
+	_ = ctx
+	return nil
 }
 
 func itoa(n int) string {
