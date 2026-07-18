@@ -7,6 +7,8 @@ import { highlandDelete, highlandGet, highlandPost, highlandPut } from './client
 import { optimisticPatch, optimisticRemove, pick } from './optimistic'
 import { useSseConnected } from './realtime'
 import { storagePolicyClient, type PolicyChangeRequest } from './policy'
+import type { StorageWritePolicy } from './policy'
+import type { ProviderDescriptor, StorageCondition } from './storage/types'
 import {
   backupTargetsApi,
   backupVolumesApi,
@@ -137,9 +139,34 @@ export type StatusResponse = {
   highland: { version: string; sessionBackend: string; benchmarkMode: string }
   longhorn: { enabled: boolean; version: string; namespace: string; managerUrl: string; reachable: boolean; supported: string[] }
   kubernetes: { version: string }
+  compatibility: {
+    releaseLine: string
+    lastUpdated: string
+    kubernetes: { minimum: string; maximum: string }
+    providers: Record<string, { stage: string; tested: string }>
+  }
   components: { api: string; managerProxy: string; metricsScraper: string; scrapeError: string }
   vendor: { name: string; url: string; tagline: string }
-  storage?: { ready: boolean; lastSync?: string; snapshotApi?: boolean; providers?: Array<{ id: string; displayName: string; supportLevel: string; health: { status: string } }> }
+  storage?: {
+    ready: boolean
+    lastSync?: string
+    snapshotApi?: boolean
+    providers?: ProviderDescriptor[]
+    providersObservedAt?: string
+    providersStale?: boolean
+    condition?: string
+    conditions?: StorageCondition[]
+  }
+  storagePolicy?: {
+    source: string
+    effective: StorageWritePolicy
+    generation: number
+    observedGeneration: number
+    observedAt: string
+    stale: boolean
+    partial: boolean
+    conditions: Array<{ type: string; status: string; reason?: string; message?: string; lastTransitionTime?: string }>
+  }
 }
 
 export function useStatus() {

@@ -54,6 +54,18 @@ func (h *HighlandAPI) Status(w http.ResponseWriter, r *http.Request) {
 		"kubernetes": map[string]any{
 			"version": orUnknown(k8sVersion),
 		},
+		"compatibility": map[string]any{
+			"releaseLine": "0.2.x-storage-preview",
+			"lastUpdated": "2026-07-17",
+			"kubernetes":  map[string]any{"minimum": "1.34", "maximum": "1.36"},
+			"providers": map[string]any{
+				"longhorn":    map[string]any{"stage": "managed", "tested": "1.11.x – 1.12.x"},
+				"rook-ceph":   map[string]any{"stage": "preview", "tested": "Rook 1.19.6 / 1.20.2 · Ceph 19.2.3 / 20.2.1"},
+				"openebs":     map[string]any{"stage": "preview", "tested": "OpenEBS 4.5.1"},
+				"linstor":     map[string]any{"stage": "preview", "tested": "Piraeus 2.10.8 · LINSTOR 1.33.3 · CSI 1.11.3"},
+				"generic-csi": map[string]any{"stage": "detected", "tested": "Kubernetes inventory contract"},
+			},
+		},
 		"components": map[string]any{
 			"api":            "ok",
 			"managerProxy":   componentStatus(h.LonghornEnabled, managerReachable),
@@ -63,7 +75,7 @@ func (h *HighlandAPI) Status(w http.ResponseWriter, r *http.Request) {
 		"vendor": map[string]any{
 			"name":    "AlphaBravo",
 			"url":     "https://alphabravo.io",
-			"tagline": "Highland is an alternative Longhorn Enterprise Grade UI developed by AlphaBravo.",
+			"tagline": "Highland is an enterprise storage operations manager for Kubernetes CSI providers, developed by AlphaBravo.",
 		},
 	}
 	if h.Storage != nil {

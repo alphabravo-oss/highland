@@ -327,6 +327,67 @@ test.describe('provider-neutral storage UI', () => {
     expect(expandedWidths.table).toBeLessThanOrEqual(expandedWidths.scroller + 1)
   })
 
+  test('reports provider-neutral system health and compatibility', async ({ page }) => {
+    await page.route('**/api/v1/status', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          highland: { version: '0.2.0', sessionBackend: 'signed-cookie', benchmarkMode: 'kubernetes-job' },
+          kubernetes: { version: 'v1.36.2+k3s1' },
+          longhorn: { enabled: true, version: 'v1.12.0', namespace: 'longhorn-system', managerUrl: 'http://longhorn-backend', reachable: true, supported: ['1.12.x', '1.11.x'] },
+          components: { api: 'ok', managerProxy: 'ok', metricsScraper: 'ok', scrapeError: '' },
+          compatibility: {
+            releaseLine: '0.2.x-storage-preview',
+            lastUpdated: '2026-07-17',
+            kubernetes: { minimum: '1.34', maximum: '1.36' },
+            providers: {
+              'rook-ceph': { stage: 'preview', tested: 'Rook 1.19.6 / 1.20.2 · Ceph 19.2.3 / 20.2.1' },
+              openebs: { stage: 'preview', tested: 'OpenEBS 4.5.1' },
+            },
+          },
+          storage: {
+            ready: true,
+            lastSync: observedAt,
+            snapshotApi: false,
+            providersObservedAt: observedAt,
+            providersStale: false,
+            providers: [
+              { ...healthyProvider, health: { ...healthyProvider.health, conditions: [{ type: 'PrometheusAvailable', status: 'Unknown', severity: 'info', reason: 'NotConfigured', message: 'Ceph time-series metrics are unavailable.', observedAt }] } },
+              openEBSProvider,
+            ],
+          },
+          storagePolicy: {
+            source: 'runtime-policy',
+            effective: { acceptNewOperations: true, portableKubernetesWrites: false, portableKubernetesProviderIds: [], longhornWrites: true, rookCephWrites: false, allowCephStorageClassDelete: false, allowCephPoolDelete: false },
+            generation: 2,
+            observedGeneration: 2,
+            observedAt,
+            stale: false,
+            partial: false,
+            conditions: [],
+          },
+          vendor: { name: 'AlphaBravo', url: 'https://alphabravo.io', tagline: 'Highland is an enterprise storage operations manager for Kubernetes CSI providers, developed by AlphaBravo.' },
+        }),
+      })
+    })
+    await page.goto('/status')
+    await expect(page.getByTestId('status-page')).toBeVisible()
+    await expect(page.getByTestId('overall-system-status')).toContainText('Operational')
+    await expect(page.getByTestId('status-provider-rook-ceph')).toContainText('Rook 1.20.2')
+    await expect(page.getByTestId('status-provider-rook-ceph')).toContainText('Ceph 20.2.1')
+    await expect(page.getByTestId('status-provider-openebs')).toContainText('OpenEBS 4.5.1')
+    await expect(page.getByTestId('status-runtime-policy')).toContainText('Longhorn on')
+    await expect(page.getByTestId('status-runtime-policy')).toContainText('Rook/Ceph off')
+    await expect(page.getByTestId('status-conditions')).toContainText('Ceph time-series metrics are unavailable.')
+    await expect(page.getByText('Supported Longhorn')).toHaveCount(0)
+    await expect(page.getByText('Highland is an enterprise storage operations manager for Kubernetes CSI providers, developed by AlphaBravo.')).toBeVisible()
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(overflow).toBeLessThanOrEqual(1)
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
+    expect(results.violations.filter((violation) => violation.impact === 'serious' || violation.impact === 'critical')).toEqual([])
+  })
+
   test('renders a bounded page for a 10,000-claim inventory', async ({ page }) => {
     await page.goto('/storage/claims')
     await expect(page.getByTestId('storage-claims-page')).toBeVisible()
