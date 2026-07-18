@@ -651,6 +651,18 @@ export function useBenchmarks(cursor = '') {
   })
 }
 
+export function useBenchmark(name: string | null) {
+  return useQuery({
+    queryKey: ['benchmarks', 'detail', name],
+    queryFn: ({ signal }) => highlandGet<Benchmark>(`/benchmarks/${encodeURIComponent(name!)}`, { signal }),
+    enabled: Boolean(name),
+    refetchInterval: (query) => {
+      const phase = query.state.data?.phase
+      return phase === 'Pending' || phase === 'Running' ? 2_000 : false
+    },
+  })
+}
+
 export function useCreateBenchmark() {
   const inv = useInvalidate()
   return useMutation({

@@ -272,26 +272,30 @@ test.describe('provider-neutral storage UI', () => {
   })
 
   test('explains disabled benchmark execution instead of offering synthetic results', async ({ page }) => {
+    const benchmark = {
+      name: 'bench-openebs',
+      profile: 'quick',
+      phase: 'Succeeded',
+      mode: 'kubernetes-job',
+      message: 'fio Job completed',
+      providerId: 'openebs',
+      csiDriver: 'openebs.io/local',
+      storageClass: 'openebs-hostpath',
+      nodeName: 'storage-1',
+      pvcName: 'benchmark-pvc',
+      pvName: 'benchmark-pv',
+      createdAt: '2026-07-16T00:00:00Z',
+      completedAt: '2026-07-16T00:00:42Z',
+      results: { seqReadMBps: 500, randWriteIOPS: 12_000 },
+      fioCmd: 'fio --name=highland-quick',
+    }
     await page.route('**/api/v1/benchmarks**', async (route) => {
+      const isDetail = new URL(route.request().url()).pathname.endsWith('/bench-openebs')
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          data: [{
-            name: 'bench-openebs',
-            profile: 'quick',
-            phase: 'Succeeded',
-            mode: 'kubernetes-job',
-            message: 'fio Job completed',
-            providerId: 'openebs',
-            csiDriver: 'openebs.io/local',
-            storageClass: 'openebs-hostpath',
-            nodeName: 'storage-1',
-            pvcName: 'benchmark-pvc',
-            pvName: 'benchmark-pv',
-            createdAt: '2026-07-16T00:00:00Z',
-            results: { seqReadMBps: 500, randWriteIOPS: 12_000 },
-          }],
+        body: JSON.stringify(isDetail ? benchmark : {
+          data: [benchmark],
           page: { limit: 50, total: 1 },
           meta: { observedAt: '2026-07-16T00:00:00Z', stale: false, partial: false, benchmarkMode: 'disabled' },
         }),
@@ -307,10 +311,14 @@ test.describe('provider-neutral storage UI', () => {
     await expect(page.getByTestId('benchmark-mode-disabled')).toContainText('Real benchmark execution is disabled')
     await expect(page.getByTestId('run-benchmark')).toBeDisabled()
     await expect(page.getByText(/Synthetic offline benchmarks/)).toHaveCount(0)
+    await expect(page.getByTestId('benchmark-details-bench-openebs')).toHaveCount(0)
+    await page.getByRole('button', { name: 'View details for bench-openebs' }).click()
     const target = page.getByTestId('benchmark-target-bench-openebs')
     await expect(target).toContainText('OpenEBS')
     await expect(target).toContainText('openebs-hostpath')
     await expect(target).toContainText('openebs.io/local')
+    await expect(page.getByTestId('benchmark-details-bench-openebs')).toContainText('500 MB/s')
+    await expect(page.getByTestId('benchmark-details-bench-openebs')).toContainText('fio --name=highland-quick')
   })
 
   test('renders a bounded page for a 10,000-claim inventory', async ({ page }) => {
