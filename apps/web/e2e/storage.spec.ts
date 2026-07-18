@@ -319,6 +319,12 @@ test.describe('provider-neutral storage UI', () => {
     await expect(target).toContainText('openebs.io/local')
     await expect(page.getByTestId('benchmark-details-bench-openebs')).toContainText('500 MB/s')
     await expect(page.getByTestId('benchmark-details-bench-openebs')).toContainText('fio --name=highland-quick')
+    const expandedWidths = await page.getByTestId('benchmark-details-bench-openebs').evaluate((details) => {
+      const table = details.closest('table')
+      const scroller = table?.parentElement
+      return { table: table?.getBoundingClientRect().width ?? 0, scroller: scroller?.clientWidth ?? 0 }
+    })
+    expect(expandedWidths.table).toBeLessThanOrEqual(expandedWidths.scroller + 1)
   })
 
   test('renders a bounded page for a 10,000-claim inventory', async ({ page }) => {

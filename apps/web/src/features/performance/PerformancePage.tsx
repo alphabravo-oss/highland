@@ -39,6 +39,7 @@ function benchmarkProviderLabel(providerId: unknown) {
   if (id === 'rook-ceph') return 'Rook / Ceph'
   if (id === 'openebs') return 'OpenEBS'
   if (id === 'linstor') return 'Piraeus / LINSTOR'
+  if (id.startsWith('csi-rancher-io-local-path-')) return 'Local Path Provisioner'
   return id || 'Unknown provider'
 }
 
@@ -79,7 +80,7 @@ function BenchmarkTableRows({
           <span className="min-w-0"><span className="block truncate font-medium group-hover:text-[var(--color-primary)]">{benchmark.name}</span><span className="block whitespace-nowrap text-[10px] text-[var(--color-muted-foreground)]">{benchmarkTime(benchmark.createdAt)}</span></span>
         </button>
       </TD>
-      <TD><Badge tone="primary">{benchmarkProviderLabel(benchmark.providerId)}</Badge></TD>
+      <TD className="overflow-hidden"><Badge tone="primary" className="max-w-full truncate" title={benchmarkProviderLabel(benchmark.providerId)}>{benchmarkProviderLabel(benchmark.providerId)}</Badge></TD>
       <TD className="max-w-48"><span className="block truncate" title={benchmark.storageClass}>{benchmark.storageClass || '—'}</span></TD>
       <TD className="capitalize">{benchmark.profile}</TD>
       <TD><div className="flex flex-col items-start gap-1"><Badge tone={stateTone(benchmark.phase)}>{active ? <LoaderCircle size={12} className="mr-1 inline animate-spin" /> : null}{benchmark.phase}</Badge><span className="text-[10px] text-[var(--color-muted-foreground)]">{benchmark.mode ?? 'unknown'}</span></div></TD>
@@ -90,9 +91,9 @@ function BenchmarkTableRows({
       </div></TD>
     </TR>
     {expanded ? <TR id={`benchmark-details-${benchmark.name}`} className="bg-[var(--color-muted)]/20 hover:bg-[var(--color-muted)]/20">
-      <TD colSpan={7} className="p-0">
-        <div className="border-l-2 border-[var(--color-primary)] px-4 py-4" data-testid={`benchmark-details-${benchmark.name}`}>
-          {detailQuery.isLoading ? <div role="status" className="flex items-center gap-2 text-sm text-[var(--color-muted-foreground)]"><LoaderCircle size={15} className="animate-spin" />{t('performance.loadingRunDetails')}</div> : detailQuery.error ? <Alert tone="danger">{detailQuery.error instanceof Error ? detailQuery.error.message : t('performance.detailsUnavailable')}</Alert> : <div className="space-y-4">
+      <TD colSpan={7} className="max-w-0 p-0">
+        <div className="min-w-0 max-w-full border-l-2 border-[var(--color-primary)] px-4 py-4" data-testid={`benchmark-details-${benchmark.name}`}>
+          {detailQuery.isLoading ? <div role="status" className="flex items-center gap-2 text-sm text-[var(--color-muted-foreground)]"><LoaderCircle size={15} className="animate-spin" />{t('performance.loadingRunDetails')}</div> : detailQuery.error ? <Alert tone="danger">{detailQuery.error instanceof Error ? detailQuery.error.message : t('performance.detailsUnavailable')}</Alert> : <div className="min-w-0 max-w-full space-y-4">
             <div>
               <h3 className="text-sm font-semibold">{t('performance.results')}</h3>
               {metrics.length ? <div className="mt-2 grid gap-3 sm:grid-cols-3 xl:grid-cols-6">{metrics.map((metric) => <div key={metric.key} className="rounded-md border border-[var(--color-border)] bg-[var(--color-background)] p-3"><div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted-foreground)]">{metric.label}</div><div className="mt-1 tabular-nums font-semibold">{metric.value}</div></div>)}</div> : <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">{active ? t('performance.resultsPending') : t('performance.noResultsRecorded')}</p>}
@@ -107,7 +108,7 @@ function BenchmarkTableRows({
               <BenchmarkFact label={t('performance.completed')} value={benchmarkTime(detail.completedAt)} />
               <BenchmarkFact label={t('performance.message')} value={detail.message || '—'} />
             </div>
-            {detail.fioCmd ? <div><h3 className="text-sm font-semibold">{t('performance.fioCommand')}</h3><pre className="mt-2 overflow-auto rounded-md bg-[var(--color-muted)] p-3 text-[11px] text-[var(--color-muted-foreground)]">{detail.fioCmd}</pre></div> : null}
+            {detail.fioCmd ? <div className="min-w-0 max-w-full"><h3 className="text-sm font-semibold">{t('performance.fioCommand')}</h3><pre className="mt-2 max-w-full overflow-x-auto rounded-md bg-[var(--color-muted)] p-3 text-[11px] text-[var(--color-muted-foreground)]">{detail.fioCmd}</pre></div> : null}
           </div>}
         </div>
       </TD>
@@ -321,14 +322,14 @@ export function BenchmarksPage() {
         onRetry={() => void q.refetch()}
       >
         <div className="space-y-2">
-          <Table aria-label={t('performance.benchmarkRuns')}>
+          <Table className="min-w-[860px] table-fixed" aria-label={t('performance.benchmarkRuns')}>
             <THead><TR>
-              <TH>{t('performance.run')}</TH>
-              <TH>{t('performance.storageProvider')}</TH>
-              <TH>{t('performance.storageClass')}</TH>
-              <TH>{t('performance.profile')}</TH>
-              <TH>{t('performance.status')}</TH>
-              <TH>{t('common.node')}</TH>
+              <TH className="w-44">{t('performance.run')}</TH>
+              <TH className="w-32">{t('performance.storageProvider')}</TH>
+              <TH className="w-40">{t('performance.storageClass')}</TH>
+              <TH className="w-20">{t('performance.profile')}</TH>
+              <TH className="w-28">{t('performance.status')}</TH>
+              <TH className="w-28">{t('common.node')}</TH>
               <TH className="w-20 text-right">{t('common.actions')}</TH>
             </TR></THead>
             <TBody>
