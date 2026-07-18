@@ -173,7 +173,7 @@ export function useStatus() {
   return useQuery({
     queryKey: ['status'],
     queryFn: ({ signal }) => highlandGet<StatusResponse>('/status', { signal }),
-    refetchInterval: 30_000,
+    refetchInterval: (query) => query.state.data?.storage?.providersStale || query.state.data?.storagePolicy?.stale ? 5_000 : 30_000,
   })
 }
 
