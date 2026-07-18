@@ -55,8 +55,8 @@ func (h *HighlandAPI) Status(w http.ResponseWriter, r *http.Request) {
 			"version": orUnknown(k8sVersion),
 		},
 		"compatibility": map[string]any{
-			"releaseLine": "0.2.x-storage-preview",
-			"lastUpdated": "2026-07-17",
+			"releaseLine": "0.3.x-storage-preview",
+			"lastUpdated": "2026-07-18",
 			"kubernetes":  map[string]any{"minimum": "1.34", "maximum": "1.36"},
 			"providers": map[string]any{
 				"longhorn":    map[string]any{"stage": "managed", "tested": "1.11.x – 1.12.x"},

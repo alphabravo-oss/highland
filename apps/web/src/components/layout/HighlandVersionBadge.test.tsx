@@ -6,7 +6,7 @@ import { HighlandVersionBadge } from './HighlandVersionBadge'
 vi.mock('@/api/hooks', () => ({
   useCompatibility: () => ({
     data: {
-      highlandVersion: '0.2.0',
+      highlandVersion: '0.3.0',
       longhornSupport: ['1.12.x'],
     },
   }),
@@ -23,7 +23,7 @@ describe('HighlandVersionBadge', () => {
     render(<HighlandVersionBadge />)
 
     const badge = screen.getByTestId('highland-version-badge')
-    expect(badge).toHaveTextContent('Highland v0.2.0')
+    expect(badge).toHaveTextContent('Highland v0.3.0')
     expect(badge).not.toHaveTextContent('LH')
   })
 
@@ -31,7 +31,7 @@ describe('HighlandVersionBadge', () => {
     render(<HighlandVersionBadge collapsed />)
 
     const badge = screen.getByTestId('highland-version-badge')
-    expect(badge).toHaveTextContent('v0.2')
-    expect(badge).toHaveAttribute('title', 'Highland v0.2.0')
+    expect(badge).toHaveTextContent('v0.3')
+    expect(badge).toHaveAttribute('title', 'Highland v0.3.0')
   })
 })

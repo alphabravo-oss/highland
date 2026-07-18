@@ -28,7 +28,7 @@ export function HighlandVersionBadge({
     highlandVersion ??
       (typeof compatibility.data?.highlandVersion === 'string'
         ? compatibility.data.highlandVersion
-        : '0.2.0'),
+        : '0.3.0'),
   )
   const label = `${t('app.name')} ${version}`
 

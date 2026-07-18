@@ -1,6 +1,6 @@
 schemaVersion: 1
-lastUpdated: "2026-07-17"
-releaseLine: "0.2.x-storage-preview"
+lastUpdated: "2026-07-18"
+releaseLine: "0.3.x-storage-preview"
 
 kubernetes:
   clientLibrary: "k8s.io/client-go v0.36.2"

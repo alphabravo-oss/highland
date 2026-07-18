@@ -3,8 +3,8 @@
 # status: not_started | partial | done | na | blocked
 # priority: P0 | P1 | P2 | H
 version: 1
-last_updated: "2026-07-10"
-highland_version: "0.1.x"
+last_updated: "2026-07-18"
+highland_version: "0.3.x"
 longhorn_target: "1.12.x"
 notes: >
   Generated from HIGHLAND_PLAN.md §8. Update status when shipping features.

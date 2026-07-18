@@ -1,5 +1,78 @@
 # Changelog
 
+## 0.3.0 — Enterprise identity and LINSTOR management (2026-07-18)
+
+Highland 0.3.0 extends the multi-provider storage control plane with a managed Piraeus/LINSTOR
+workspace, enterprise local-identity controls, consistent provider dashboards, and a complete
+provider-neutral system status experience. Storage data planes remain independently managed and
+continue operating if Highland is unavailable or removed.
+
+### Piraeus / LINSTOR provider
+
+- Add bounded discovery of Piraeus cluster and satellite convergence, component rollout state,
+  LINSTOR controller connectivity, nodes, storage pools, resource groups, resources and replicas,
+  snapshots, remotes, schedules, and error reports.
+- Correlate Kubernetes PVs and PVCs to LINSTOR resources using validated CSI volume handles, while
+  rejecting ambiguous handles and redacting provider credentials and sensitive fields.
+- Add a dedicated LINSTOR dashboard and provider navigation with capacity, placement, protection,
+  lifecycle, and diagnostic signals aligned with the Longhorn, Rook/Ceph, and OpenEBS workspaces.
+- Keep Piraeus/LINSTOR lifecycle ownership outside Highland. The integration is read-only and uses
+  allowlisted REST reads; portable Kubernetes storage workflows remain separately policy-gated.
+- Document the exact tested Piraeus 2.10.8, LINSTOR 1.33.3, and CSI 1.11.3 profile, including the
+  completed single-node k3s qualification and the remaining three-node DRBD production gate.
+
+### Enterprise identity and access
+
+- Add durable Kubernetes Secret-backed local identities with administrator-managed user creation,
+  role changes, disable/enable, password reset, and session revocation.
+- Add self-service email and password changes with Argon2id password hashing, configurable length
+  and complexity requirements, password history, and a common-password blocklist.
+- Add optional or administrator-enforced TOTP two-factor authentication, recovery codes, MFA
+  challenge handling, and audited security-policy changes.
+- Expand roles to admin, operator, and viewer while preserving namespace policy and server-side
+  authorization for every privileged API and UI route.
+- Refine Administration and Account pages so platform facts, identity operations, storage policy,
+  and authentication security are clearly separated.
+
+### Provider experience and operational clarity
+
+- Align all provider dashboards around the same operational hierarchy: health and readiness,
+  capacity, workload footprint, protection, performance, and conditions, followed by
+  provider-specific resources and workflows.
+- Replace the Longhorn-era system status view with a provider-neutral readiness page covering all
+  detected providers, component health, runtime policy, compatibility, versions, and actionable
+  conditions. Unknown generic-CSI health is explicitly distinguished from a failure.
+- Add a stable runtime compatibility contract for Kubernetes 1.34–1.36, Longhorn, Rook/Ceph,
+  OpenEBS, Piraeus/LINSTOR, and generic CSI discovery.
+- Improve provider-scoped context and operations pages so cross-provider facts, native workflows,
+  risk, write gates, and read-only boundaries are explained in user terms.
+- Add provider workload-footprint summaries and normalize composite provider resource identifiers
+  across links and API round trips.
+
+### UX, benchmarks, and quality
+
+- Rework benchmark history into a compact table with expandable, contained run details and clearer
+  provider and StorageClass attribution.
+- Left-align the sidebar brand, move collapse control beside the workspace selector, and replace
+  legacy Longhorn-only shell copy with provider-neutral language.
+- Add release/version visibility in the sidebar and make stale status snapshots refresh promptly
+  without losing bounded polling behavior.
+- Complete an enterprise quality audit across provider contracts, RBAC, API routing, localization,
+  accessibility, responsive layouts, console/network errors, and live provider pages.
+- Add live site, provider-contract, and LINSTOR qualification suites alongside expanded unit,
+  integration, Playwright, Helm, OpenAPI, and parity gates.
+
+### Compatibility and boundaries
+
+- Validated with Kubernetes 1.36.2+k3s1 in the integrated lab; the declared client/API contract is
+  Kubernetes 1.34–1.36. Provider versions and release gates are recorded in
+  [`docs/compatibility.yaml`](docs/compatibility.yaml).
+- Managed native changes remain available for Longhorn and the explicitly supported Rook/Ceph
+  workflows. OpenEBS and LINSTOR native resources remain read-only in this release; portable
+  Kubernetes workflows require capability discovery, RBAC, runtime policy, and confirmation.
+- Highland remains alpha software. Review the compatibility matrix, permission ceilings, provider
+  guides, and data-plane lifecycle boundaries before enabling write workflows.
+
 ## 0.2.0 — Multi-provider storage control plane (2026-07-17)
 
 Highland 0.2.0 expands the original Longhorn console into a provider-aware Kubernetes storage

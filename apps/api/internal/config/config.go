@@ -184,7 +184,7 @@ func LoadFromEnv() (*Config, error) {
 		RedisAddr:     os.Getenv("HIGHLAND_REDIS_ADDR"),
 		RedisPassword: os.Getenv("HIGHLAND_REDIS_PASSWORD"),
 		RedisDB:       envInt("HIGHLAND_REDIS_DB", 0),
-		Version:       envOr("HIGHLAND_VERSION", "0.2.0"),
+		Version:       envOr("HIGHLAND_VERSION", "0.3.0"),
 
 		StorageEnabled:                  envBool("HIGHLAND_STORAGE_ENABLED", true),
 		StorageScopeMode:                strings.ToLower(envOr("HIGHLAND_STORAGE_SCOPE", "cluster")),

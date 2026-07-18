@@ -52,7 +52,7 @@ config:
   # ingress sits in-cluster. Empty = trust none (use the direct socket peer).
   trustedProxies: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
   oidcMock: false
-  version: "0.2.0"
+  version: "0.3.0"
   # Comma-separated; empty = same-origin via nginx only
   allowedOrigins: ""
 
