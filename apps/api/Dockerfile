@@ -13,7 +13,7 @@
 # golang:1.26.5-alpine
 # TODO: pin by digest once reviewed
 #   FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine@sha256:<digest> AS build
-FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache git ca-certificates
 COPY go.mod go.sum ./
